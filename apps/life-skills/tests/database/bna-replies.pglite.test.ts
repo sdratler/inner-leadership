@@ -10,6 +10,8 @@ import {BnaAcknowledgmentStore,configuredBnaAcknowledgmentQueue} from '../../src
 import {BnaPreferenceStore} from '../../src/features/bna-communications/preferences-store.ts';
 import {BnaOptionalCalendarStore,type BnaOptionalAdmission} from '../../src/features/bna-communications/optional-calendar-store.ts';
 import {BnaReplyStore,type BnaReplyMailboxAdmission} from '../../src/features/bna-communications/reply-store.ts';
+import {BnaReplySourceCatalog} from '../../src/features/bna-communications/reply-source-catalog.ts';
+import {BnaReplyMonitorStore,type BnaReplyMonitorAdmission} from '../../src/features/bna-communications/reply-monitor-store.ts';
 import type {BnaReceivedReply,BnaSentReplySource} from '../../src/features/bna-communications/reply-contract.ts';
 import {BNA_EMAIL_SOURCE} from '../../src/features/bna-communications/delivery-policy.ts';
 import {bnaEmailCandidates} from '../../src/features/bna-communications/email-candidates.ts';
@@ -55,6 +57,85 @@ beforeAll(async()=>{
  }
 },30000);
 beforeEach(()=>{now=base;admission={primaryMailbox:'synthetic-mailbox@example.invalid',monitorFrom:base.toISOString()};});afterAll(()=>db.close());
+function monitor(ids:string[],store=adapter){
+ admission={primaryMailbox:randomUUID()+'@example.invalid',monitorFrom:base.toISOString()};
+ let admitted:BnaReplyMonitorAdmission|null={...admission,sourceSince:base.toISOString(),inquiryIds:ids,policyDigest:'a'.repeat(64)};
+ const catalog=new BnaReplySourceCatalog(workspace,owner,key,clock),journal=new BnaReplyMonitorStore(store,workspace,owner,ring,key,clock,catalog,replies,()=>admitted);
+ return {journal,catalog,get admitted(){return admitted;},set admitted(value:BnaReplyMonitorAdmission|null){admitted=value;}};
+}
+const quietReader=()=>({readRepliesForBinding:vi.fn(async()=>[] as BnaReceivedReply[]),verifyMailboxForBinding:vi.fn(async()=>({verified:true as const}))});
+it('does not claim an empty mailbox check until a real profile probe has succeeded; errors contain no provider data',async()=>{
+ const id=await inquiry(),f=monitor([id]),r=quietReader();
+ expect(await f.journal.status(ownerActor)).toEqual({state:'unconnected',lastCheckedAt:null,coverageFrom:null});
+ await expect(f.journal.status(otherActor)).rejects.toMatchObject({code:'NOT_FOUND'});
+ r.verifyMailboxForBinding.mockRejectedValueOnce(Error('SYNTHETIC_SECRET_DO_NOT_LOG'));
+ expect(await f.journal.runBatch(r)).toEqual({state:'failed'});expect((await f.journal.status(ownerActor)).state).toBe('failed');
+ expect(r.readRepliesForBinding).not.toHaveBeenCalled();expect(r.verifyMailboxForBinding).toHaveBeenCalledTimes(1);
+ now=new Date(base.getTime()+1000);expect(await f.journal.runBatch(r)).toEqual({state:'completed',received:0,replayed:0,reconciled:false});
+ expect(await f.journal.status(ownerActor)).toEqual({state:'connected',lastCheckedAt:now.toISOString(),coverageFrom:base.toISOString()});
+ const raw=(await db.query('SELECT payload_ciphertext FROM ls_service_interest.bna_mailbox_monitor_events WHERE mailbox_key=(SELECT mailbox_key FROM ls_service_interest.bna_mailbox_monitor_events ORDER BY recorded_at DESC LIMIT 1)')).rows;
+ expect(JSON.stringify(raw)).not.toMatch(/SYNTHETIC_SECRET|example.invalid|DO NOT COPY/);
+});
+it('invalidates completed coverage for a new native accepted send, changed policy, elapsed age or pause',async()=>{
+ const id=await inquiry(),f=monitor([id]),r=quietReader();await f.journal.runBatch(r);expect((await f.journal.status(ownerActor)).state).toBe('connected');
+ await sent(id);expect((await f.journal.status(ownerActor)).state).toBe('stale');await f.journal.runBatch(r);
+ expect(r.readRepliesForBinding).toHaveBeenCalledTimes(1);expect((await f.journal.status(ownerActor)).state).toBe('connected');
+ now=new Date(base.getTime()+180001);expect((await f.journal.status(ownerActor)).state).toBe('stale');
+ f.admitted={...f.admitted!,policyDigest:'b'.repeat(64)};expect((await f.journal.status(ownerActor)).state).toBe('unconnected');
+ f.admitted=null;expect((await f.journal.status(ownerActor)).state).toBe('paused');await expect(f.journal.runBatch(r)).rejects.toThrow();
+});
+it('holds one read lease; receipt, initial review and scan advancement commit atomically',async()=>{
+ const id=await inquiry(),selection=await sent(id),f=monitor([id]),r=quietReader();now=new Date(base.getTime()+1000);
+ let release!:(value:BnaReceivedReply[])=>void,started!:()=>void;const ready=new Promise<void>(resolve=>{started=resolve;});
+ const reading={...r,readRepliesForBinding:async(sources:readonly BnaSentReplySource[])=>{expect(sources.map(s=>s.messageId)).toEqual([selection.messageId]);started();return new Promise<BnaReceivedReply[]>(resolve=>{release=resolve;});}};
+ const run=f.journal.runBatch(reading);await ready;expect((await f.journal.status(ownerActor)).state).toBe('checking');
+ expect(await f.journal.runBatch(r)).toEqual({state:'busy'});expect(r.readRepliesForBinding).not.toHaveBeenCalled();
+ const source=await adapter.transaction(tx=>acknowledgment.replySource(tx,selection.messageId));release([incoming(source)]);
+ expect(await run).toMatchObject({state:'completed',received:1});expect((await f.journal.status(ownerActor)).state).toBe('connected');
+ expect((await prefs.readOwner(ownerActor,id)).preferences.replyPending).toBe(true);
+ f.admitted=null;expect((await prefs.readOwner(ownerActor,id)).preferences.replyPending).toBe(true);
+});
+it('reclaims an expired read without letting the stale worker save any receipt or advance its cursor',async()=>{
+ const id=await inquiry(),selection=await sent(id),f=monitor([id]),r=quietReader();now=new Date(base.getTime()+1000);
+ const source=await adapter.transaction(tx=>acknowledgment.replySource(tx,selection.messageId)),before=await count();
+ let release!:(value:BnaReceivedReply[])=>void,started!:()=>void;const ready=new Promise<void>(resolve=>{started=resolve;});
+ const run=f.journal.runBatch({...r,readRepliesForBinding:async()=>{started();return new Promise<BnaReceivedReply[]>(resolve=>{release=resolve;});}});await ready;
+ now=new Date(now.getTime()+300001);expect((await f.journal.status(ownerActor)).state).toBe('stale');
+ expect(await f.journal.runBatch(r)).toMatchObject({state:'completed',received:0});release([incoming(source)]);
+ expect(await run).toEqual({state:'superseded'});expect(await count()).toEqual(before);
+ expect((await f.journal.status(ownerActor)).state).toBe('stale'); // oldest batch read exceeds the freshness budget
+ await f.journal.runBatch(r);expect((await f.journal.status(ownerActor)).state).toBe('connected');
+});
+it('resumes a failed 25-source batch from its saved cursor instead of restarting the cycle',async()=>{
+ const ids:string[]=[];for(let i=0;i<26;i++){const id=await inquiry();ids.push(id);await sent(id);}
+ const f=monitor(ids),r=quietReader();now=new Date(base.getTime()+1000);const sizes:number[]=[];
+ r.readRepliesForBinding.mockImplementation(async(...args:unknown[])=>{sizes.push((args[0] as BnaSentReplySource[]).length);if(sizes.length===2)throw Error('synthetic outage');return [];});
+ expect(await f.journal.runBatch(r)).toMatchObject({state:'batch_saved'});expect((await f.journal.status(ownerActor)).state).toBe('checking');
+ expect(await f.journal.runBatch(r)).toEqual({state:'failed'});expect(await f.journal.runBatch(r)).toMatchObject({state:'completed'});
+ expect(sizes).toEqual([25,1,1]);expect((await f.journal.status(ownerActor)).state).toBe('connected');
+ const binding=f.admitted!;const snap=await adapter.transaction(tx=>f.catalog.snapshot(tx,binding));expect(snap.selectors).toHaveLength(26);
+ const rows=(await db.query<{cursor:number;code:string}>('SELECT cursor,code FROM ls_service_interest.bna_mailbox_monitor_events WHERE source_digest=$1 ORDER BY version',[snap.digest])).rows;
+ expect(rows.map(x=>[x.cursor,x.code])).toEqual([[0,'CYCLE_STARTED'],[25,'BATCH_SAVED'],[25,'READ_RESERVED'],[25,'READ_FAILED'],[25,'READ_RETRY'],[26,'CYCLE_COMPLETED']]);
+});
+it('reconciles a committed empty-catalog completion after a lost database response',async()=>{
+ const id=await inquiry();let lose=true;
+ const uncertain:IdentityStore={transaction:async fn=>{const value=await adapter.transaction(fn);if(lose&&(await db.query("SELECT 1 FROM ls_service_interest.bna_mailbox_monitor_events WHERE owner_account_id=$1 AND state='completed' AND recorded_at=$2",[owner,new Date(base.getTime()+2345)])).rows.length){lose=false;throw Error('synthetic lost commit result');}return value;}};
+ const f=monitor([id],uncertain);now=new Date(base.getTime()+2345);const r=quietReader();expect(await f.journal.runBatch(r)).toEqual({state:'completed',received:0,replayed:0,reconciled:true});
+ expect(r.verifyMailboxForBinding).toHaveBeenCalledTimes(1);expect((await f.journal.status(ownerActor)).state).toBe('connected');
+});
+it('rolls back provider receipts if the protected binding changes during the read',async()=>{
+ const id=await inquiry(),selection=await sent(id),f=monitor([id]),r=quietReader(),before=await count();now=new Date(base.getTime()+1000);
+ const source=await adapter.transaction(tx=>acknowledgment.replySource(tx,selection.messageId));
+ const read={...r,readRepliesForBinding:async()=>{f.admitted={...f.admitted!,policyDigest:'c'.repeat(64)};return [incoming(source)];}};
+ expect(await f.journal.runBatch(read)).toEqual({state:'superseded'});expect(await count()).toEqual(before);
+ expect((await f.journal.status(ownerActor)).state).toBe('unconnected');expect(await f.journal.runBatch(r)).toMatchObject({state:'completed'});
+});
+it('pausing during a read prevents receipt/cursor writes and reports paused without changing stored holds',async()=>{
+ const id=await inquiry(),selection=await sent(id),f=monitor([id]),r=quietReader(),before=await count();now=new Date(base.getTime()+1000);
+ const source=await adapter.transaction(tx=>acknowledgment.replySource(tx,selection.messageId));
+ expect(await f.journal.runBatch({...r,readRepliesForBinding:async()=>{f.admitted=null;return [incoming(source)];}})).toEqual({state:'superseded'});
+ expect(await count()).toEqual(before);expect((await f.journal.status(ownerActor)).state).toBe('paused');
+});
 it('atomically saves one encrypted receipt and a provider-sourced pending review without creating People or preferences',async()=>{
  const id=await inquiry(undefined,false),selection=await sent(id);now=new Date(base.getTime()+1000);const before=await count(),r=reader();
  expect(await replies.ingest([selection],r)).toEqual({received:1,replayed:0});expect(await count()).toEqual({receipts:before.receipts+1,reviews:before.reviews+1});

@@ -24,6 +24,13 @@ function fixture(s=source(),mutate?:(own:Msg,replies:Msg[])=>void,scope='https:/
  return {s,own,replies,calls,fetcher,reader:new BnaGmailReplyReader(config,primary,cutoff,{now:()=>now},fetcher as typeof fetch)};
 }
 describe('known-send Gmail metadata reply reader',()=>{
+ it('proves an empty-catalog mailbox through OAuth and primary profile, without reading or listing messages',async()=>{
+  const f=fixture();expect(await f.reader.verifyMailboxForBinding({primaryMailbox:primary,monitorFrom:cutoff})).toEqual({verified:true});
+  expect(f.calls.map(c=>c.method)).toEqual(['POST','GET']);expect(f.calls[1]!.url).toContain('/profile?');expect(f.calls[0]!.body).not.toMatch(/scope=/);
+  const g=fixture(undefined,undefined,'https://www.googleapis.com/auth/gmail.send');
+  await expect(g.reader.verifyMailboxForBinding({primaryMailbox:primary,monitorFrom:cutoff})).rejects.toMatchObject({code:'UNAVAILABLE'});expect(g.calls).toHaveLength(1);
+  const h=fixture();await expect(h.reader.verifyMailboxForBinding({primaryMailbox:'wrong@example.invalid',monitorFrom:cutoff})).rejects.toMatchObject({code:'UNAVAILABLE'});expect(h.calls).toHaveLength(0);
+ });
  it('reads only the accepted-send thread, returns identifiers only, and never marks or sends mail',async()=>{
   const f=fixture(),replies=await f.reader.readReplies([f.s]);
   expect(replies).toEqual([{inquiryId:f.s.inquiryId,program:f.s.program,originalMessageId:f.s.messageId,providerMessageId:'reply001',providerThreadId:'thread001',receivedAt:'2026-10-30T11:00:00.000Z'}]);

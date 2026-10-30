@@ -1,4 +1,4 @@
--- PROPOSAL ONLY, outside the active manifest. Exact-target guarded release required.
+-- Additive mailbox reply metadata, review and monitor journal. Exact-target guarded release required.
 -- Metadata receipts and owner reviews only. No email content, contact, task backfill or send.
 CREATE TABLE ls_service_interest.bna_mailbox_reply_receipts (
  workspace_id uuid NOT NULL,id uuid NOT NULL,owner_account_id uuid NOT NULL,
@@ -85,3 +85,55 @@ CREATE TRIGGER bna_mailbox_reply_reviews_no_truncate BEFORE TRUNCATE ON ls_servi
  FOR EACH STATEMENT EXECUTE FUNCTION ls_service_interest.reject_public_application_mutation();
 REVOKE ALL ON ls_service_interest.bna_mailbox_reply_receipts,ls_service_interest.bna_mailbox_reply_reviews FROM PUBLIC;
 REVOKE ALL ON FUNCTION ls_service_interest.check_bna_mailbox_reply_receipt(),ls_service_interest.check_bna_mailbox_reply_review(),ls_service_interest.check_bna_mailbox_reply_initial_history() FROM PUBLIC;
+CREATE TABLE ls_service_interest.bna_mailbox_monitor_events (
+ workspace_id uuid NOT NULL,mailbox_key text NOT NULL CHECK(mailbox_key ~ '^[a-f0-9]{64}$'),
+ version integer NOT NULL CHECK(version BETWEEN 1 AND 2147483646),operation_id uuid NOT NULL,cycle_id uuid NOT NULL,
+ owner_account_id uuid NOT NULL,binding_digest text NOT NULL CHECK(binding_digest ~ '^[a-f0-9]{64}$'),
+ source_digest text NOT NULL CHECK(source_digest ~ '^[a-f0-9]{64}$'),source_count integer NOT NULL CHECK(source_count BETWEEN 0 AND 10000),
+ cursor integer NOT NULL CHECK(cursor BETWEEN 0 AND source_count),batch_end integer NOT NULL CHECK(batch_end BETWEEN cursor AND source_count AND batch_end-cursor<=25),
+ state text NOT NULL CHECK(state IN('reading','batch_saved','completed','failed')),
+ code text NOT NULL CHECK(code IN('CYCLE_STARTED','READ_RESERVED','READ_RECLAIMED','READ_RETRY','BATCH_SAVED','CYCLE_COMPLETED','READ_FAILED')),
+ started_at timestamptz NOT NULL,recorded_at timestamptz NOT NULL CHECK(recorded_at>=started_at),lease_until timestamptz,
+ payload_digest text NOT NULL CHECK(payload_digest ~ '^[a-f0-9]{64}$'),payload_ciphertext text NOT NULL CHECK(length(payload_ciphertext)>0),
+ PRIMARY KEY(workspace_id,mailbox_key,version),UNIQUE(workspace_id,operation_id),
+ FOREIGN KEY(workspace_id,owner_account_id) REFERENCES ls_identity.accounts(workspace_id,id),
+ CHECK((state='reading' AND batch_end=LEAST(cursor+25,source_count) AND lease_until=recorded_at+interval '5 minutes'
+  AND code IN('CYCLE_STARTED','READ_RESERVED','READ_RECLAIMED','READ_RETRY')) OR
+ (state='batch_saved' AND batch_end=cursor AND cursor<source_count AND lease_until IS NULL AND code='BATCH_SAVED') OR
+ (state='completed' AND batch_end=cursor AND cursor=source_count AND lease_until IS NULL AND code='CYCLE_COMPLETED') OR
+ (state='failed' AND batch_end=cursor AND lease_until IS NULL AND code='READ_FAILED'))
+);
+CREATE INDEX bna_mailbox_monitor_cycle ON ls_service_interest.bna_mailbox_monitor_events(workspace_id,mailbox_key,cycle_id,version);
+CREATE UNIQUE INDEX bna_mailbox_monitor_cycle_started ON ls_service_interest.bna_mailbox_monitor_events(workspace_id,mailbox_key,cycle_id) WHERE code='CYCLE_STARTED';
+CREATE FUNCTION ls_service_interest.check_bna_mailbox_monitor_event() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE previous ls_service_interest.bna_mailbox_monitor_events%ROWTYPE;
+BEGIN
+ SELECT * INTO previous FROM ls_service_interest.bna_mailbox_monitor_events WHERE workspace_id=NEW.workspace_id AND mailbox_key=NEW.mailbox_key ORDER BY version DESC LIMIT 1;
+ IF NOT EXISTS(SELECT 1 FROM ls_identity.accounts WHERE workspace_id=NEW.workspace_id AND id=NEW.owner_account_id AND role='practitioner' AND state='active')
+  OR (previous.version IS NOT NULL AND NEW.owner_account_id<>previous.owner_account_id) THEN RAISE EXCEPTION 'BNA_MAILBOX_MONITOR_OWNER_MISMATCH'; END IF;
+ IF NEW.version<>COALESCE(previous.version,0)+1 OR NEW.recorded_at<previous.recorded_at THEN RAISE EXCEPTION 'BNA_MAILBOX_MONITOR_HISTORY_REQUIRED'; END IF;
+ IF previous.version IS NULL OR NEW.cycle_id<>previous.cycle_id THEN
+  IF NOT COALESCE((NEW.state='reading' AND NEW.code='CYCLE_STARTED' AND NEW.cursor=0 AND NEW.started_at=NEW.recorded_at
+   AND (previous.version IS NULL OR previous.state='completed' OR NEW.binding_digest<>previous.binding_digest)),false) THEN
+   RAISE EXCEPTION 'BNA_MAILBOX_MONITOR_NEW_CYCLE_REJECTED'; END IF;
+ ELSE
+  IF NEW.owner_account_id<>previous.owner_account_id OR NEW.binding_digest<>previous.binding_digest OR NEW.source_digest<>previous.source_digest
+   OR NEW.source_count<>previous.source_count OR NEW.started_at<>previous.started_at THEN RAISE EXCEPTION 'BNA_MAILBOX_MONITOR_BINDING_CHANGED'; END IF;
+  IF NOT COALESCE((
+   (previous.state='reading' AND NEW.state IN('batch_saved','completed') AND NEW.cursor=previous.batch_end AND NEW.recorded_at<=previous.lease_until) OR
+   (previous.state='reading' AND NEW.state='failed' AND NEW.cursor=previous.cursor) OR
+   (previous.state='reading' AND NEW.state='reading' AND NEW.code='READ_RECLAIMED' AND NEW.cursor=previous.cursor AND NEW.recorded_at>=previous.lease_until) OR
+   (previous.state='batch_saved' AND NEW.state='reading' AND NEW.code='READ_RESERVED' AND NEW.cursor=previous.cursor) OR
+   (previous.state='failed' AND NEW.state='reading' AND NEW.code='READ_RETRY' AND NEW.cursor=previous.cursor)
+  ),false) THEN RAISE EXCEPTION 'BNA_MAILBOX_MONITOR_TRANSITION_REJECTED'; END IF;
+ END IF;
+ RETURN NEW;
+END $$;
+CREATE TRIGGER bna_mailbox_monitor_sequence BEFORE INSERT ON ls_service_interest.bna_mailbox_monitor_events
+ FOR EACH ROW EXECUTE FUNCTION ls_service_interest.check_bna_mailbox_monitor_event();
+CREATE TRIGGER bna_mailbox_monitor_immutable BEFORE UPDATE OR DELETE ON ls_service_interest.bna_mailbox_monitor_events
+ FOR EACH ROW EXECUTE FUNCTION ls_service_interest.reject_public_application_mutation();
+CREATE TRIGGER bna_mailbox_monitor_no_truncate BEFORE TRUNCATE ON ls_service_interest.bna_mailbox_monitor_events
+ FOR EACH STATEMENT EXECUTE FUNCTION ls_service_interest.reject_public_application_mutation();
+REVOKE ALL ON ls_service_interest.bna_mailbox_monitor_events FROM PUBLIC;
+REVOKE ALL ON FUNCTION ls_service_interest.check_bna_mailbox_monitor_event() FROM PUBLIC;

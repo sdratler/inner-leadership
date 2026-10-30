@@ -88,7 +88,7 @@ export class BnaReplyStore{
  /** Reader performs provider GETs outside the database transaction. The native
   * accepted-send bindings, admission and owner are rechecked before any write.
   * No public/browser payload can manufacture an inbox receipt. */
- async ingest(selectorsInput:readonly z.infer<typeof bnaReplySelector>[],reader:Reader){
+ async ingest(selectorsInput:readonly z.infer<typeof bnaReplySelector>[],reader:Reader,onSaved?:(tx:SqlSession,result:{received:number;replayed:number})=>Promise<void>){
   const selectors=z.array(bnaReplySelector).min(1).max(25).parse(selectorsInput);
   if(new Set(selectors.map(s=>s.messageId)).size!==selectors.length)throw new AppError('INVALID_REQUEST');
   const binding=this.binding();const before=await this.db.transaction(async tx=>{await tx.query('SET TRANSACTION READ ONLY');await this.activeOwner(tx);return this.loadSources(tx,selectors);});
@@ -111,7 +111,7 @@ export class BnaReplyStore{
      this.digest('bna-mailbox-receipt/v1',payload),seal(JSON.stringify(payload),this.receiptAad(id),this.ring)]);
     await this.append(tx,id,1,randomUUID(),null);received++;
    }
-   return {received,replayed};
+   const result={received,replayed};await onSaved?.(tx,result);return result;
   });
  }
  /** A paused monitor must still honor every unresolved receipt, including from

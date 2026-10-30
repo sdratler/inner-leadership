@@ -87,27 +87,21 @@ export class BnaGmailReplyReader{
   if(expected.primaryMailbox.toLowerCase()!==this.primaryMailbox.toLowerCase()||Date.parse(expected.monitorFrom)!==Date.parse(this.monitorFrom))throw unavailable();
   return this.readReplies(input);
  }
+ async verifyMailboxForBinding(expected:{primaryMailbox:string;monitorFrom:string}){
+  if(expected.primaryMailbox.toLowerCase()!==this.primaryMailbox.toLowerCase()||Date.parse(expected.monitorFrom)!==Date.parse(this.monitorFrom))throw unavailable();
+  try{await this.connection();return {verified:true as const};}catch{throw unavailable();}
+ }
  async readReplies(input:readonly BnaSentReplySource[]):Promise<BnaReceivedReply[]>{
   try{return await this.read(input);}catch{throw unavailable();}
  }
  private async read(input:readonly BnaSentReplySource[]){
-  const sources=z.array(bnaReplySentSource).max(25).parse(input),primary=address.parse(this.primaryMailbox).toLowerCase();
+  const sources=z.array(bnaReplySentSource).max(25).parse(input);address.parse(this.primaryMailbox);
   const cutoff=z.iso.datetime().parse(this.monitorFrom),now=this.clock.now();
   if(!Number.isFinite(now.getTime())||Date.parse(cutoff)>now.getTime()||!this.config.enabled||this.config.from!==BNA_EMAIL_SENDER)throw unavailable();
   if(new Set(sources.map(s=>s.messageId)).size!==sources.length||new Set(sources.map(s=>s.providerId)).size!==sources.length||
    sources.some(s=>Date.parse(s.acceptedAt)>now.getTime()))throw unavailable();
   if(!sources.length)return [];
-  const authorization=z.object({access_token:z.string().min(1).max(4096).refine(x=>!/[\r\n]/.test(x)),scope:z.string().max(8192).optional()}).parse(
-   await boundedJson(await this.readFetch('https://oauth2.googleapis.com/token',{method:'POST',redirect:'error',signal:AbortSignal.timeout(8000),
-    headers:{'content-type':'application/x-www-form-urlencoded'},body:new URLSearchParams({client_id:this.config.clientId,client_secret:this.config.clientSecret,
-     refresh_token:this.config.refreshToken,grant_type:'refresh_token'}).toString()}),16384));
-  // A refresh reuses the existing grant. Never request another scope or reuse
-  // the send-only credential as evidence that mailbox monitoring works.
-  if(authorization.scope!==undefined&&!authorization.scope.split(' ').some(s=>READ_SCOPES.has(s)))throw unavailable();
-  const get=async(path:string,maxBytes:number)=>boundedJson(await this.readFetch('https://gmail.googleapis.com/gmail/v1/users/me/'+path,
-   {method:'GET',redirect:'error',signal:AbortSignal.timeout(8000),headers:{Authorization:'Bearer '+authorization.access_token}}),maxBytes);
-  const profile=z.strictObject({emailAddress:address}).parse(await get('profile?fields=emailAddress',16384));
-  if(profile.emailAddress.toLowerCase()!==primary)throw unavailable();
+  const get=await this.connection();
   const params=new URLSearchParams({format:'metadata',fields:FIELDS});for(const name of HEADERS)params.append('metadataHeaders',name);
   const threadParams=new URLSearchParams({format:'metadata',fields:'id,messages('+FIELDS+')'});for(const name of HEADERS)threadParams.append('metadataHeaders',name);
   const threads=new Map<string,z.infer<typeof thread>>(),found=new Map<string,BnaReceivedReply>();
@@ -122,8 +116,6 @@ export class BnaGmailReplyReader{
     if(messages.id!==original.threadId||new Set(messages.messages.map(m=>m.id)).size!==messages.messages.length||
      messages.messages.some(m=>m.threadId!==original.threadId)||!messages.messages.some(m=>m.id===original.id))throw unavailable();
     threads.set(original.threadId,messages);}
-   // Bind the thread's copy as well: a mismatched provider response must not
-   // establish correlation or cause partial native effects.
    const echoed=messages.messages.find(m=>m.id===original.id)!;
    if(singleHeader(echoed,'Message-ID')!==expected||mailbox(singleHeader(echoed,'From'))!==BNA_EMAIL_SENDER||
     mailbox(singleHeader(echoed,'To'))!==source.recipient.toLowerCase()||echoed.internalDate!==original.internalDate||!echoed.labelIds.includes('SENT'))throw unavailable();
@@ -140,5 +132,22 @@ export class BnaGmailReplyReader{
    }
   }
   return [...found.values()].sort((a,b)=>a.receivedAt.localeCompare(b.receivedAt)||a.providerMessageId.localeCompare(b.providerMessageId));
+ }
+ private async connection(){
+  const primary=address.parse(this.primaryMailbox).toLowerCase();
+  const now=this.clock.now();
+  if(!Number.isFinite(now.getTime())||!this.config.enabled||this.config.from!==BNA_EMAIL_SENDER||Date.parse(z.iso.datetime().parse(this.monitorFrom))>now.getTime())throw unavailable();
+  const authorization=z.object({access_token:z.string().min(1).max(4096).refine(x=>!/[\r\n]/.test(x)),scope:z.string().max(8192).optional()}).parse(
+   await boundedJson(await this.readFetch('https://oauth2.googleapis.com/token',{method:'POST',redirect:'error',signal:AbortSignal.timeout(8000),
+    headers:{'content-type':'application/x-www-form-urlencoded'},body:new URLSearchParams({client_id:this.config.clientId,client_secret:this.config.clientSecret,
+     refresh_token:this.config.refreshToken,grant_type:'refresh_token'}).toString()}),16384));
+  // A refresh reuses the existing grant. Never request another scope or reuse
+  // the send-only credential as evidence that mailbox monitoring works.
+  if(authorization.scope!==undefined&&!authorization.scope.split(' ').some(s=>READ_SCOPES.has(s)))throw unavailable();
+  const get=async(path:string,maxBytes:number)=>boundedJson(await this.readFetch('https://gmail.googleapis.com/gmail/v1/users/me/'+path,
+   {method:'GET',redirect:'error',signal:AbortSignal.timeout(8000),headers:{Authorization:'Bearer '+authorization.access_token}}),maxBytes);
+  const profile=z.strictObject({emailAddress:address}).parse(await get('profile?fields=emailAddress',16384));
+  if(profile.emailAddress.toLowerCase()!==primary)throw unavailable();
+  return get;
  }
 }
