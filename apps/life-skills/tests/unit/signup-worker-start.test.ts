@@ -64,6 +64,12 @@ it('BNA acknowledgment worker failure leaves public intake running and does not 
  f.children[1]!.emit('exit',1);expect(f.children[0]!.kill).not.toHaveBeenCalled();expect(f.host.exitCode).toBe(0);expect(f.spawn).toHaveBeenCalledTimes(2);
  app.stop();f.children[0]!.emit('exit',0);expect(f.host.listenerCount('SIGTERM')).toBe(0);
 });
+it('reply monitor starts only with its own flag, preserves web on failure, and stops with the web child',()=>{
+ const f=fixture();f.host.env.LS_BNA_REPLY_MONITOR_ENABLED='true';const app=startApplication(f);
+ expect(f.spawn).toHaveBeenCalledTimes(2);expect(f.spawn.mock.calls[1]?.[1]).toEqual(['--conditions=react-server','--import','tsx',expect.stringContaining('bna-reply-monitor-worker.ts'),'--hosted-bna-reply-monitor']);
+ f.children[1]!.emit('exit',1);expect(f.children[0]!.kill).not.toHaveBeenCalled();expect(f.host.exitCode).toBe(0);expect(f.spawn).toHaveBeenCalledTimes(2);app.stop();f.children[0]!.emit('exit',0);
+ const g=fixture();g.host.env.LS_BNA_REPLY_MONITOR_ENABLED='true';startApplication(g);g.children[0]!.emit('exit',0);expect(g.children[1]!.kill).toHaveBeenCalledWith('SIGTERM');g.children[1]!.emit('exit',0);expect(g.host.listenerCount('SIGTERM')).toBe(0);
+});
 it('BNA worker spawn errors preserve web, while web shutdown still stops an active BNA child',()=>{
  const broken=fixture();broken.host.env.LS_BNA_EMAIL_WORKER_ENABLED='true';broken.spawn.mockImplementationOnce(()=>{const child=Object.assign(new EventEmitter(),{kill:vi.fn()});broken.children.push(child);return child;}).mockImplementationOnce(()=>{throw Error('synthetic spawn failure');});
  const app=startApplication(broken);expect(broken.children[0]!.kill).not.toHaveBeenCalled();app.stop();broken.children[0]!.emit('exit',0);

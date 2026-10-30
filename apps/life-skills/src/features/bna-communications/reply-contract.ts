@@ -17,6 +17,7 @@ export type BnaNativeReplySource=z.infer<typeof bnaNativeReplySource>;
 export const bnaReplyReviewCommand=z.strictObject({action:z.literal('mark_reviewed'),receiptId:z.uuid(),operationId:z.uuid(),
  expectedVersion:z.number().int().min(1).max(2147483645)});
 export type BnaReplyReviewCommand=z.infer<typeof bnaReplyReviewCommand>;
+export const bnaReplyMonitorStatus=z.strictObject({state:z.enum(['unconnected','paused','checking','failed','stale','connected']),lastCheckedAt:z.iso.datetime().nullable(),coverageFrom:z.iso.datetime().nullable()});
 export const bnaReplyOwnerPage=z.strictObject({inquiryId:z.uuid(),items:z.array(z.strictObject({id:z.uuid(),version:z.number().int().min(1).max(2),
  state:z.enum(['pending','reviewed']),sourceKind:bnaReplyKind,receivedAt:z.iso.datetime(),recordedAt:z.iso.datetime(),providerThreadId:bnaGmailIdentifier})).max(50),
- nextCursor:z.string().regex(/^[A-Za-z0-9_-]{64,2048}$/).nullable()});
+ nextCursor:z.string().regex(/^[A-Za-z0-9_-]{64,2048}$/).nullable(),monitor:bnaReplyMonitorStatus});

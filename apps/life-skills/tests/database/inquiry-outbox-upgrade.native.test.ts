@@ -26,7 +26,7 @@ test('early inquiry-only 0135 preserves inquiry, queued acknowledgment and ledge
  const query=(sql:string,values?:readonly unknown[])=>client.query(sql,values?[...values]:undefined);
  try{
   const files=db.inventory,early=[...files.slice(0,51),files[54]!];
-  expect(files).toHaveLength(69);expect(files.slice(54).map(file=>file.name)).toEqual(['0135_ls_inquiry_email_outbox.sql','0136_ls_academy_founder.sql','0137_ls_academy_owner_notifications.sql','0138_ls_academy_crm.sql','0139_ls_bna_inquiries.sql','0140_ls_fishing_inquiry_followups.sql','0141_ls_owner_305_conversations.sql','0142_ls_bna_coop_interest.sql','0143_ls_owner_305_inquiry_links.sql','0144_ls_bna_support_interest.sql','0145_ls_owner_305_inbound.sql','0146_ls_bna_communication_delivery.sql','0147_ls_fishing_marketing_snapshot.sql','0148_ls_bna_email_preferences.sql','0149_ls_bna_optional_calendar.sql']);
+  expect(files).toHaveLength(70);expect(files.slice(54).map(file=>file.name)).toEqual(['0135_ls_inquiry_email_outbox.sql','0136_ls_academy_founder.sql','0137_ls_academy_owner_notifications.sql','0138_ls_academy_crm.sql','0139_ls_bna_inquiries.sql','0140_ls_fishing_inquiry_followups.sql','0141_ls_owner_305_conversations.sql','0142_ls_bna_coop_interest.sql','0143_ls_owner_305_inquiry_links.sql','0144_ls_bna_support_interest.sql','0145_ls_owner_305_inbound.sql','0146_ls_bna_communication_delivery.sql','0147_ls_fishing_marketing_snapshot.sql','0148_ls_bna_email_preferences.sql','0149_ls_bna_optional_calendar.sql','0150_ls_bna_mailbox_replies.sql']);
 
   await migrate({query},early,false);
   const workspace=randomUUID(),id=randomUUID(),mail=randomUUID();
@@ -41,17 +41,17 @@ test('early inquiry-only 0135 preserves inquiry, queued acknowledgment and ledge
   // Inject execution failure without falsifying the checksum-checked inventory.
   const fault={query:async(sql:string,values?:readonly unknown[])=>query(sql===files[52]!.sql?sql+'\nSELECT * FROM ls_missing_upgrade_table;':sql,values)};
   await expect(migrate(fault,files,false)).rejects.toThrow('MIGRATION_FAILED');
-  expect(planMigrations(files,await history()).map(f=>f.name)).toEqual(['0133_ls_fishing_lead_memberships.sql','0134_ls_education_lessons.sql','0136_ls_academy_founder.sql','0137_ls_academy_owner_notifications.sql','0138_ls_academy_crm.sql','0139_ls_bna_inquiries.sql','0140_ls_fishing_inquiry_followups.sql','0141_ls_owner_305_conversations.sql','0142_ls_bna_coop_interest.sql','0143_ls_owner_305_inquiry_links.sql','0144_ls_bna_support_interest.sql','0145_ls_owner_305_inbound.sql','0146_ls_bna_communication_delivery.sql','0147_ls_fishing_marketing_snapshot.sql','0148_ls_bna_email_preferences.sql','0149_ls_bna_optional_calendar.sql']);
+  expect(planMigrations(files,await history()).map(f=>f.name)).toEqual(['0133_ls_fishing_lead_memberships.sql','0134_ls_education_lessons.sql','0136_ls_academy_founder.sql','0137_ls_academy_owner_notifications.sql','0138_ls_academy_crm.sql','0139_ls_bna_inquiries.sql','0140_ls_fishing_inquiry_followups.sql','0141_ls_owner_305_conversations.sql','0142_ls_bna_coop_interest.sql','0143_ls_owner_305_inquiry_links.sql','0144_ls_bna_support_interest.sql','0145_ls_owner_305_inbound.sql','0146_ls_bna_communication_delivery.sql','0147_ls_fishing_marketing_snapshot.sql','0148_ls_bna_email_preferences.sql','0149_ls_bna_optional_calendar.sql','0150_ls_bna_mailbox_replies.sql']);
   expect((await query("SELECT to_regclass('ls_contact_ops.fishing_lead_revisions') AS relation")).rows[0]?.relation).toBeNull();
   expect(await records()).toEqual(before);
-  expect(await migrate({query},files,false)).toEqual({applied:16,pending:0});
+  expect(await migrate({query},files,false)).toEqual({applied:17,pending:0});
 
   expect(await migrate({query},files,false)).toEqual({applied:0,pending:0});
   expect(await migrate({query},files,true)).toEqual({applied:0,pending:0});
   expect(await records()).toEqual(before);
   expect((await query('SELECT founder_id,message_key FROM ls_service_interest.inquiry_email_outbox')).rows).toEqual([{founder_id:null,message_key:null}]);
   const after=(await query('SELECT to_jsonb(t) AS row FROM ls_control.migrations t ORDER BY name')).rows;
-  expect(after).toHaveLength(69);
+  expect(after).toHaveLength(70);
 
   for(const row of ledger)expect(after).toContainEqual(row);
   expect((await query("SELECT count(*)::int AS sent FROM ls_service_interest.inquiry_email_outbox WHERE state='sent'")).rows[0]?.sent).toBe(0);

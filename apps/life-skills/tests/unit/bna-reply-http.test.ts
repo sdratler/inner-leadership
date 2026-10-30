@@ -8,7 +8,7 @@ const origin='https://life-skills.example.invalid',path='/api/private/bna-mailbo
 function fixture(){
  const actor={id:randomUUID(),workspaceId:randomUUID(),role:'practitioner',state:'active'} as Actor;
  const readOwner=vi.fn(async()=>({inquiryId:id,items:[],nextCursor:null})),markReviewed=vi.fn(async()=>({state:'reviewed' as const,version:2,replayed:false}));
- const deps={enabled:true,origin,actor:vi.fn(async()=>actor),csrf:()=>csrf,limits:{consume:async()=>({count:1,retryAfterMs:0})},rateLimitKey:'synthetic-bna-reply-rate-key-at-least-32',store:{readOwner,markReviewed}};
+ const deps={enabled:true,origin,actor:vi.fn(async()=>actor),csrf:()=>csrf,limits:{consume:async()=>({count:1,retryAfterMs:0})},rateLimitKey:'synthetic-bna-reply-rate-key-at-least-32',store:{readOwner,markReviewed},monitor:{status:vi.fn(async()=>({state:'unconnected' as const,lastCheckedAt:null,coverageFrom:null}))}};
  const load=vi.fn(async()=>deps);
  const request=(query='',method='GET',body?:unknown,headers:Record<string,string>={})=>new Request(origin+path+query,{method,
   headers:{host:'life-skills.example.invalid','x-forwarded-proto':'https',origin,'content-type':'application/json',cookie:`__Host-ls-session=${session}`,'x-csrf-token':csrf,...headers},...(body?{body:JSON.stringify(body)}:{})});

@@ -72,8 +72,8 @@ export class BnaReplyStore{
   const review:Review={receiptId:row.reviewReceiptId,version:row.reviewVersion,operationId:row.reviewOperationId,actorAccountId:row.reviewActor,state:row.reviewState,
    code:row.reviewCode,recordedAt:row.reviewTime,digest:row.reviewDigest,ciphertext:row.reviewCiphertext};this.decodeReview(review);return review;
  }
- private async append(tx:SqlSession,receiptId:string,version:1|2,operationId:string,actorId:string|null){
-  const now=this.clock.now(),payload:z.infer<typeof reviewPayload>={version:1,receiptId,operationId,source:version===1?'gmail_metadata':'owner',
+ private async append(tx:SqlSession,receiptId:string,version:1|2,operationId:string,actorId:string|null,now=this.clock.now()){
+  const payload:z.infer<typeof reviewPayload>={version:1,receiptId,operationId,source:version===1?'gmail_metadata':'owner',
    state:version===1?'pending':'reviewed',expectedVersion:version-1,actorAccountId:actorId,recordedAt:now.toISOString()};
   await tx.query(`INSERT INTO ls_service_interest.bna_mailbox_reply_reviews(workspace_id,receipt_id,version,operation_id,actor_account_id,state,code,recorded_at,payload_digest,payload_ciphertext)
    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,[this.workspace,receiptId,version,operationId,actorId,payload.state,version===1?'GMAIL_METADATA_RECEIVED':'OWNER_REVIEWED',now,
@@ -109,7 +109,7 @@ export class BnaReplyStore{
     const id=randomUUID();await tx.query(`INSERT INTO ls_service_interest.bna_mailbox_reply_receipts(workspace_id,id,owner_account_id,mailbox_key,provider_message_key,recipient_key,inquiry_id,program_key,source_kind,source_message_id,received_at,recorded_at,payload_digest,payload_ciphertext)
      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,[this.workspace,id,this.ownerId,binding.mailboxKey,messageKey,source.recipientKey,source.inquiryId,source.program,source.kind,source.messageId,reply.receivedAt,now,
      this.digest('bna-mailbox-receipt/v1',payload),seal(JSON.stringify(payload),this.receiptAad(id),this.ring)]);
-    await this.append(tx,id,1,randomUUID(),null);received++;
+    await this.append(tx,id,1,randomUUID(),null,now);received++;
    }
    const result={received,replayed};await onSaved?.(tx,result);return result;
   });

@@ -162,4 +162,15 @@ export class BnaReplyMonitorStore{
   const fresh=completed&&completed.sourceDigest===snapshot.digest&&this.clock.now().getTime()-Date.parse(completed.startedAt)<=BNA_REPLY_COVERAGE_MAX_AGE_MS;
   return {state:fresh?'connected':latest.state==='completed'?'stale':'checking',...checked};
  });}
+ /** Ongoing polling requires an actual completed controlled read with at
+  * least one newly saved reply, bound to this same mailbox and owner. */
+ async verifyControlledCycle(proof:{cycleId:string;bindingDigest:string}){
+  z.uuid().parse(proof.cycleId);hash.parse(proof.bindingDigest);const binding=this.binding();
+  return this.db.transaction(async tx=>{await tx.query('SET TRANSACTION READ ONLY');await this.activeOwner(tx);
+   const row=await one<Row>(tx,`SELECT ${columns} FROM ls_service_interest.bna_mailbox_monitor_events WHERE workspace_id=$1 AND mailbox_key=$2 AND cycle_id=$3 AND state='completed'`,[this.workspace,binding.mailboxKey,proof.cycleId]);
+   if(!row)throw new AppError('UNAVAILABLE');const p=this.decode(row);
+   if(p.bindingDigest!==proof.bindingDigest||p.sourceCount<1||p.sourceCount>4||!p.result||p.result.received<1)throw new AppError('UNAVAILABLE');
+   await this.snapshotFor(tx,p);
+  });
+ }
 }

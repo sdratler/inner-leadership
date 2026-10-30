@@ -6,7 +6,7 @@ import {bnaOptionalCalendarSchemaPlan,BNA_OPTIONAL_CALENDAR_MIGRATION,readBnaOpt
 const manifest=JSON.parse(readFileSync('migrations/manifest.json','utf8')) as {name:string;sha256:string}[];
 const files=manifest.map(m=>({name:m.name,checksum:m.sha256,sql:readFileSync('migrations/'+m.name,'utf8')}));
 it('freezes the full accepted68 prefix and admits only exact0149 after0148',()=>{
- expect(files).toHaveLength(69);expect(manifest[68]).toEqual({name:BNA_OPTIONAL_CALENDAR_MIGRATION.name,sha256:BNA_OPTIONAL_CALENDAR_MIGRATION.sha256});
+ expect(files).toHaveLength(70);expect(manifest[68]).toEqual({name:BNA_OPTIONAL_CALENDAR_MIGRATION.name,sha256:BNA_OPTIONAL_CALENDAR_MIGRATION.sha256});
  expect(createHash('sha256').update(readFileSync('migrations/'+BNA_OPTIONAL_CALENDAR_MIGRATION.name)).digest('hex')).toBe(BNA_OPTIONAL_CALENDAR_MIGRATION.sha256);
  const before=files.slice(0,68);expect(bnaOptionalCalendarSchemaPlan(files,before,0).pending.map(m=>m.name)).toEqual([BNA_OPTIONAL_CALENDAR_MIGRATION.name]);
  expect(bnaOptionalCalendarSchemaPlan(files,files,1).pending).toEqual([]);
@@ -14,7 +14,7 @@ it('freezes the full accepted68 prefix and admits only exact0149 after0148',()=>
  const changed=files.map((f,i)=>i===0?{...f,checksum:'e'.repeat(64)}:f);
  expect(()=>bnaOptionalCalendarSchemaPlan(changed,changed.slice(0,68),0)).toThrow('BNA_OPTIONAL_CALENDAR_SCHEMA_PREFIX_MISMATCH');
  expect(()=>bnaOptionalCalendarSchemaPlan(files.map((f,i)=>i===68?{...f,checksum:'a'.repeat(64)}:f),before,0)).toThrow('BNA_OPTIONAL_CALENDAR_SCHEMA_SOURCE_MISMATCH');
- const future={name:'0150_future.sql',checksum:'e'.repeat(64),sql:'SELECT 1;'};expect(bnaOptionalCalendarSchemaPlan([...files,future],[...files,future],1).pending).toEqual([]);
+ const future={name:'0151_future.sql',checksum:'e'.repeat(64),sql:'SELECT 1;'};expect(bnaOptionalCalendarSchemaPlan([...files,future],[...files,future],1).pending).toEqual([]);
 });
 it('rejects partial and orphan catalog states instead of guessing that a migration is absent',async()=>{
  const db=(messages:string|null,events:string|null,n=0)=>({query:async<T extends object>(sql:string)=>({rows:(sql.includes('to_regclass')?[{messages,events}]:[{n}]) as unknown as T[]})});

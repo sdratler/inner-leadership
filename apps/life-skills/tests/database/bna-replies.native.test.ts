@@ -1,11 +1,11 @@
-import {randomUUID,createHash} from 'node:crypto';
-import {readFile} from 'node:fs/promises';
+import {randomUUID} from 'node:crypto';
 import {expect,it,vi} from 'vitest';
 import pg from 'pg';
 vi.mock('server-only',()=>({}));
 import {historicalPracticeDatabase} from './home-practice/legacy-practice-fixture.ts';
 import {poolStore} from './calendar/fixture.ts';
 import {migrate} from '../../src/db/migration-runner.ts';
+import {bnaMailboxRepliesCatalogFingerprint,BNA_MAILBOX_REPLIES_CATALOG_SHA256,readBnaMailboxRepliesSchemaStage,bnaMailboxRepliesSchemaPlan} from '../../src/db/bna-mailbox-replies-schema-release.ts';
 import {BnaInquiryStore} from '../../src/features/bna-inquiry/store.ts';
 import {BnaAcknowledgmentStore,configuredBnaAcknowledgmentQueue} from '../../src/features/bna-communications/acknowledgment-store.ts';
 import {BnaOptionalCalendarStore,type BnaOptionalAdmission} from '../../src/features/bna-communications/optional-calendar-store.ts';
@@ -25,8 +25,14 @@ it('native reply proposal is atomic/additive; concurrent receipts/reviews preser
  const db=await historicalPracticeDatabase('0118_ls_contact_delta_history.sql'),client=await db.pool.connect(),pool=new pg.Pool({connectionString:db.url,ssl:false,max:6});
  const query=(sql:string,values?:readonly unknown[])=>client.query(sql,values?[...values]:undefined);
  try{
-  expect(db.inventory).toHaveLength(69);expect(db.inventory.at(-1)?.name).toBe('0149_ls_bna_optional_calendar.sql');await migrate({query},db.inventory,false);
+  expect(db.inventory).toHaveLength(70);const index=db.inventory.findIndex(m=>m.name==='0150_ls_bna_mailbox_replies.sql');expect(index).toBe(69);
+  const beforeFiles=db.inventory.slice(0,index),proposal=db.inventory[index]!;await migrate({query},beforeFiles,false);
   const baseline=(await query('SELECT name,checksum FROM ls_control.migrations ORDER BY name')).rows;
+  expect(await readBnaMailboxRepliesSchemaStage({query})).toBe(0);
+  await query('BEGIN');try{
+   await query('CREATE FUNCTION ls_service_interest.check_bna_mailbox_monitor_event() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$');
+   await expect(readBnaMailboxRepliesSchemaStage({query})).rejects.toThrow('BNA_MAILBOX_REPLIES_SCHEMA_CATALOG_CONFLICT');
+  }finally{await query('ROLLBACK');}
   const workspace=asId(randomUUID(),'workspace'),owner=randomUUID(),other=randomUUID(),ring={activeKeyId:'synthetic',keys:{synthetic:Buffer.alloc(32,31)}},key='synthetic-native-reply-private-key';
   const base=new Date('2026-10-30T00:00:00Z');let now=base;const clock={now:()=>now};
   await query('INSERT INTO ls_identity.workspaces(id,created_at) VALUES($1,$2)',[workspace,now]);
@@ -49,11 +55,21 @@ it('native reply proposal is atomic/additive; concurrent receipts/reviews preser
   const delivery=await acknowledgment.readForInquiry(ownerActor,co.reference);if(!('messageId' in delivery))throw Error('native synthetic acknowledgment missing');
   expect(await acknowledgment.dispatch(delivery.messageId,{mode:'controlled_test',authorize:()=>true,send:async()=>({state:'accepted',providerId:'synthetic-native-send'})})).toBe('sent');
   const retained=(await query('SELECT to_jsonb(t) AS row FROM ls_service_interest.bna_inquiries t ORDER BY id')).rows;
-  const sql=await readFile('migrations/proposals/0150_ls_bna_mailbox_replies.sql','utf8'),proposal={name:'0150_ls_bna_mailbox_replies.sql',checksum:createHash('sha256').update(sql).digest('hex'),sql};
-  await expect(migrate({query},[...db.inventory,{...proposal,sql:sql+'\nSELECT 1/0;'}],false)).rejects.toThrow('MIGRATION_FAILED');
+  await expect(migrate({query},[...beforeFiles,{...proposal,sql:proposal.sql+'\nSELECT 1/0;'}],false)).rejects.toThrow('MIGRATION_FAILED');
   expect((await query("SELECT to_regclass('ls_service_interest.bna_mailbox_reply_receipts') AS relation")).rows[0].relation).toBeNull();
   expect((await query('SELECT name,checksum FROM ls_control.migrations ORDER BY name')).rows).toEqual(baseline);
-  expect(await migrate({query},[...db.inventory,proposal],false)).toEqual({applied:1,pending:0});expect(await migrate({query},[...db.inventory,proposal],false)).toEqual({applied:0,pending:0});
+  expect(await migrate({query},db.inventory,false)).toEqual({applied:1,pending:0});expect(await migrate({query},db.inventory,false)).toEqual({applied:0,pending:0});
+  expect(await bnaMailboxRepliesCatalogFingerprint({query})).toBe(BNA_MAILBOX_REPLIES_CATALOG_SHA256);expect(await readBnaMailboxRepliesSchemaStage({query})).toBe(1);
+  expect(bnaMailboxRepliesSchemaPlan(db.inventory,baseline,0).pending.map(p=>p.name)).toEqual([proposal.name]);
+  for(const change of [
+   'ALTER TABLE ls_service_interest.bna_mailbox_monitor_events DISABLE TRIGGER bna_mailbox_monitor_sequence',
+   'ALTER TABLE ls_service_interest.bna_mailbox_reply_reviews ALTER COLUMN recorded_at DROP NOT NULL',
+   'GRANT SELECT ON ls_service_interest.bna_mailbox_reply_receipts TO PUBLIC',
+   'GRANT EXECUTE ON FUNCTION ls_service_interest.check_bna_mailbox_monitor_event() TO PUBLIC',
+   'ALTER FUNCTION ls_service_interest.check_bna_mailbox_reply_receipt() SECURITY DEFINER',
+   'ALTER TABLE ls_service_interest.bna_mailbox_reply_receipts ENABLE ROW LEVEL SECURITY',
+   'DROP TABLE ls_service_interest.bna_mailbox_monitor_events CASCADE',
+  ]){await query('BEGIN');try{await query(change);await expect(readBnaMailboxRepliesSchemaStage({query})).rejects.toThrow('BNA_MAILBOX_REPLIES_SCHEMA_CATALOG_CONFLICT');}finally{await query('ROLLBACK');}}
   expect((await query('SELECT name,checksum FROM ls_control.migrations ORDER BY name')).rows.slice(0,69)).toEqual(baseline);
   now=new Date(base.getTime()+1000);const selection={kind:'service' as const,messageId:delivery.messageId};
   const reader=(providerMessageId:string,receivedAt=now.toISOString())=>({readRepliesForBinding:async(sources:readonly BnaSentReplySource[])=>sources.map(s=>({inquiryId:s.inquiryId,program:s.program,originalMessageId:s.messageId,providerMessageId,providerThreadId:'synthetic-native-thread',receivedAt}))});

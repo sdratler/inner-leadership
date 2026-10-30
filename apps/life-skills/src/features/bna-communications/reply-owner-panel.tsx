@@ -36,14 +36,21 @@ export function BnaReplyOwnerPanel({id,locale,disabled=false,onOperationPending}
  }
  const time=(value:string)=>new Intl.DateTimeFormat(locale==='he'?'he-IL':'en-US',{dateStyle:'medium',timeStyle:'short',timeZone:'America/New_York'}).format(new Date(value));
  return <details className='lsw-details'><summary>{t('Received email replies','תשובות שהתקבלו בדוא״ל')}</summary>
-  <p>{t('This view shows replies already recorded in the app. Automatic inbox monitoring is not connected yet.','כאן מוצגות תשובות שכבר תועדו ביישומון. ניטור אוטומטי של תיבת הדואר עדיין אינו מחובר.')}</p>
+  <p>{t('This view shows replies already recorded in the app. Refresh to read the saved mailbox-check status and replies.','כאן מוצגות תשובות שכבר תועדו ביישומון. יש לרענן כדי לקרוא את מצב בדיקת הדואר ואת התשובות השמורות.')}</p>
   <p>{t('Review the reply in the Office inbox. Save any needed next action on this inquiry, then mark the reply reviewed.','יש לקרוא את התשובה בתיבת הדואר של המשרד, לשמור בפנייה את הפעולה הבאה הנדרשת ואז לסמן שהתשובה טופלה.')}</p>
   <p>{t('If the reply asks to unsubscribe, record that choice in Email preferences before marking it reviewed.','אם התשובה מבקשת להסיר את ההרשמה לעדכונים, יש לתעד זאת בהעדפות הדוא״ל לפני סימון התשובה כטופלה.')}</p>
   <button type='button' disabled={busy||disabled||!!pending} onClick={()=>void load()}>{busy?t('Loading…','טוענים…'):t('Refresh received replies','רענון תשובות שהתקבלו')}</button>
   {error!==null&&<p role='alert'>{error===409?t('This review changed. Refresh the saved replies before another action.','הטיפול בתשובה השתנה. יש לרענן את התשובות השמורות לפני פעולה נוספת.'):
    [401,403].includes(error)?t('Sign in again with the owner account to review replies.','יש להיכנס שוב בחשבון האחראי כדי לטפל בתשובות.'):t('Reply reviews could not be confirmed. Check access and refresh when available.','לא ניתן לאשר את הטיפול בתשובות. יש לבדוק את הגישה ולרענן כשהשירות זמין.')}</p>}
   {pending&&!busy&&<p role='status'>{t('Review outcome unknown. Retry the same review to check its saved result.','תוצאת הטיפול אינה ידועה. יש לנסות שוב את אותה פעולה כדי לבדוק את התוצאה השמורה.')} <button type='button' disabled={disabled} onClick={()=>void review(pending)}>{t('Retry same review','ניסיון חוזר לאותו טיפול')}</button></p>}
-  {data&&<><p>{t('Dates shown in America/New_York.','התאריכים מוצגים לפי אזור הזמן America/New_York.')}</p>
+  {data&&<><p role='status'>{({unconnected:t('Automatic inbox monitoring is not connected yet.','ניטור אוטומטי של תיבת הדואר עדיין אינו מחובר.'),
+   paused:t('Automatic inbox monitoring is paused. Recorded replies still need review.','ניטור אוטומטי של תיבת הדואר מושהה. עדיין יש לטפל בתשובות שכבר תועדו.'),
+   checking:t('A mailbox check is in progress. More replies may still be recorded.','מתבצעת בדיקה של תיבת הדואר. ייתכן שיתועדו תשובות נוספות.'),
+   failed:t('The latest mailbox check failed. Check the Office inbox directly.','בדיקת תיבת הדואר האחרונה נכשלה. יש לבדוק ישירות את תיבת הדואר של המשרד.'),
+   stale:t('Mailbox checks are out of date. Check the Office inbox directly.','בדיקות תיבת הדואר אינן מעודכנות. יש לבדוק ישירות את תיבת הדואר של המשרד.'),
+   connected:t('At this refresh, the latest mailbox check was current.','בעת הרענון, בדיקת תיבת הדואר האחרונה הייתה מעודכנת.')})[data.monitor.state]}</p>
+   {data.monitor.lastCheckedAt&&<p>{t('Last completed mailbox check: ','בדיקת תיבת הדואר האחרונה שהושלמה: ')}<time dateTime={data.monitor.lastCheckedAt}>{time(data.monitor.lastCheckedAt)}</time></p>}
+   <p>{t('Dates shown in America/New_York.','התאריכים מוצגים לפי אזור הזמן America/New_York.')}</p>
    {data.items.length===0?<p>{t('No email replies recorded for this inquiry.','לא נרשמו תשובות בדוא״ל עבור פנייה זו.')}</p>:<ol>{data.items.map(row=><li key={row.id}>
     <time dateTime={row.receivedAt}>{time(row.receivedAt)}</time> · {row.sourceKind==='service'?t('Reply to an inquiry acknowledgment','תשובה לאישור הפנייה'):t('Reply to an educational email','תשובה להודעה חינוכית')} · {row.state==='pending'?t('Awaiting review','ממתינה לטיפול'):t('Reviewed','טופלה')}
     {row.state==='pending'&&<button type='button' disabled={busy||disabled||!!pending} onClick={()=>void review({action:'mark_reviewed',receiptId:row.id,operationId:crypto.randomUUID(),expectedVersion:row.version})}>{t('Mark reviewed','סימון כטופלה')}</button>}

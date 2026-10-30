@@ -28,6 +28,8 @@ const educationOnly=process.env.LS_EDUCATION_UI_ONLY==="true";
 const communityOnly=process.env.LS_COMMUNITY_UI_ONLY==="true";
 const academyOnly=process.env.LS_ACADEMY_FREE_UI_ONLY==="true";
 const academyCrmOnly=process.env.LS_ACADEMY_CRM_UI_ONLY==="true";
+const bnaRepliesOnly=process.env.LS_BNA_REPLIES_UI_ONLY==='true';
+if(bnaRepliesOnly&&(project===undefined||academyCrmOnly||academyOnly||communityOnly||educationOnly||fishingOnly||sampleOnly||process.env.LS_FLORIDA_JOURNEY_TEST_ONLY==='true'||process.env.LS_GROUP_INTEREST_PUBLIC_ONLY==='true'||process.env.LS_GROUP_INTEREST_CAPTURE_ONLY==='true'))throw Error('BNA_REPLIES_EXCLUSIVE_EXPLICIT_PROJECT_REQUIRED');
 if(academyCrmOnly&&(project===undefined||academyOnly||communityOnly||educationOnly||fishingOnly||sampleOnly||
  process.env.LS_FLORIDA_JOURNEY_TEST_ONLY==="true"||process.env.LS_GROUP_INTEREST_PUBLIC_ONLY==="true"||process.env.LS_GROUP_INTEREST_CAPTURE_ONLY==="true"))
  throw new Error("ACADEMY_CRM_EXCLUSIVE_EXPLICIT_PROJECT_REQUIRED");
@@ -40,7 +42,7 @@ if((sampleOnly||process.env.LS_FLORIDA_JOURNEY_TEST_ONLY==="true")&&project===un
 if(process.env.LS_GROUP_INTEREST_TEST_ALLOW!=="true")throw new Error("GROUP_INTEREST_BROWSER_OPT_IN_REQUIRED");
 const appPort=projects[project??"desktop"],origin=`https://localhost:${appPort}`;
 safeTestUrl();
-if(educationOnly||academyOnly||academyCrmOnly){
+if(educationOnly||academyOnly||academyCrmOnly||bnaRepliesOnly){
  const probe=net.createServer();await new Promise<void>((resolve,reject)=>{probe.once("error",reject);probe.listen(appPort,"127.0.0.1",resolve);});
  await new Promise<void>((resolve,reject)=>probe.close(error=>error?reject(error):resolve()));
 }
@@ -306,6 +308,9 @@ try{
  const academyCrmModule=academyCrmOnly?await import("../contact-ops/academy-crm-fixture.ts"):null;
  const academyCrmRuntime=academyCrmModule?await academyCrmModule.academyCrmBrowserFixture(f,lookupKey):null;
  const academyCrmBefore=academyCrmModule?await academyCrmModule.academyCrmBrowserSnapshot(f):null;
+ const bnaRepliesModule=bnaRepliesOnly?await import('../contact-ops/bna-replies-fixture.ts'):null;
+ const bnaRepliesRuntime=bnaRepliesModule?await bnaRepliesModule.bnaRepliesBrowserFixture(f,lookupKey):null;
+ const bnaRepliesBefore=bnaRepliesModule?await bnaRepliesModule.bnaRepliesBrowserSnapshot(f):null;
  const educationModule=educationOnly?await import("../resources/education-fixture.ts"):null;
  const educationRuntime=educationModule?await educationModule.educationBrowserFixture(f,lookupKey):null;
  const educationBefore=educationModule?await educationModule.educationProtectedSnapshot(f):null;
@@ -315,7 +320,7 @@ try{
  const originalPublic=await f.pool.query("SELECT to_jsonb(a)::text AS snapshot FROM ls_service_interest.public_applications a WHERE workspace_id=$1 AND id=$2",[workspaceId,publicApplicationId]);
  if(baseline.inquiries!==0||baseline.operations!==0||baseline.serviceInterests!==0||baseline.serviceOperations!==0||baseline.draftGroups!==0||baseline.draftOperations!==0||baseline.proposedPlacements!==0||baseline.placementOperations!==0||baseline.placementMoves!==0||baseline.movementOperations!==0||baseline.meetingRevisions!==0||baseline.meetingOperations!==0||baseline.practiceRevisions!==0||baseline.practiceOperations!==0)throw new Error("GROUP_INTEREST_FIXTURE_NOT_EMPTY");
  const runtimePath=join(folder,"synthetic-runtime.json");
- const runtime={origin,workspaceId,practitioner:f.practitioner.token,parent:f.parent.token,adult,child,revoked,otherWorkspace,publicApplicationId,publicApplicantName:publicApplicationFields.parentName,...(academyRuntime?{academy:academyRuntime}:{}),...(fishingRuntime?{fishing:fishingRuntime}:{}),...(educationRuntime?{education:educationRuntime}:{}),...(academyCrmRuntime?{academyCrm:academyCrmRuntime}:{})};
+ const runtime={origin,workspaceId,practitioner:f.practitioner.token,parent:f.parent.token,adult,child,revoked,otherWorkspace,publicApplicationId,publicApplicantName:publicApplicationFields.parentName,...(academyRuntime?{academy:academyRuntime}:{}),...(fishingRuntime?{fishing:fishingRuntime}:{}),...(educationRuntime?{education:educationRuntime}:{}),...(academyCrmRuntime?{academyCrm:academyCrmRuntime}:{}),...(bnaRepliesRuntime?{bnaReplies:bnaRepliesRuntime}:{})};
  writeFileSync(runtimePath,JSON.stringify(runtime),{mode:0o600});
  const key=join(folder,"tls.key"),cert=join(folder,"tls.crt");
  phase="tls-certificate";
@@ -336,6 +341,7 @@ try{
   ...(academyCrmOnly?{LS_ACADEMY_SIGNUP_WORKER_ENABLED:"false",LS_CONTACT_INBOUND_ENABLED:"false"}:{})};
  if(communityTransport)Object.assign(env,{LS_COMMUNITY_SCOUT_BRIDGE_SECRET:communityTransport.secret,LS_COMMUNITY_FIXTURE_ORIGIN:communityTransport.controlOrigin,
   LS_COMMUNITY_FIXTURE_CA_FILE:cert,NODE_OPTIONS:`--require=${resolve("tests/e2e/community/scout-read-preload.cjs")}`,NODE_EXTRA_CA_CERTS:cert,LS_AUTH_EMAIL_ENABLED:"false",LS_CALENDAR_ENABLED:"true"});
+ if(bnaRepliesOnly)Object.assign(env,{LS_BNA_OWNER_ACCOUNT_ID:f.practitioner.actor.id,LS_PROVIDER_INDEX_OWNER_ACCOUNT_ID:f.practitioner.actor.id,LS_BNA_COMBINED_PEOPLE_ENABLED:'true',LS_BNA_INQUIRY_ENABLED:'true',LS_305_CLASSIFICATION_ENABLED:'true',LS_BNA_PREFERENCES_ENABLED:'true',LS_BNA_OPTIONAL_CALENDAR_ENABLED:'true',LS_BNA_MAILBOX_REPLIES_ENABLED:'true',LS_BNA_REPLY_MONITOR_ENABLED:'false',LS_BNA_EMAIL_WORKER_ENABLED:'false',LS_BNA_EMAIL_SEND_ENABLED:'false',LS_BNA_EMAIL_CONTROLLED_SEND_ENABLED:'false',LS_BNA_EMAIL_QUEUE_ENABLED:'true',LS_ACADEMY_SIGNUP_WORKER_ENABLED:'false',LS_ACADEMY_OWNER_NOTIFICATION_ENABLED:'false'});
  // Ordinary CI modes keep all development-only guards and use Next's current compiler.
  // Retain the prior compiler for separately admitted focused modes.
  const ordinaryCompiler=academyOnly||academyCrmOnly||educationOnly||(!communityOnly&&!fishingOnly&&!sampleOnly&&process.env.LS_FLORIDA_JOURNEY_TEST_ONLY!=="true"&&process.env.LS_GROUP_INTEREST_PUBLIC_ONLY!=="true"&&process.env.LS_GROUP_INTEREST_CAPTURE_ONLY!=="true");
@@ -348,7 +354,8 @@ try{
  const selection=project?["--project",project,"--output",`tests/e2e/group-interest/test-results/isolated-${project}`]:[];
  if(!fishingOnly&&process.env.LS_GROUP_INTEREST_PUBLIC_ONLY==="true")selection.push("--grep","Florida group inquiry|retired Israel group application|retired no-program API");
  if(process.env.LS_GROUP_INTEREST_CAPTURE_ONLY==="true")selection.push("--grep","practitioner");
- if(academyCrmOnly){/* Dedicated zero-import Academy CRM and ordinary owner login journey. */}
+ if(bnaRepliesOnly){/* Actual native saved replies and ordinary owner login; no mailbox/provider calls. */}
+ else if(academyCrmOnly){/* Dedicated zero-import Academy CRM and ordinary owner login journey. */}
  else if(academyOnly){/* Dedicated real two-child free registration and ordinary owner login journey. */}
  else if(communityOnly){/* Explicit focused read-only Community journey, not a default-suite skip. */}
  else if(educationOnly){/* Existing Playwright config selects the retained Resources journey. */}
@@ -360,7 +367,12 @@ try{
  tests=spawn(process.execPath,[resolve("node_modules/@playwright/test/cli.js"),"test","--config","tests/e2e/group-interest/playwright.config.ts",...selection],{env:testEnv,stdio:["ignore","inherit","inherit"]});
  console.log('GROUP_INTEREST_OWNED_RUNTIME '+JSON.stringify({appPid:app.pid??null,testPid:tests.pid??null,folder,port:appPort,project}));
  const [code]=await once(tests,"exit");if(code!==0)throw new Error("GROUP_INTEREST_BROWSER_ACCEPTANCE_FAILED");
- if(academyCrmOnly){
+ if(bnaRepliesOnly){
+  phase='bna-replies-native-readback';if(!bnaRepliesModule||!bnaRepliesRuntime||!bnaRepliesBefore)throw Error('BNA_REPLIES_FIXTURE_MISSING');
+  await bnaRepliesModule.verifyBnaRepliesBrowserEffects(f,bnaRepliesRuntime,bnaRepliesBefore,rateKey);
+  console.log('BNA_REPLIES_BROWSER_ACCEPTANCE_PASS project='+project+' ordinaryLogin=true reviews=2 sameOperationRetry=true separateSession=true preservedInquiries=true providerEffects=0');
+ }
+ else if(academyCrmOnly){
   phase="academy-crm-native-readback";
   if(!academyCrmModule||!academyCrmRuntime||!academyCrmBefore)throw new Error("ACADEMY_CRM_FIXTURE_MISSING");
   await academyCrmModule.verifyAcademyCrmBrowserEffects(f,lookupKey,academyCrmRuntime,academyCrmBefore,rateKey);

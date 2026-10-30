@@ -274,5 +274,9 @@
   {
     "name": "0149_ls_bna_optional_calendar.sql",
     "sha256": "2fe71ca3f6309e2db1029a7c82471879f11dfebcb5ef0c80ae3bbbc05eb466d5"
+  },
+  {
+    "name": "0150_ls_bna_mailbox_replies.sql",
+    "sha256": "ea8b037ef01b71b9930895316f77c304ffdcfac2359c90a84f85990879e500bd"
   }
 ]

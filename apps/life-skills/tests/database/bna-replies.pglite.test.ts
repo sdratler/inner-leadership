@@ -46,7 +46,7 @@ const count=async()=>({receipts:(await db.query<{n:number}>('SELECT count(*)::in
  reviews:(await db.query<{n:number}>('SELECT count(*)::int AS n FROM ls_service_interest.bna_mailbox_reply_reviews')).rows[0]!.n});
 beforeAll(async()=>{
  await db.exec('CREATE SCHEMA ls_control');
- for(const file of ['0001_ls_foundation.sql','0010_ls_identity_cases_20260906.sql','0124_ls_group_interest.sql','0131_ls_public_group_applications.sql','0139_ls_bna_inquiries.sql','0142_ls_bna_coop_interest.sql','0144_ls_bna_support_interest.sql','0146_ls_bna_communication_delivery.sql','0148_ls_bna_email_preferences.sql','0149_ls_bna_optional_calendar.sql','proposals/0150_ls_bna_mailbox_replies.sql'])await db.exec(await readFile('migrations/'+file,'utf8'));
+ for(const file of ['0001_ls_foundation.sql','0010_ls_identity_cases_20260906.sql','0124_ls_group_interest.sql','0131_ls_public_group_applications.sql','0139_ls_bna_inquiries.sql','0142_ls_bna_coop_interest.sql','0144_ls_bna_support_interest.sql','0146_ls_bna_communication_delivery.sql','0148_ls_bna_email_preferences.sql','0149_ls_bna_optional_calendar.sql','0150_ls_bna_mailbox_replies.sql'])await db.exec(await readFile('migrations/'+file,'utf8'));
  await db.query('INSERT INTO ls_identity.workspaces(id,created_at) VALUES($1,$2)',[workspace,base]);
  for(const id of [owner,other]){
   const digest=id.replaceAll('-','').padEnd(64,'0');
@@ -92,6 +92,12 @@ it('holds one read lease; receipt, initial review and scan advancement commit at
  expect(await f.journal.runBatch(r)).toEqual({state:'busy'});expect(r.readRepliesForBinding).not.toHaveBeenCalled();
  const source=await adapter.transaction(tx=>acknowledgment.replySource(tx,selection.messageId));release([incoming(source)]);
  expect(await run).toMatchObject({state:'completed',received:1});expect((await f.journal.status(ownerActor)).state).toBe('connected');
+ // Select this mailbox's completed proof via its digest, independently of
+ // another synthetic test's identical clock value.
+ const sourceSnapshot=await adapter.transaction(tx=>f.catalog.snapshot(tx,f.admitted!));
+ const exact=(await db.query<{cycleId:string;bindingDigest:string}>('SELECT cycle_id AS "cycleId",binding_digest AS "bindingDigest" FROM ls_service_interest.bna_mailbox_monitor_events WHERE source_digest=$1 AND state=\'completed\'',[sourceSnapshot.digest])).rows[0]!;
+ await expect(f.journal.verifyControlledCycle(exact)).resolves.toBeUndefined();
+ await expect(f.journal.verifyControlledCycle({...exact,bindingDigest:'0'.repeat(64)})).rejects.toMatchObject({code:'UNAVAILABLE'});
  expect((await prefs.readOwner(ownerActor,id)).preferences.replyPending).toBe(true);
  f.admitted=null;expect((await prefs.readOwner(ownerActor,id)).preferences.replyPending).toBe(true);
 });
@@ -146,6 +152,12 @@ it('atomically saves one encrypted receipt and a provider-sourced pending review
  expect((await db.query('SELECT actor_account_id,state FROM ls_service_interest.bna_mailbox_reply_reviews WHERE receipt_id=$1',[review.items[0]!.id])).rows).toEqual([{actor_account_id:null,state:'pending'}]);
  expect((await db.query('SELECT count(*)::int AS n FROM ls_identity.people')).rows).toEqual([{n:2}]);
  expect((await db.query('SELECT count(*)::int AS n FROM ls_service_interest.bna_email_preference_events')).rows).toEqual([{n:0}]);
+});
+it('uses one recorded instant for an initial receipt and review even when the clock advances between SQL calls',async()=>{
+ const id=await inquiry(),selection=await sent(id);now=new Date(base.getTime()+1000);let tick=now.getTime();
+ const advancing=new BnaReplyStore(adapter,workspace,owner,ring,key,{now:()=>new Date(tick++)},sourceStores,()=>admission);
+ expect(await advancing.ingest([selection],reader())).toMatchObject({received:1});
+ expect((await db.query<{same:boolean}>('SELECT r.recorded_at=e.recorded_at AS same FROM ls_service_interest.bna_mailbox_reply_receipts r JOIN ls_service_interest.bna_mailbox_reply_reviews e ON e.workspace_id=r.workspace_id AND e.receipt_id=r.id AND e.version=1 WHERE r.inquiry_id=$1',[id])).rows).toEqual([{same:true}]);
 });
 it('replays receipts without duplicate work, preserves completed review, and opens new work only for a new message',async()=>{
  const id=await inquiry(),selection=await sent(id);now=new Date(base.getTime()+1000);const r=reader();await replies.ingest([selection],r);
