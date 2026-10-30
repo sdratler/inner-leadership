@@ -14,7 +14,9 @@ if(!/^https:\/\/localhost:310[5678]$/.test(runtime.origin)||!runtime.academy)thr
 test.use({baseURL:runtime.origin});
 for(const locale of ['en','he'] as const)test(`${locale}: two children, committed reply loss, exact retry, real owner login and readback`,async({page},info)=>{
  const t=(en:string,he:string)=>locale==='he'?he:en;
- const before=await page.request.get('/api/public/academy-founder');expect(before.status()).toBe(200);const previous=(await before.json()).data;
+ const before=await page.request.get('/api/public/academy-founder');
+ expect(new URL(before.url()).origin,'Founder read must reach this isolated runtime').toBe(runtime.origin);
+ expect(before.status(),JSON.stringify({endpoint:before.url(),contentType:before.headers()['content-type'],project:info.project.name,expectedOrigin:runtime.origin})).toBe(200);const previous=(await before.json()).data;
  await page.goto(`/${locale}/florida`);await expect(page.getByRole('heading',{name:exactWebsite[locale].hero.accessibleName,exact:true})).toBeVisible();await expect(page.locator('[data-jlfa-primary]')).toHaveText(t('Pre-register for free','הרשמה מוקדמת בחינם'));
  const challenge=page.waitForResponse(r=>r.request().method()==='GET'&&new URL(r.url()).pathname==='/api/public/group-applications');await page.goto(`/${locale}/florida/apply`);expect((await challenge).status()).toBe(200);
  const form=page.locator('form[data-academy-registration]');await expect(form.locator('button[type=submit]')).toBeEnabled();
