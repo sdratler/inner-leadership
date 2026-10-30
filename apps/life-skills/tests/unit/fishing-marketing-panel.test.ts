@@ -44,3 +44,18 @@ it("renders owner inquiry links and a bounded next page without claiming causati
  const unavailable=renderToStaticMarkup(createElement(FishingMarketingPanel,{locale:"en",data:{snapshot,receivedAt:at},attributionUnavailable:true}));
  expect(unavailable).toContain("this does not mean there are no matches");
 });
+
+it('shows rule evidence and owner holds in both languages while escaping notes and preserving legacy uncertainty',()=>{
+ const target={id:'123',name:'Synthetic held destination',url:'https://www.facebook.com/groups/123',eligible:false,hold:null,
+  review:{postingIdentity:'personal',membershipVerifiedAt:null,rulesCheckedAt:'2026-10-28T12:00:00Z',rulesUrl:'https://www.facebook.com/groups/123/about',ruleNote:'Synthetic rule <script>alert(1)</script>',ownerNote:'Prior activity remains unreviewed.',promotionAllowed:false,cooldownDays:31}};
+ const current=fishingMarketingSnapshotSchema.parse({...snapshot,targets:[target]});
+ for(const locale of ['en','he'] as const){
+  const html=renderToStaticMarkup(createElement(FishingMarketingPanel,{locale,data:{snapshot:current,receivedAt:at}}));
+  expect(html).toContain('href="https://www.facebook.com/groups/123/about"');expect(html).toContain('rel="noreferrer"');
+  expect(html).toContain('Synthetic rule &lt;script&gt;');expect(html).not.toContain('<script>');expect(html).toContain('Prior activity remains unreviewed.');
+  expect(html).toContain(locale==='en'?'Standalone promotion is not cleared':'פרסום שיווקי עצמאי אינו מאושר');
+  expect(html).toContain(locale==='en'?'do not approve a post':'אינן מאשרות פוסט');
+ }
+ const legacy={...snapshot,targets:[{id:target.id,name:target.name,url:target.url,eligible:false,hold:null}]};
+ expect(renderToStaticMarkup(createElement(FishingMarketingPanel,{locale:'en',data:{snapshot:legacy,receivedAt:at}}))).toContain('Rule notes and evidence have not been included');
+});

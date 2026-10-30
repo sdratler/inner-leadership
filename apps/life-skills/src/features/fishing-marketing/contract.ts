@@ -8,7 +8,9 @@ const profile=z.string().regex(/^[0-9]{5,32}$/).nullable();
 const postUrl=z.url().nullable();
 const preparation=z.strictObject({status:z.enum(['policy_review','rules_review','history_review','unresolved_delivery','cooldown','ready','group_held','target_held']),
  nextEligibleAt:instant.nullable(),rulesCheckedAt:instant.nullable(),lastPublishedAt:instant.nullable(),canPrepare:z.boolean()});
-const target=z.strictObject({id:group,name:z.string().max(200),url:z.url(),eligible:z.boolean(),hold:z.enum(["complaint","removed"]).nullable(),preparation:preparation.optional()});
+const review=z.strictObject({postingIdentity:z.literal('personal'),membershipVerifiedAt:instant.nullable(),rulesCheckedAt:instant,rulesUrl:z.url(),
+ ruleNote:z.string().min(1).max(2000).refine(s=>s.trim().length>0),ownerNote:z.string().min(1).max(2000).refine(s=>s.trim().length>0),promotionAllowed:z.boolean(),cooldownDays:z.number().int().min(7).max(365)});
+const target=z.strictObject({id:group,name:z.string().max(200),url:z.url(),eligible:z.boolean(),hold:z.enum(["complaint","removed"]).nullable(),preparation:preparation.optional(),review:review.optional()});
 const asset=z.strictObject({id:z.string().min(1).max(180),language:z.enum(["en","he"]),caption:z.string().min(1).max(5000),captionSha256:hash,imageSha256:hash});
 const queueItem=z.strictObject({day:z.iso.date(),groupId:group,variantId:z.string().min(1).max(180),captionSha256:hash,imageSha256:hash,actorProfileId:profile,
  state:z.enum(["ready","submitted","moderator_pending","published_verified","failed","unknown","skipped","complaint","removed"]),createdAt:instant,postUrl,
@@ -30,6 +32,13 @@ export const fishingMarketingSnapshotSchema=z.strictObject({schemaVersion:z.lite
  if(new Set(value.assets.map(a=>a.id)).size!==value.assets.length)invalid(["assets"]);
  if(new Set(value.targets.map(t=>t.id)).size!==value.targets.length)invalid(["targets"]);
  value.targets.forEach((t,i)=>{if(!exactGroupUrl(t.url,t.id,false))invalid(["targets",i,"url"]);
+  const r=t.review;if(r){
+   if(r.rulesUrl!==`https://www.facebook.com/groups/${t.id}/about`)invalid(['targets',i,'review','rulesUrl']);
+   if(Date.parse(r.rulesCheckedAt)>Date.parse(value.generatedAt)||r.membershipVerifiedAt&&Date.parse(r.membershipVerifiedAt)>Date.parse(value.generatedAt))invalid(['targets',i,'review','rulesCheckedAt']);
+   if(r.cooldownDays<Math.max(7,value.schedule.cooldownDays))invalid(['targets',i,'review','cooldownDays']);
+   if(t.eligible&&(!r.promotionAllowed||!r.membershipVerifiedAt))invalid(['targets',i,'review']);
+   if(t.preparation&&(Date.parse(r.rulesCheckedAt)!==Date.parse(t.preparation.rulesCheckedAt??'')||!r.promotionAllowed&&t.preparation.canPrepare))invalid(['targets',i,'review']);
+  }
   const p=t.preparation;if(!p)return;
   if(!value.historyAvailable&&(p.status==='ready'||p.status==='cooldown'||p.canPrepare))invalid(['targets',i,'preparation','status']);
   if(p.canPrepare!==(p.status==='ready'&&t.eligible&&t.hold===null&&value.schedule.enabled&&value.schedule.funnelReady))invalid(['targets',i,'preparation','canPrepare']);
