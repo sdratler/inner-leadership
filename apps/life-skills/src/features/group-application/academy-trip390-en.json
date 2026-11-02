@@ -1,0 +1,258 @@
+{
+  "brand": "Jewish Leadership Fishing Academy",
+  "hero": {
+    "eyebrow": "South Florida · Boys 9+",
+    "title": "Jewish Leadership Fishing Academy",
+    "pillars": "Fishing • Responsibility • Collaboration",
+    "description": "Hands-on fishing instruction and a full-day Florida Keys adventure in a Torah environment.",
+    "offer": "$390 per boy",
+    "includes": "One Keys fishing trip + two included preparation sessions.",
+    "included_trip": "Keys transportation, three kosher meals, water, snacks and bait included.",
+    "equipment_note": "Personal fishing equipment is purchased separately. We teach boys how to choose, organize and care for it.",
+    "interest_cta": "Get trip updates",
+    "booking_cta": "Choose a trip",
+    "calendar_cta": "See upcoming dates",
+    "interest_note": "Dates and pickup points are being arranged. No payment or seat reservation at this stage."
+  },
+  "nav": {
+    "how": "How it works",
+    "learn": "What boys learn",
+    "included": "What is included",
+    "dates": "Trip dates",
+    "faq": "FAQ",
+    "signup": "Sign up"
+  },
+  "intro": {
+    "title": "Prepare your gear. Learn the skills. Go fishing.",
+    "body": "Boys learn to choose tackle, tie knots, set up their own rods and fish responsibly. Two practical preparation sessions lead into a full day of bridge fishing in the Florida Keys—with fishing, shared meals and time for davening.",
+    "values": "Responsibility and collaboration are part of the experience: looking after your tackle box, respecting instructions, helping a friend and leaving the fishing area clean."
+  },
+  "steps": [
+    {
+      "title": "1. Learn the basics",
+      "body": "A practical preparation class covering equipment, knots, rigging, safe handling and respectful behavior around other anglers. Parents arrange drop-off and pickup."
+    },
+    {
+      "title": "2. Choose and prepare your tackle",
+      "body": "A tackle-shop and setup session to compare equipment, organize a tackle box and get ready for the trip. The confirmed location and time are shared with families. Parents arrange transportation."
+    },
+    {
+      "title": "3. Fish the Florida Keys",
+      "body": "Join a supervised, full-day bridge-fishing trip with coach transportation from confirmed pickup points, three kosher meals, drinking water, snacks and bait."
+    }
+  ],
+  "skills": [
+    {
+      "title": "Equipment and tackle",
+      "body": "Choose a suitable rod, reel, line, hooks and tackle; keep a tackle box organized; rinse, store and maintain equipment."
+    },
+    {
+      "title": "Knots and rigs",
+      "body": "Practice dependable knots, basic fishing rigs, checking connections and solving common tangles."
+    },
+    {
+      "title": "Safe fishing habits",
+      "body": "Handle hooks and equipment carefully, leave casting space, follow stop instructions and stay within assigned areas."
+    },
+    {
+      "title": "Bait and presentation",
+      "body": "Learn bait selection, baiting a hook and presenting a bait to suit the fishing conditions."
+    },
+    {
+      "title": "Reading the water",
+      "body": "Begin connecting tides, current, depth and weather to fishing decisions. Conditions and fish catches vary."
+    },
+    {
+      "title": "Respect and collaboration",
+      "body": "Identify fish, learn applicable fishing rules and careful handling, respect the environment and help other boys without taking over."
+    }
+  ],
+  "price": {
+    "title": "One straightforward package",
+    "amount": "$390 per boy",
+    "unit": "One Keys trip and two preparation sessions. The same package price for new and returning boys.",
+    "included": [
+      "Two preparation sessions",
+      "One full-day Keys fishing trip",
+      "Keys transportation from confirmed pickup points",
+      "Three kosher meals, drinking water and snacks on the Keys trip",
+      "Bait on the Keys trip"
+    ],
+    "separate": [
+      "Personal rod, reel and tackle",
+      "Travel to the preparation sessions",
+      "A fishing license when applicable, unless an exemption applies"
+    ],
+    "renewal": "No monthly subscription or automatic renewal. Each future trip is booked separately."
+  },
+  "returning": {
+    "title": "Come fishing again",
+    "body": "First-time participants complete both preparation sessions before the trip. Returning participants who have completed the preparation may join the sessions again or book another trip without repeating the beginner sessions. Safe participation and readiness are checked for every outing."
+  },
+  "dates": {
+    "title": "Upcoming trips and preparation sessions",
+    "empty": "Dates are being arranged. Leave your city and ZIP code so we can plan preparation groups and pickup points.",
+    "proposed_label": "Proposed — not open for booking",
+    "confirmed_label": "Confirmed",
+    "waitlist_label": "Waitlist",
+    "detail_note": "Check the exact preparation times, pickup point, departure and return plan for your selected trip."
+  },
+  "location": {
+    "title": "Tell us where you are coming from",
+    "body": "Enter your city or area and ZIP code. We use these to plan local preparation groups and convenient pickup points. A listed city is not a promised pickup location."
+  },
+  "torah": {
+    "title": "A Torah environment, a full day of fishing",
+    "body": "Kosher meals, respectful language, shared responsibility and time for davening are part of the day. Group prayer is planned; a minyan depends on attendance and the final schedule."
+  },
+  "founder": {
+    "title": "Meet Rabbi Shlomo Dratler",
+    "body": "Practical instruction, careful preparation and time fishing together are at the heart of the Academy. Boys are encouraged to learn their equipment, ask questions and take responsibility for their own setup."
+  },
+  "faqs": [
+    {
+      "id": "experience",
+      "q": "Does my son need fishing experience?",
+      "a": "No. The preparation sessions cover equipment, knots, rigging and safety before the Keys trip. Experienced boys can ask more detailed questions and keep practicing."
+    },
+    {
+      "id": "age",
+      "q": "What ages is the program for?",
+      "a": "The program is being arranged for boys ages nine and up. Tell us your son’s age so we can review whether the planned group and trip are suitable."
+    },
+    {
+      "id": "package",
+      "q": "What does $390 include?",
+      "a": "One Keys fishing trip, two preparation sessions, Keys transportation from confirmed pickup points, three kosher meals, water, snacks and bait. Personal equipment, travel to preparation sessions and any required fishing license are separate."
+    },
+    {
+      "id": "repeat",
+      "q": "Do returning boys pay a different price?",
+      "a": "No. The same $390 package applies each time. Returning boys who have completed their preparation may attend the preparation sessions again, but do not have to repeat the beginner course just to book another trip."
+    },
+    {
+      "id": "gear",
+      "q": "Does he need his own equipment?",
+      "a": "Yes. Each boy buys and looks after his rod, reel and tackle. Bring equipment you already own to the preparation class. We help families understand what is suitable before additional purchases."
+    },
+    {
+      "id": "prep",
+      "q": "Are both preparation sessions required?",
+      "a": "They are required for first-time participants. We record preparation and readiness privately. If your son misses a required session, contact us before the trip; attendance on the trip cannot be assumed until preparation is completed."
+    },
+    {
+      "id": "shop",
+      "q": "Where is the tackle-shop session?",
+      "a": "The intended format is a tackle-shop visit and gear setup, with the exact location and group time confirmed before attendance. Parents take their sons to the session and collect them afterward. Equipment purchases are not included."
+    },
+    {
+      "id": "transport",
+      "q": "Who provides transportation?",
+      "a": "The Keys trip includes arranged transportation from confirmed pickup points. Parents provide transportation to the preparation sessions and to and from the Keys pickup point."
+    },
+    {
+      "id": "area",
+      "q": "Which cities do you serve?",
+      "a": "Tell us your city or area and ZIP code. Preparation groups and pickup points are planned around family locations and the actual itinerary. We do not promise pickup from every city."
+    },
+    {
+      "id": "food",
+      "q": "Are meals provided?",
+      "a": "Three kosher meals, drinking water and snacks are included on the Keys day. The final menu and food arrangements are shared before departure. Tell us privately about allergies or dietary needs; any accommodation needs confirmation."
+    },
+    {
+      "id": "license",
+      "q": "Does my son need a fishing license?",
+      "a": "License requirements depend on age and applicable exemptions. Children under 16 generally do not need a Florida recreational fishing license. We review the requirement for each participant before the trip and send the relevant instructions. A license is not included in the package."
+    },
+    {
+      "id": "safety",
+      "q": "How do you approach safety and behavior?",
+      "a": "Boys prepare before using fishing equipment and must follow instructions, respect other participants and stay within assigned areas. Fishing involves hooks, equipment, weather and water; risk cannot be eliminated. Unsafe behavior may mean stopping participation and arranging a supervised handoff to a parent."
+    },
+    {
+      "id": "weather",
+      "q": "What happens if weather or enrollment changes the trip?",
+      "a": "Conditions and confirmed enrollment may affect a departure. The specific cancellation and rescheduling terms will be provided before any payment, and families will be contacted about a change. An interest form does not charge you."
+    },
+    {
+      "id": "illness",
+      "q": "What if my son is ill or cannot attend?",
+      "a": "Contact us promptly. The booking’s cancellation, transfer and illness terms will be shown before payment. We do not assume a cancellation or issue a credit merely because a reminder was not answered."
+    },
+    {
+      "id": "schedule",
+      "q": "Is this a monthly subscription?",
+      "a": "No. Each purchase is for one trip with two included preparation opportunities. Preparation and trip dates are shown separately. You can book a later trip when it suits your family."
+    },
+    {
+      "id": "account",
+      "q": "Do parents or students need an account?",
+      "a": "No. Signup and booking use forms and secure links. Trip information and reminders are sent by email and, with your permission, WhatsApp."
+    },
+    {
+      "id": "prayer",
+      "q": "Is davening part of the trip?",
+      "a": "Yes, time for davening is part of the planned day. We aim to organize group prayer; a minyan depends on attendance and the itinerary."
+    },
+    {
+      "id": "stepup",
+      "q": "Can scholarship funds pay for this?",
+      "a": "Eligibility for this package has not been confirmed. Do not assume that the whole package, transportation or meals will be reimbursed. Obtain current written guidance from the scholarship administrator before relying on reimbursement."
+    },
+    {
+      "id": "signup",
+      "q": "What happens after I sign up?",
+      "a": "We save your interest and contact you about suitable preparation dates and departures. Until a particular trip is confirmed and booking opens, submitting the form does not take payment or reserve a seat."
+    }
+  ],
+  "form": {
+    "title": "Get Fishing Academy trip updates",
+    "intro": "Tell us about your family and where you are coming from. No payment or seat reservation at this stage.",
+    "guardian_name": "Parent or guardian’s full name",
+    "email": "Email address",
+    "phone": "Phone number (optional at this stage)",
+    "city": "City / area",
+    "city_hint": "Start typing or enter your city or area. You do not have to choose a suggestion.",
+    "zip": "ZIP code",
+    "zip_hint": "Five digits, or ZIP+4. No street address needed.",
+    "city_not_listed": "Keep my entered city",
+    "zip_error": "Enter a five-digit ZIP code, or ZIP+4 such as 12345-6789.",
+    "city_error": "Enter your city or area.",
+    "child_name": "Boy’s full name",
+    "child_age": "Age",
+    "add_child": "Add another boy",
+    "remove_child": "Remove this boy",
+    "experience": "Fishing experience",
+    "experience_choices": [
+      "New to fishing",
+      "Some experience",
+      "Experienced",
+      "Not sure"
+    ],
+    "message_language": "Language for parent messages",
+    "group_language": "Preferred instruction language",
+    "notes": "Scheduling or equipment questions (optional)",
+    "notes_hint": "Please do not put medical information here. We collect necessary private trip information separately.",
+    "conduct": "I have read and explained the Fishing Academy conduct rules to each child listed.",
+    "interest_ack": "I have read the interest-registration information, safety summary and privacy notice. I understand that this form is not payment, a reserved seat or the final participation agreement.",
+    "whatsapp": "Optional: Send me Fishing Academy trip updates and reminders by WhatsApp.",
+    "submit": "Send my interest",
+    "sending": "Saving…",
+    "saved": "Your interest is saved. No payment has been taken and no seat is reserved.",
+    "email_pending": "Your interest is saved. The confirmation email has not yet been delivered.",
+    "save_unknown": "We could not confirm the result. Please use the same submission to check again; do not submit a duplicate.",
+    "saved_reference": "Your reference",
+    "privacy_short": "Your family’s details are private. We use them to plan groups and contact you about the program."
+  },
+  "conduct": {
+    "title": "Safety, respect and responsibility",
+    "body": "Follow staff instructions and stop immediately when asked. Use hooks, rods and other equipment only as instructed. Stay with your assigned group, speak respectfully, ask for help and tell an adult about injury or danger. Staff may stop an unsafe activity. A child who cannot continue safely remains supervised until a parent handoff or another agreed safe arrangement."
+  },
+  "metadata": {
+    "title": "Fishing Academy | Keys Trips & Hands-on Preparation | South Florida",
+    "description": "Hands-on fishing for boys 9+: two preparation sessions and one Florida Keys trip for $390. Keys transport, three kosher meals and bait included.",
+    "social_description": "Fishing skills, responsibility and collaboration in a Torah environment. $390 for one Keys trip with two preparation sessions."
+  },
+  "whatsapp_inquiry": "Hi, I am interested in the Fishing Academy’s $390 Keys trip package. Please tell me about upcoming trip and preparation dates."
+}
