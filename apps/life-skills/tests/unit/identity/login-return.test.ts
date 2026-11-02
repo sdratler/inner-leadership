@@ -39,6 +39,12 @@ it.each(['he','en'] as const)('preserves the named %s group application review d
  expect(next).toBe(path);expect(loginReturnDestination(locale,'practitioner',next)).toBe(path);
  for(const role of ['parent','child','adult_client'] as const)expect(loginReturnDestination(locale,role,next)).not.toBe(path);
 });
+it.each(['he','en'] as const)('preserves only one valid %s inquiry reference through owner login without granting other roles access',locale=>{
+ const path=`/${locale}/app/group-applications`,next=practitionerDetailReturnPath(locale,path,{inquiryId:caseId,secret:'not-forwarded',role:'parent'});
+ expect(next).toBe(path+'?inquiryId='+caseId);expect(loginReturnDestination(locale,'practitioner',next)).toBe(next);
+ for(const inquiryId of ['../private','constructor',caseId+'\n',[caseId,caseId]])expect(practitionerDetailReturnPath(locale,path,{inquiryId})).toBe(path);
+ for(const role of ['parent','child','adult_client'] as const)expect(loginReturnDestination(locale,role,next)).not.toBe(next);
+});
 it.each(['he','en'] as const)('keeps exact %s Calendar layers through login while rejecting repeated or malformed flags',locale=>{
  const flags={tasks:'0',followups:'1',practice:'1',content:'1'},path=practitionerReturnPath(locale,'calendar',{...flags,date:'2026-10-05',view:'month',caseId,role:'parent'});
  expect(Object.fromEntries(new URL(path,'https://private.invalid').searchParams)).toEqual({...flags,date:'2026-10-05',view:'month',caseId});expect(loginReturnDestination(locale,'practitioner',path)).toBe(path);

@@ -7,8 +7,12 @@ import {inquiryEmailQueueEnabled,createInquiryEmailTransport,InquiryEmailOutbox}
 import {AcademyFounderStore} from '@/features/group-application/academy-founder-store.ts';
 import {AcademyOwnerNotificationOutbox,createAcademyOwnerNotificationTransport} from '@/features/group-application/academy-owner-notification.ts';
 export const runtime="nodejs";export const dynamic="force-dynamic";
-async function handle(request:Request){return publicGroupApplicationHttp(request,async()=>{
- const r=await identityRuntime(),founder=process.env.LS_ACADEMY_FREE_REGISTRATION_ENABLED==='true'?new AcademyFounderStore(r.store,r.config.workspaceId,r.config.keyring,r.config.lookupKey.toString('hex'),r.clock,null,null,loadSignupPopulation(process.env,r.clock.now()),process.env.LS_ACADEMY_OWNER_NOTIFICATION_ENABLED==='true'):undefined;return {enabled:publicGroupApplicationEnabled(request),environment:process.env,
+async function handle(request:Request){return publicGroupApplicationHttp(request,async(trip390)=>{
+ const r=await identityRuntime();
+ if(trip390)return {enabled:publicGroupApplicationEnabled(request),environment:process.env,
+  challengeKey:r.config.rateLimitKey,now:()=>r.clock.now().getTime(),limits:r.services.limits,
+  store:new PublicGroupApplicationStore(r.store,r.config.workspaceId,r.config.keyring,r.config.lookupKey.toString('hex'),r.clock,false)};
+ const founder=process.env.LS_ACADEMY_FREE_REGISTRATION_ENABLED==='true'?new AcademyFounderStore(r.store,r.config.workspaceId,r.config.keyring,r.config.lookupKey.toString('hex'),r.clock,null,null,loadSignupPopulation(process.env,r.clock.now()),process.env.LS_ACADEMY_OWNER_NOTIFICATION_ENABLED==='true'):undefined;return {enabled:publicGroupApplicationEnabled(request),environment:process.env,
   challengeKey:r.config.rateLimitKey,now:()=>r.clock.now().getTime(),limits:r.services.limits,
   store:new PublicGroupApplicationStore(r.store,r.config.workspaceId,r.config.keyring,r.config.lookupKey.toString("hex"),r.clock,inquiryEmailQueueEnabled(process.env),founder),
   ...(founder?{refreshFounder:(reference:string)=>r.store.transaction(async tx=>{await tx.query('SET TRANSACTION READ ONLY');return founder.publicResult(tx,reference);})}:{}),

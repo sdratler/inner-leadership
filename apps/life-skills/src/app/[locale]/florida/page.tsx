@@ -6,6 +6,18 @@ import {notFound} from "next/navigation";
 import {isLocale} from "../../../lib/locale.ts";
 import {publicGroupApplicationEnvironmentEnabled} from "../../../features/group-application/candidate.ts";
 import {GroupApplicationLanding} from "../../../features/group-application/landing.tsx";
+import {AcademyTrip390Client} from "../../../features/group-application/academy-trip390-client.tsx";
+import {academyPublicOffer,trip390RouteMetadata} from "../../../features/group-application/academy-trip390-transport.ts";
 export const dynamic="force-dynamic";
-export async function generateMetadata({params}:{params:Promise<{locale:string}>}){const {locale}=await params,language=locale==="he"?"he":"en";const routeMode=await academyRouteMode();return academyMetadata(language,"",undefined,routeMode,await academyCampaignSnapshot());}
-export default async function Page({params}:{params:Promise<{locale:string}>}){const {locale}=await params;if(!isLocale(locale)||!publicGroupApplicationEnvironmentEnabled())notFound();return <AcademyPublicRoute mode={await academyRouteMode()} campaign={await academyCampaignSnapshot()}><GroupApplicationLanding locale={locale} programId="sunday_fishing_academy"/></AcademyPublicRoute>;}
+export async function generateMetadata({params}:{params:Promise<{locale:string}>}){
+ const {locale}=await params,language=locale==="he"?"he":"en",mode=await academyRouteMode();
+ const offer=academyPublicOffer(process.env);
+ if(offer==='unavailable')notFound();
+ return offer==='trip390'?trip390RouteMetadata(language,'',mode):academyMetadata(language,"",undefined,mode,await academyCampaignSnapshot());
+}
+export default async function Page({params}:{params:Promise<{locale:string}>}){
+ const {locale}=await params,offer=academyPublicOffer(process.env);
+ if(!isLocale(locale)||!publicGroupApplicationEnvironmentEnabled()||offer==='unavailable')notFound();
+ if(offer==='trip390')return <AcademyTrip390Client locale={locale}/>;
+ return <AcademyPublicRoute mode={await academyRouteMode()} campaign={await academyCampaignSnapshot()}><GroupApplicationLanding locale={locale} programId="sunday_fishing_academy"/></AcademyPublicRoute>;
+}

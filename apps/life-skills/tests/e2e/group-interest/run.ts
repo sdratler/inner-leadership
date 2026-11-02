@@ -19,6 +19,8 @@ import {privateDigest} from "../../../src/features/contact-ops/server/digests.ts
 import {floridaGroupApplicationNotice} from "../../../src/features/group-application/contract.ts";
 import {FOUNDER_DECISION} from "../../../src/features/group-application/academy-founder-contract.ts";
 import {founderTransitionSchema} from "../../../src/features/group-application/academy-founder-transition-contract.ts";
+import {trip390InterestSchema,TRIP390_NOTICE_VERSION,TRIP390_OFFER} from "../../../src/features/group-application/academy-trip390-contract.ts";
+import {syntheticChildFailure} from "./synthetic-child-output.ts";
 
 const projects={desktop:3105,tablet768:3108,mobile390:3106,mobile340:3107} as const;
 const project=process.env.LS_GROUP_INTEREST_TEST_PROJECT as keyof typeof projects|undefined;
@@ -27,8 +29,10 @@ const fishingOnly=process.env.LS_FISHING_LEAD_UI_ONLY==="true";
 const educationOnly=process.env.LS_EDUCATION_UI_ONLY==="true";
 const communityOnly=process.env.LS_COMMUNITY_UI_ONLY==="true";
 const academyOnly=process.env.LS_ACADEMY_FREE_UI_ONLY==="true";
+const trip390Only=process.env.LS_ACADEMY_TRIP390_UI_ONLY==="true";
 const academyCrmOnly=process.env.LS_ACADEMY_CRM_UI_ONLY==="true";
 const bnaRepliesOnly=process.env.LS_BNA_REPLIES_UI_ONLY==='true';
+if(trip390Only&&(!(project==='desktop'||project==='mobile390')||[academyOnly,academyCrmOnly,bnaRepliesOnly,communityOnly,educationOnly,fishingOnly,sampleOnly].some(Boolean)||['LS_FLORIDA_JOURNEY_TEST_ONLY','LS_FLORIDA_INSTITUTION_TEST_ONLY','LS_GROUP_INTEREST_PUBLIC_ONLY','LS_GROUP_INTEREST_CAPTURE_ONLY'].some(key=>process.env[key]==='true')))throw Error('ACADEMY_TRIP390_EXCLUSIVE_PROJECT_REQUIRED');
 if(bnaRepliesOnly&&(project===undefined||academyCrmOnly||academyOnly||communityOnly||educationOnly||fishingOnly||sampleOnly||process.env.LS_FLORIDA_JOURNEY_TEST_ONLY==='true'||process.env.LS_GROUP_INTEREST_PUBLIC_ONLY==='true'||process.env.LS_GROUP_INTEREST_CAPTURE_ONLY==='true'))throw Error('BNA_REPLIES_EXCLUSIVE_EXPLICIT_PROJECT_REQUIRED');
 if(academyCrmOnly&&(project===undefined||academyOnly||communityOnly||educationOnly||fishingOnly||sampleOnly||
  process.env.LS_FLORIDA_JOURNEY_TEST_ONLY==="true"||process.env.LS_GROUP_INTEREST_PUBLIC_ONLY==="true"||process.env.LS_GROUP_INTEREST_CAPTURE_ONLY==="true"))
@@ -42,7 +46,7 @@ if((sampleOnly||process.env.LS_FLORIDA_JOURNEY_TEST_ONLY==="true")&&project===un
 if(process.env.LS_GROUP_INTEREST_TEST_ALLOW!=="true")throw new Error("GROUP_INTEREST_BROWSER_OPT_IN_REQUIRED");
 const appPort=projects[project??"desktop"],origin=`https://localhost:${appPort}`;
 safeTestUrl();
-if(educationOnly||academyOnly||academyCrmOnly||bnaRepliesOnly){
+if(educationOnly||academyOnly||trip390Only||academyCrmOnly||bnaRepliesOnly){
  const probe=net.createServer();await new Promise<void>((resolve,reject)=>{probe.once("error",reject);probe.listen(appPort,"127.0.0.1",resolve);});
  await new Promise<void>((resolve,reject)=>probe.close(error=>error?reject(error):resolve()));
 }
@@ -91,8 +95,8 @@ async function counts():Promise<BoundaryCounts>{
   "ls_group_admin.draft_groups","ls_group_admin.draft_group_operations","ls_group_admin.proposed_placements","ls_group_admin.proposed_placement_operations",
   "ls_group_admin.proposed_placement_moves","ls_group_admin.proposed_placement_move_operations","ls_group_admin.draft_meeting_revisions","ls_group_admin.draft_meeting_operations",
   "ls_group_admin.fishing_practice_revisions","ls_group_admin.fishing_practice_operations"]);
- if(academyOnly||(!communityOnly&&!educationOnly&&!fishingOnly&&!sampleOnly&&process.env.LS_FLORIDA_JOURNEY_TEST_ONLY!=='true'))for(const table of academyTables)allowed.add(table);
- if(academyOnly)for(const table of ['ls_identity.sessions','ls_identity.action_history'])allowed.add(table);
+ if(!trip390Only&&(academyOnly||(!communityOnly&&!educationOnly&&!fishingOnly&&!sampleOnly&&process.env.LS_FLORIDA_JOURNEY_TEST_ONLY!=='true')))for(const table of academyTables)allowed.add(table);
+ if(academyOnly||trip390Only)for(const table of ['ls_identity.sessions','ls_identity.action_history'])allowed.add(table);
  const inventory=await f!.pool.query<{schema:string;table:string}>(`SELECT c.table_schema AS schema,c.table_name AS table
   FROM information_schema.columns c JOIN information_schema.tables t ON t.table_schema=c.table_schema AND t.table_name=c.table_name
   WHERE c.column_name='workspace_id' AND c.table_schema LIKE 'ls\\_%' ESCAPE '\\' AND t.table_type='BASE TABLE'
@@ -157,8 +161,37 @@ async function verifyAcademyEffects(expected:number,keyring:Keyring,digestKey:st
 
 async function otherWorkspacesSnapshot(protectedCurrent=false){
  const inventory=await f!.pool.query<{schema:string;table:string}>("SELECT c.table_schema AS schema,c.table_name AS table FROM information_schema.columns c JOIN information_schema.tables t USING(table_schema,table_name) WHERE c.column_name='workspace_id' AND c.table_schema LIKE 'ls_%' AND t.table_type='BASE TABLE' ORDER BY c.table_schema,c.table_name");
- const allowed=new Set([...academyTables,'ls_service_interest.public_applications','ls_service_interest.public_application_operations','ls_identity.sessions','ls_identity.action_history']);
+ const allowed=new Set([...(trip390Only?[]:academyTables),'ls_service_interest.public_applications','ls_service_interest.public_application_operations','ls_identity.sessions','ls_identity.action_history']);
  return Promise.all(inventory.rows.filter(r=>!protectedCurrent||!allowed.has(r.schema+'.'+r.table)).map(async r=>({table:r.schema+'.'+r.table,rows:(await f!.pool.query(`SELECT to_jsonb(t) AS row FROM ${quoteIdentifier(r.schema)}.${quoteIdentifier(r.table)} t WHERE workspace_id${protectedCurrent?'=':'<>'}$1 ORDER BY to_jsonb(t)::text`,[f!.workspaceId])).rows})));
+}
+
+/** Read the two synthetic browser submissions from PostgreSQL and bind each
+ * encrypted record to its operation, notice columns and saved contact digest. */
+async function verifyTrip390Effects(publicApplicationId:string,keyring:Keyring,digestKey:string){
+ const workspace=f!.workspaceId;
+ const {rows}=await f!.pool.query<{id:string;operation_id:string;payload_ciphertext:string;notice_version:string;notice_language:string;request_digest:string;operation_digest:string;contact_digest:string}>(`
+  SELECT a.id,o.operation_id,a.payload_ciphertext,a.notice_version,a.notice_language,
+         a.request_digest,o.request_digest AS operation_digest,a.contact_digest
+  FROM ls_service_interest.public_applications a JOIN ls_service_interest.public_application_operations o
+    ON o.workspace_id=a.workspace_id AND o.application_id=a.id
+  WHERE a.workspace_id=$1 AND a.id<>$2`,[workspace,publicApplicationId]);
+ if(rows.length!==2||new Set(rows.map(r=>r.id)).size!==2||new Set(rows.map(r=>r.operation_id)).size!==2)throw Error('TRIP390_APPLICATION_OPERATION_LINKS');
+ const locales=new Set<string>(),learners=new Set<string>();
+ for(const row of rows){
+  const payload=JSON.parse(unseal(row.payload_ciphertext,`ls_service_interest/public_application/v1/${workspace}/${row.id}`,keyring));
+  const result=trip390InterestSchema.safeParse(payload);
+  if(!result.success)throw Error('TRIP390_STORED_SCHEMA');
+  const fields=result.data,locale=fields.acknowledgment.language;
+  const requestDigest=privateDigest({domain:'public-group-application/v1',workspace,fields},digestKey);
+  const contactDigest=privateDigest({domain:'public-group-application-contact/v1',workspace,contact:fields.email},digestKey);
+  if(requestDigest!==row.request_digest||requestDigest!==row.operation_digest||contactDigest!==row.contact_digest)throw Error('TRIP390_STORED_DIGEST_BINDING');
+  if(row.notice_language!==locale||row.notice_version!==TRIP390_NOTICE_VERSION||fields.offerVersion!==TRIP390_OFFER.version||fields.messageLanguage!==(locale==='en'?'he':'en')||fields.instructionLanguage!=='either')throw Error('TRIP390_STORED_VERSION_OR_LANGUAGE');
+  if(fields.city!=='Synthetic Unlisted District '+locale||fields.postalCode!=='01234-5678'||fields.phone!==undefined||fields.acknowledgment.whatsapp!==false)throw Error('TRIP390_STORED_LOCATION_OR_PERMISSION');
+  const [older,younger]=fields.children;
+  if(fields.children.length!==2||!older||!younger||older.name!=='Synthetic older '+locale||older.ageYears!==12||older.experience!=='some'||younger.name!=='Synthetic younger '+locale||younger.ageYears!==9||younger.experience!=='new')throw Error('TRIP390_STORED_SIBLING_TUPLE');
+  locales.add(locale);learners.add(older.id);learners.add(younger.id);
+ }
+ if(locales.size!==2||learners.size!==4)throw Error('TRIP390_DISTINCT_SIBLINGS_AND_LOCALES');
 }
 
 async function verifyDurableChildIdentity(){
@@ -247,7 +280,7 @@ try{
  await f.pool.query(`INSERT INTO ls_service_interest.public_application_operations(workspace_id,operation_id,request_digest,application_id) VALUES($1,$2,$3,$4)`,[workspaceId,publicApplicationOperationId,publicRequestDigest,publicApplicationId]);
  let baseline=await counts();
  let academyRuntime:{email:string;password:string}|null=null,academyOtherBefore:unknown=null,academyProtectedBefore:unknown=null,academySessionsBefore:unknown[]=[],academyActionsBefore:unknown[]=[];
- if(academyOnly){
+ if(academyOnly||trip390Only){
   const email='synthetic-academy-owner@example.invalid',password=randomBytes(18).toString('base64url');
   await f.pool.query('UPDATE ls_identity.accounts SET password_hash=$3,email_blind=$4,email_ciphertext=$5 WHERE workspace_id=$1 AND id=$2',[workspaceId,f.practitioner.actor.id,await hashPassword(password),blindEmail(email,lookupKey),seal(email,`email:${workspaceId}:${f.practitioner.actor.id}`,keyring)]);
   academyRuntime={email,password};baseline=await counts();academyOtherBefore=await otherWorkspacesSnapshot();academyProtectedBefore=await otherWorkspacesSnapshot(true);
@@ -318,10 +351,12 @@ try{
  const communityLogin=communityModule?await communityModule.communityCredentials(f,lookupKey):null;
  const communityBefore=communityModule?await communityModule.communityProtectedSnapshot(f):null;
  const originalPublic=await f.pool.query("SELECT to_jsonb(a)::text AS snapshot FROM ls_service_interest.public_applications a WHERE workspace_id=$1 AND id=$2",[workspaceId,publicApplicationId]);
+ const originalTripOperation=trip390Only?await f.pool.query("SELECT to_jsonb(o)::text AS snapshot FROM ls_service_interest.public_application_operations o WHERE workspace_id=$1 AND operation_id=$2",[workspaceId,publicApplicationOperationId]):null;
+ if(trip390Only&&(baseline.publicApplications!==1||baseline.publicApplicationOperations!==1||originalPublic.rows.length!==1||originalTripOperation?.rows.length!==1))throw Error('TRIP390_UNEXPECTED_INITIAL_RECEIPTS');
  if(baseline.inquiries!==0||baseline.operations!==0||baseline.serviceInterests!==0||baseline.serviceOperations!==0||baseline.draftGroups!==0||baseline.draftOperations!==0||baseline.proposedPlacements!==0||baseline.placementOperations!==0||baseline.placementMoves!==0||baseline.movementOperations!==0||baseline.meetingRevisions!==0||baseline.meetingOperations!==0||baseline.practiceRevisions!==0||baseline.practiceOperations!==0)throw new Error("GROUP_INTEREST_FIXTURE_NOT_EMPTY");
  const runtimePath=join(folder,"synthetic-runtime.json");
  const runtime={origin,workspaceId,practitioner:f.practitioner.token,parent:f.parent.token,adult,child,revoked,otherWorkspace,publicApplicationId,publicApplicantName:publicApplicationFields.parentName,...(academyRuntime?{academy:academyRuntime}:{}),...(fishingRuntime?{fishing:fishingRuntime}:{}),...(educationRuntime?{education:educationRuntime}:{}),...(academyCrmRuntime?{academyCrm:academyCrmRuntime}:{}),...(bnaRepliesRuntime?{bnaReplies:bnaRepliesRuntime}:{})};
- writeFileSync(runtimePath,JSON.stringify(runtime),{mode:0o600});
+ writeFileSync(runtimePath,JSON.stringify(trip390Only?{origin,academy:academyRuntime}:runtime),{mode:0o600});
  const key=join(folder,"tls.key"),cert=join(folder,"tls.crt");
  phase="tls-certificate";
  const gitOpenSsl="C:/Program Files/Git/mingw64/bin/openssl.exe",openssl=process.platform==="win32"&&existsSync(gitOpenSsl)?gitOpenSsl:"openssl";
@@ -339,17 +374,52 @@ try{
   LS_ACADEMY_FREE_REGISTRATION_ENABLED:'true',LS_ACADEMY_FOUNDER_EMAIL_APPROVED:'false',LS_INQUIRY_EMAIL_SEND_ENABLED:'false',LS_AUTH_EMAIL_ENABLED:'false',
   ...(educationOnly?{LS_EDUCATION_SYNTHETIC_LOOPBACK:"true",TEST_DATABASE_URL:safeTestUrl(),LS_CHILD_ACCOUNTS_ENABLED:"false",LS_AUTH_EMAIL_ENABLED:"false"}:{}),
   ...(academyCrmOnly?{LS_ACADEMY_SIGNUP_WORKER_ENABLED:"false",LS_CONTACT_INBOUND_ENABLED:"false"}:{})};
+ // Only the dedicated journey selects the prospective offer in the isolated
+ // app process. An ambient selector must never change other browser modes.
+ delete env.LS_ACADEMY_PUBLIC_OFFER;
+ if(trip390Only)Object.assign(env,{LS_ACADEMY_PUBLIC_OFFER:TRIP390_OFFER.version,
+  LS_INQUIRY_EMAIL_QUEUE_ENABLED:'false',LS_ACADEMY_SIGNUP_WORKER_ENABLED:'false',LS_ACADEMY_SIGNUP_CONTROLLED_SEND_ENABLED:'false',
+  LS_ACADEMY_SIGNUP_WORKER_ADMISSION_JSON:'',LS_ACADEMY_OWNER_NOTIFICATION_ENABLED:'false'});
  if(communityTransport)Object.assign(env,{LS_COMMUNITY_SCOUT_BRIDGE_SECRET:communityTransport.secret,LS_COMMUNITY_FIXTURE_ORIGIN:communityTransport.controlOrigin,
   LS_COMMUNITY_FIXTURE_CA_FILE:cert,NODE_OPTIONS:`--require=${resolve("tests/e2e/community/scout-read-preload.cjs")}`,NODE_EXTRA_CA_CERTS:cert,LS_AUTH_EMAIL_ENABLED:"false",LS_CALENDAR_ENABLED:"true"});
  if(bnaRepliesOnly)Object.assign(env,{LS_BNA_OWNER_ACCOUNT_ID:f.practitioner.actor.id,LS_PROVIDER_INDEX_OWNER_ACCOUNT_ID:f.practitioner.actor.id,LS_BNA_COMBINED_PEOPLE_ENABLED:'true',LS_BNA_INQUIRY_ENABLED:'true',LS_305_CLASSIFICATION_ENABLED:'true',LS_BNA_PREFERENCES_ENABLED:'true',LS_BNA_OPTIONAL_CALENDAR_ENABLED:'true',LS_BNA_MAILBOX_REPLIES_ENABLED:'true',LS_BNA_REPLY_MONITOR_ENABLED:'false',LS_BNA_EMAIL_WORKER_ENABLED:'false',LS_BNA_EMAIL_SEND_ENABLED:'false',LS_BNA_EMAIL_CONTROLLED_SEND_ENABLED:'false',LS_BNA_EMAIL_QUEUE_ENABLED:'true',LS_ACADEMY_SIGNUP_WORKER_ENABLED:'false',LS_ACADEMY_OWNER_NOTIFICATION_ENABLED:'false'});
  // Ordinary CI modes keep all development-only guards and use Next's current compiler.
  // Retain the prior compiler for separately admitted focused modes.
- const ordinaryCompiler=academyOnly||academyCrmOnly||educationOnly||(!communityOnly&&!fishingOnly&&!sampleOnly&&process.env.LS_FLORIDA_JOURNEY_TEST_ONLY!=="true"&&process.env.LS_GROUP_INTEREST_PUBLIC_ONLY!=="true"&&process.env.LS_GROUP_INTEREST_CAPTURE_ONLY!=="true");
- app=spawn(process.execPath,[resolve("node_modules/next/dist/bin/next"),"dev",ordinaryCompiler?"--turbopack":"--webpack","--experimental-https","--experimental-https-key",key,"--experimental-https-cert",cert,"--hostname","127.0.0.1","--port",String(appPort)],{env,stdio:"ignore"});
+ const ordinaryCompiler=!trip390Only&&(academyOnly||academyCrmOnly||educationOnly||(!communityOnly&&!fishingOnly&&!sampleOnly&&process.env.LS_FLORIDA_JOURNEY_TEST_ONLY!=="true"&&process.env.LS_GROUP_INTEREST_PUBLIC_ONLY!=="true"&&process.env.LS_GROUP_INTEREST_CAPTURE_ONLY!=="true"));
+ app=spawn(process.execPath,[resolve("node_modules/next/dist/bin/next"),"dev",ordinaryCompiler?"--turbopack":"--webpack","--experimental-https","--experimental-https-key",key,"--experimental-https-cert",cert,"--hostname","127.0.0.1","--port",String(appPort)],{env,stdio:trip390Only?['ignore','pipe','pipe']:'ignore'});
+ let captureStartup=trip390Only;
+ const tails={stdout:'',stderr:''},truncated={stdout:false,stderr:false};
+ if(trip390Only)for(const channel of ['stdout','stderr'] as const){
+  const stream=app[channel]!;
+  stream.setEncoding('utf8');
+  stream.on('data',(chunk:string)=>{
+   if(!captureStartup)return;
+   const joined=tails[channel]+chunk;
+   if(joined.length>16384)truncated[channel]=true;
+   tails[channel]=joined.slice(-16384);
+  });
+ }
+ function startupFailure(reason:string){
+  if(!trip390Only)return Error(reason);
+  const dbUrl=new URL(safeTestUrl());
+  const knownSecrets=[dbUrl.href,dbUrl.password,decodeURIComponent(dbUrl.password),academyRuntime?.password,
+   origin,env.LS_DATABASE_URL,env.TEST_DATABASE_URL,env.LS_MIGRATION_DATABASE_URL,env.PGPASSWORD,
+   env.LS_IDENTITY_DATA_KEYS,dataKey.toString('base64url'),env.LS_IDENTITY_LOOKUP_KEY,env.LS_IDENTITY_CSRF_KEY,env.LS_IDENTITY_RATE_KEY,
+   f!.practitioner.token,f!.parent.token,adult,child,revoked,otherWorkspace];
+  const sanitized=(channel:'stdout'|'stderr')=>{
+   // A ring boundary can cut through a secret. Omit that whole partial line.
+   let text=tails[channel];
+   if(truncated[channel]){const newline=text.indexOf('\n');text=newline<0?'':text.slice(newline+1);}
+   for(const secret of knownSecrets)if(secret)text=text.replaceAll(secret,'[REDACTED]');
+   return text;
+  };
+  return Error(reason+'\n'+syntheticChildFailure({stdout:sanitized('stdout'),stderr:sanitized('stderr'),code:app?.exitCode,signal:app?.signalCode}));
+ }
  console.log('GROUP_INTEREST_OWNED_RUNTIME '+JSON.stringify({appPid:app.pid??null,testPid:null,folder,port:appPort,project}));
  phase="next-health";let healthy=false;const probe=await playwrightRequest.newContext({baseURL:origin,ignoreHTTPSErrors:true});
- try{for(let i=0;i<240;i++){if(app.exitCode!==null)throw new Error("ISOLATED_APP_START_FAILED");try{if((await probe.get("/api/health")).status()===200){healthy=true;break;}}catch{}await new Promise(r=>setTimeout(r,250));}}finally{await probe.dispose();}
- if(!healthy)throw new Error("ISOLATED_APP_HEALTH_TIMEOUT");
+ try{for(let i=0;i<240;i++){if(app.exitCode!==null)throw startupFailure("ISOLATED_APP_START_FAILED");try{if((await probe.get("/api/health")).status()===200){healthy=true;break;}}catch{}await new Promise(r=>setTimeout(r,250));}}finally{await probe.dispose();}
+ if(!healthy)throw startupFailure("ISOLATED_APP_HEALTH_TIMEOUT");
+ captureStartup=false;tails.stdout='';tails.stderr='';
  phase="browser-tests";
  const selection=project?["--project",project,"--output",`tests/e2e/group-interest/test-results/isolated-${project}`]:[];
  if(!fishingOnly&&process.env.LS_GROUP_INTEREST_PUBLIC_ONLY==="true")selection.push("--grep","Florida group inquiry|retired Israel group application|retired no-program API");
@@ -357,6 +427,7 @@ try{
  if(bnaRepliesOnly){/* Actual native saved replies and ordinary owner login; no mailbox/provider calls. */}
  else if(academyCrmOnly){/* Dedicated zero-import Academy CRM and ordinary owner login journey. */}
  else if(academyOnly){/* Dedicated real two-child free registration and ordinary owner login journey. */}
+ else if(trip390Only){/* Inner config selects only the Trip390 journey in this process. */}
  else if(communityOnly){/* Explicit focused read-only Community journey, not a default-suite skip. */}
  else if(educationOnly){/* Existing Playwright config selects the retained Resources journey. */}
  else if(fishingOnly){/* Selection is the retained mounted fishing spec in the same isolated harness. */}
@@ -378,8 +449,12 @@ try{
   await academyCrmModule.verifyAcademyCrmBrowserEffects(f,lookupKey,academyCrmRuntime,academyCrmBefore,rateKey);
   console.log("ACADEMY_CRM_UI_ACCEPTANCE_PASS project="+project+" ordinaryLogin=true contacts=4 activities=8 imported=0 sameOperationRetry=true newSession=true unrelatedEffects=0 providerEffects=0");
  }
- else if(academyOnly){
-  phase='academy-free-native-readback';await verifyAcademyEffects(2,keyring,digestKey);
+ else if(academyOnly||trip390Only){
+  if(trip390Only){
+   phase='trip390-native-readback';await verifyTrip390Effects(publicApplicationId,keyring,digestKey);
+   const retainedOperation=await f.pool.query("SELECT to_jsonb(o)::text AS snapshot FROM ls_service_interest.public_application_operations o WHERE workspace_id=$1 AND operation_id=$2",[workspaceId,publicApplicationOperationId]);
+   if(JSON.stringify(retainedOperation.rows)!==JSON.stringify(originalTripOperation?.rows))throw Error('TRIP390_EXISTING_OPERATION_CHANGED');
+  }else{phase='academy-free-native-readback';await verifyAcademyEffects(2,keyring,digestKey);}
   const after=await counts(),expected={...baseline,publicApplications:baseline.publicApplications+2,publicApplicationOperations:baseline.publicApplicationOperations+2};
   if(JSON.stringify(after)!==JSON.stringify(expected)||JSON.stringify(await otherWorkspacesSnapshot())!==JSON.stringify(academyOtherBefore))throw Error('ACADEMY_FREE_UNRELATED_DATABASE_EFFECT');
   if(JSON.stringify(await otherWorkspacesSnapshot(true))!==JSON.stringify(academyProtectedBefore))throw Error('ACADEMY_FREE_EXISTING_DOMAIN_RECORD_CHANGED');
@@ -390,7 +465,8 @@ try{
   for(const prior of academyActionsBefore)if(!actions.some(row=>JSON.stringify(row)===JSON.stringify(prior)))throw Error('ACADEMY_FREE_EXISTING_ACTION_CHANGED');
   const newSessions=sessions.filter(row=>!academySessionsBefore.some(prior=>JSON.stringify(row)===JSON.stringify(prior))),newActions=actions.filter(row=>!academyActionsBefore.some(prior=>JSON.stringify(row)===JSON.stringify(prior)));
   if(newSessions.length!==2||newSessions.some(r=>r.row.account_id!==f!.practitioner.actor.id||r.row.revoked_at!==null)||newActions.length!==2||newActions.some(r=>r.row.actor_account_id!==f!.practitioner.actor.id||r.row.action!=='login_succeeded'))throw Error('ACADEMY_FREE_ORDINARY_LOGIN_EFFECT_MISMATCH');
-  console.log(`ACADEMY_FREE_BROWSER_ACCEPTANCE_PASS project=${project} families=2 children=4 allocations=2 exactReplay=true ordinaryLogin=true emailsQueued=2 sent=0 unrelatedEffects=0`);
+  if(trip390Only)console.log(`ACADEMY_TRIP390_BROWSER_ACCEPTANCE_PASS project=${project} inquiries=2 operations=2 children=4 ordinaryOwnerLogins=2 exactReplay=true allocations=0 emailsQueued=0 unrelatedEffects=0`);
+  else console.log(`ACADEMY_FREE_BROWSER_ACCEPTANCE_PASS project=${project} families=2 children=4 allocations=2 exactReplay=true ordinaryLogin=true emailsQueued=2 sent=0 unrelatedEffects=0`);
  }
  else if(communityOnly){
   if(!communityModule||!communityTransport)throw new Error("COMMUNITY_FIXTURE_MISSING");

@@ -2,6 +2,7 @@ import {parseEnvironment} from "../../lib/env/schema.ts";
 import {AppError} from "../../lib/errors.ts";
 import {verifyMutationOrigin} from "../../lib/security/csrf.ts";
 import {floridaProgramIdSchema,type FloridaProgramId} from "./contract.ts";
+import {TRIP390_MEDIA_TYPE} from "./academy-trip390-transport.ts";
 
 export function groupApplicationPublicOrigin(input:Record<string,string|undefined>):string{
  const canonical=parseEnvironment(input).LS_APP_ORIGIN,raw=input.LS_GROUP_APPLICATION_PUBLIC_ORIGIN;
@@ -30,4 +31,12 @@ export function groupApplicationProgramFromRequest(request:Request):FloridaProgr
   if(url.searchParams.size!==1)throw new Error();
   return floridaProgramIdSchema.parse(url.searchParams.get("program"));
  }catch{throw new AppError("FORBIDDEN");}
+}
+
+/** The existing gateway forwards Accept and admits exactly one program query. */
+export function requestsTrip390Interest(request:Request):boolean{
+ const accept=request.headers.get("accept")??"";
+ if(accept===TRIP390_MEDIA_TYPE)return true;
+ if(accept.toLowerCase().includes("application/vnd.jlfa."))throw new AppError("FORBIDDEN");
+ return false;
 }

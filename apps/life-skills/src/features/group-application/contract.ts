@@ -3,6 +3,7 @@ import {campaignAttributionSchema} from "./academy-campaign-contract.ts";
 import {academyIntakeSchema,academyDriveMinutes} from "./academy-intake.ts";
 import {academyRegistrationSchema,ACADEMY_REGISTRATION_VERSION} from './academy-registration.ts';
 import {academyRegistrationNotice,academyExact05RegistrationNotice,academyLegacyRegistrationNotice,academyPreviousFreeRegistrationNotice} from './academy-registration-notice.ts';
+import {trip390InterestSchema,TRIP390_INTEREST_VERSION,type Trip390Interest} from './academy-trip390-contract.ts';
 
 /** Historical Israel application permission, retained only to decode existing records. */
 export const groupApplicationNotice={
@@ -161,10 +162,13 @@ export const floridaSchoolInquiryFieldsSchema=z.object({
  preferredWeekday:z.enum(["monday","tuesday","wednesday","thursday","friday","flexible"]),schoolTransport:z.enum(["yes","no","undecided"]),
  permission:z.object({confirmed:z.literal(true),version:z.literal(floridaSchoolInquiryNotice.version),language:z.enum(["he","en"])}).strict(),
 }).strict().superRefine((value,context)=>{if(value.permission.language!==value.language)context.addIssue({code:"custom",path:["permission","language"],message:"permission language must match inquiry"});});
-export const floridaGroupApplicationFieldsSchema=z.union([floridaParentApplicationFieldsSchema,floridaSchoolInquiryFieldsSchema]).superRefine((value,context)=>{
+const legacyFloridaCurrentFieldsSchema=z.union([floridaParentApplicationFieldsSchema,floridaSchoolInquiryFieldsSchema]).superRefine((value,context)=>{
  if('academyRegistration' in value&&value.academyRegistration&&value.academyRegistration.version!==ACADEMY_REGISTRATION_VERSION)context.addIssue({code:'custom',path:['academyRegistration','version'],message:'current_registration_version_required'});
 });
-export const floridaGroupApplicationReadableFieldsSchema=z.union([floridaParentApplicationFieldsSchema,floridaParentLegacyReadableFieldsSchema,floridaSchoolInquiryFieldsSchema]);
+// Trip390 records retain their own exact notice, offer and raw inquiry shape.
+// No stage, grade, school-hours or drive preferences are invented for compatibility.
+export const floridaGroupApplicationFieldsSchema=z.union([legacyFloridaCurrentFieldsSchema,trip390InterestSchema]);
+export const floridaGroupApplicationReadableFieldsSchema=z.union([floridaParentApplicationFieldsSchema,floridaParentLegacyReadableFieldsSchema,floridaSchoolInquiryFieldsSchema,trip390InterestSchema]);
 
 export const groupApplicationFieldsSchema=z.union([floridaGroupApplicationReadableFieldsSchema,israelReadableFieldsSchema]);
 export const groupApplicationReplaySchema=z.object({operationId:z.string().uuid(),fields:groupApplicationFieldsSchema}).strict();
@@ -180,6 +184,7 @@ export const floridaGroupApplicationReadSubmissionSchema=z.object({...submission
 export type IsraelGroupApplicationFields=z.infer<typeof currentGroupApplicationFieldsSchema>;
 export type IsraelReadableGroupApplicationFields=z.infer<typeof israelReadableFieldsSchema>;
 export type FloridaGroupApplicationFields=z.infer<typeof floridaGroupApplicationFieldsSchema>;
+export type LegacyFloridaGroupApplicationFields=z.infer<typeof legacyFloridaCurrentFieldsSchema>;
 export type FloridaParentApplicationFields=z.infer<typeof floridaParentApplicationFieldsSchema>;
 export type LegacyFloridaParentApplicationFields=z.infer<typeof floridaLegacyParentApplicationFieldsSchema>;
 export type FloridaSchoolInquiryFields=z.infer<typeof floridaSchoolInquiryFieldsSchema>;
@@ -188,5 +193,7 @@ export type IsraelGroupApplicationCommand=z.infer<typeof israelGroupApplicationC
 export type FloridaGroupApplicationCommand=z.infer<typeof floridaGroupApplicationCommandSchema>;
 export type GroupApplicationCommand=z.infer<typeof groupApplicationCommandSchema>;
 export type GroupApplicationRecord={id:string;source:"public_group_application";state:"owner_review";receivedAt:string;fields:GroupApplicationFields};
-export function isFloridaGroupApplication(fields:GroupApplicationFields):fields is FloridaGroupApplicationFields{return "programId" in fields;}
+/** Historical Florida shape only; a trip390 program is admitted by the server route. */
+export function isFloridaGroupApplication(fields:GroupApplicationFields):fields is LegacyFloridaGroupApplicationFields{return "programId" in fields;}
+export function isTrip390Interest(fields:GroupApplicationFields):fields is Trip390Interest{return 'version' in fields&&fields.version===TRIP390_INTEREST_VERSION;}
 export function isSchoolInquiry(fields:GroupApplicationFields):fields is FloridaSchoolInquiryFields{return "inquiryKind" in fields&&fields.inquiryKind==="institution";}

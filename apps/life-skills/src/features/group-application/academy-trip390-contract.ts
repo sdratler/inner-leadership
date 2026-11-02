@@ -1,7 +1,7 @@
 import {z} from 'zod';
-import en from './academy-trip390-en.json';
-import he from './academy-trip390-he.json';
-import cities from './academy-trip390-cities.json';
+import en from './academy-trip390-en.json' with {type:'json'};
+import he from './academy-trip390-he.json' with {type:'json'};
+import cities from './academy-trip390-cities.json' with {type:'json'};
 
 /** Additive candidate. Shared decoders/routes must be admitted by the existing integrator. */
 export const TRIP390_OFFER = Object.freeze({version:'JLFA-KEYS390-v1',currency:'USD',priceCents:39000,keysTrips:1,preparationSessions:2,minimumAge:9,maximumYouthAge:null,automaticRenewal:false,siblingDiscount:false} as const);

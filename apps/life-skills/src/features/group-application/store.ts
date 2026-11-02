@@ -11,7 +11,7 @@ import {freshActor,lockWorkspace} from "../identity/data.ts";
 import type {IdentityClock,Actor} from "../identity/types.ts";
 import {systemClock} from "../identity/types.ts";
 import type {IdentityStore,SqlSession} from "../identity/store.ts";
-import {groupApplicationCommandSchema,groupApplicationReplaySchema,groupApplicationFieldsSchema,isFloridaGroupApplication,floridaProgramIdSchema,type FloridaProgramId,type GroupApplicationCommand,type GroupApplicationFields,type GroupApplicationRecord} from "./contract.ts";
+import {groupApplicationCommandSchema,groupApplicationReplaySchema,groupApplicationFieldsSchema,isFloridaGroupApplication,isTrip390Interest,floridaProgramIdSchema,type FloridaProgramId,type GroupApplicationCommand,type GroupApplicationFields,type GroupApplicationRecord} from "./contract.ts";
 import {queueInquiryEmail} from "./inquiry-email.ts";
 import {isFreeFounderRegistration,type AcademyFounderStore} from './academy-founder-store.ts';
 
@@ -30,7 +30,7 @@ export class PublicGroupApplicationStore{
  constructor(private readonly db:IdentityStore,private readonly workspaceId:WorkspaceId,private readonly ring:Keyring,
   private readonly digestKey:string,private readonly clock:IdentityClock=systemClock,private readonly emailQueueEnabled=false,private readonly founder?:AcademyFounderStore,
   private readonly reviewProgram:FloridaProgramId="sunday_fishing_academy"){floridaProgramIdSchema.parse(reviewProgram);}
- private inOwnerScope(item:GroupApplicationRecord){return isFloridaGroupApplication(item.fields)&&item.fields.programId===this.reviewProgram;}
+ private inOwnerScope(item:GroupApplicationRecord){return isTrip390Interest(item.fields)?this.reviewProgram==='sunday_fishing_academy':isFloridaGroupApplication(item.fields)&&item.fields.programId===this.reviewProgram;}
  private cursorAad(actor:Actor){return `ls_service_interest/review_cursor/v1/${this.workspaceId}/${actor.id}/${this.reviewProgram}`;}
  private searchDigest(search:string){return privateDigest({domain:"public-group-review-search/v1",search},this.digestKey);}
  private readCursor(actor:Actor,cursor:string,search:string):string{
@@ -42,7 +42,8 @@ export class PublicGroupApplicationStore{
  }
  private nextCursor(actor:Actor,id:string,search:string){return Buffer.from(seal(JSON.stringify({id,searchDigest:this.searchDigest(search)}),this.cursorAad(actor),this.ring)).toString("base64url");}
  private requestDigest(fields:GroupApplicationFields){return privateDigest({domain:"public-group-application/v1",workspace:this.workspaceId,fields},this.digestKey);}
- private contactDigest(fields:GroupApplicationFields){return isFloridaGroupApplication(fields)?
+ private contactDigest(fields:GroupApplicationFields){return isTrip390Interest(fields)?
+  privateDigest({domain:"public-group-application-contact/v1",workspace:this.workspaceId,contact:fields.email},this.digestKey):isFloridaGroupApplication(fields)?
   privateDigest({domain:"public-group-application-contact/v1",workspace:this.workspaceId,contact:fields.contact},this.digestKey):
   privateDigest({domain:"public-group-application-contact/v1",workspace:this.workspaceId,phone:fields.parentPhone},this.digestKey);}
  private decode(row:Row):GroupApplicationRecord{
@@ -55,29 +56,32 @@ export class PublicGroupApplicationStore{
  private async read(tx:SqlSession,id:string){const rows=await tx.query<Row>(select+" WHERE workspace_id=$1 AND id=$2",[this.workspaceId,id]);if(rows.length!==1)throw new AppError("UNAVAILABLE");return this.decode(rows[0]!);}
  async replaySaved(input:{operationId:string;fields:GroupApplicationFields},attribution:CampaignAttribution|null=null){
   const parsed=groupApplicationReplaySchema.safeParse(input);if(!parsed.success)throw new AppError("INVALID_REQUEST");
-  if(!isFloridaGroupApplication(parsed.data.fields))throw new AppError("NOT_FOUND");
+  if(!isFloridaGroupApplication(parsed.data.fields)&&!isTrip390Interest(parsed.data.fields))throw new AppError("NOT_FOUND");
+  if(isTrip390Interest(parsed.data.fields)&&(this.reviewProgram!=='sunday_fishing_academy'||attribution!==null))throw new AppError('INVALID_REQUEST');
   const command=parsed.data,digest=this.requestDigest(command.fields);
   return this.db.transaction(async tx=>{
    await tx.query("SET TRANSACTION READ ONLY");
    const rows=await tx.query<{applicationId:string;requestDigest:string}>(`SELECT application_id AS "applicationId",request_digest AS "requestDigest"
     FROM ls_service_interest.public_application_operations WHERE workspace_id=$1 AND operation_id=$2`,[this.workspaceId,command.operationId]);
    if(rows.length===0)return null;if(rows.length!==1)throw new AppError("UNAVAILABLE");
-   if(rows[0]!.requestDigest!==digest)throw new AppError("CONFLICT");if(this.founder)await this.founder.checkAttribution(tx,command.operationId,attribution);
-   return {saved:true as const,replayed:true,duplicate:true,item:await this.read(tx,rows[0]!.applicationId),...(this.founder?{founder:await this.founder.publicResult(tx,rows[0]!.applicationId)}:{})};
+   if(rows[0]!.requestDigest!==digest)throw new AppError("CONFLICT");if(this.founder&&!isTrip390Interest(command.fields))await this.founder.checkAttribution(tx,command.operationId,attribution);
+   return {saved:true as const,replayed:true,duplicate:true,item:await this.read(tx,rows[0]!.applicationId),...(this.founder&&!isTrip390Interest(command.fields)?{founder:await this.founder.publicResult(tx,rows[0]!.applicationId)}:{})};
   });
  }
  async submit(input:GroupApplicationCommand,continuation?:string,attribution:CampaignAttribution|null=null){
   if(attribution!==null)campaignAttributionSchema.parse(attribution);
   const parsed=groupApplicationCommandSchema.safeParse(input);
   if(!parsed.success){const prior=await this.replaySaved(input,attribution);if(prior)return prior;throw new AppError("INVALID_REQUEST");}
-  if(!isFloridaGroupApplication(parsed.data.fields))throw new AppError("NOT_FOUND");
+  if(!isFloridaGroupApplication(parsed.data.fields)&&!isTrip390Interest(parsed.data.fields))throw new AppError("NOT_FOUND");
   const command=parsed.data,requestDigest=this.requestDigest(command.fields),contactDigest=this.contactDigest(command.fields);
+  const trip390=isTrip390Interest(command.fields);
+  if(trip390&&(this.reviewProgram!=='sunday_fishing_academy'||attribution!==null))throw new AppError('INVALID_REQUEST');
   const free=isFreeFounderRegistration(command.fields);if(free&&(!this.founder||!continuation))throw new AppError('UNAVAILABLE');
   return this.db.transaction(async tx=>{
    await lockWorkspace(tx,this.workspaceId);
    const prior=await tx.query<{applicationId:string;requestDigest:string}>(`SELECT application_id AS "applicationId",request_digest AS "requestDigest"
     FROM ls_service_interest.public_application_operations WHERE workspace_id=$1 AND operation_id=$2`,[this.workspaceId,command.operationId]);
-   if(prior.length){if(prior.length!==1||prior[0]!.requestDigest!==requestDigest)throw new AppError("CONFLICT");if(this.founder)await this.founder.checkAttribution(tx,command.operationId,attribution);return {saved:true as const,replayed:true,duplicate:true,item:await this.read(tx,prior[0]!.applicationId),...(this.founder?{founder:await this.founder.publicResult(tx,prior[0]!.applicationId)}:{})};}
+   if(prior.length){if(prior.length!==1||prior[0]!.requestDigest!==requestDigest)throw new AppError("CONFLICT");if(this.founder&&!trip390)await this.founder.checkAttribution(tx,command.operationId,attribution);return {saved:true as const,replayed:true,duplicate:true,item:await this.read(tx,prior[0]!.applicationId),...(this.founder&&!trip390?{founder:await this.founder.publicResult(tx,prior[0]!.applicationId)}:{})};}
    const existing=await tx.query<{id:string}>(`SELECT id FROM ls_service_interest.public_applications WHERE workspace_id=$1 AND request_digest=$2`,[this.workspaceId,requestDigest]);
    if(existing.length>1)throw new AppError("UNAVAILABLE");
    if(existing.length===1){
@@ -88,7 +92,7 @@ export class PublicGroupApplicationStore{
     // that key could later submit different content and escape replay conflict.
     await tx.query("INSERT INTO ls_service_interest.public_application_operations(workspace_id,operation_id,request_digest,application_id) VALUES($1,$2,$3,$4)",
      [this.workspaceId,command.operationId,requestDigest,applicationId]);
-    if(this.founder)await this.founder.bindAttribution(tx,command.operationId,applicationId,attribution);return {saved:true as const,replayed:false,duplicate:true,item:await this.read(tx,applicationId),...(this.founder?{founder:await this.founder.publicResult(tx,applicationId)}:{})};
+    if(this.founder&&!trip390)await this.founder.bindAttribution(tx,command.operationId,applicationId,attribution);return {saved:true as const,replayed:false,duplicate:true,item:await this.read(tx,applicationId),...(this.founder&&!trip390?{founder:await this.founder.publicResult(tx,applicationId)}:{})};
    }
    const now=this.clock.now(),id=randomUUID();
    {
@@ -96,16 +100,17 @@ export class PublicGroupApplicationStore{
      (SELECT count(*)::int FROM ls_service_interest.public_applications WHERE workspace_id=$1 AND contact_digest=$2 AND received_at>$3::timestamptz-interval '24 hours') AS "contactCount",
      (SELECT count(*)::int FROM ls_service_interest.public_applications WHERE workspace_id=$1 AND received_at>$3::timestamptz-interval '24 hours') AS "workspaceCount"`,[this.workspaceId,contactDigest,now]);
     if(!recent[0]||recent[0].contactCount>=4||recent[0].workspaceCount>=250)throw new AppError("RATE_LIMITED");
+    const notice=isTrip390Interest(command.fields)?command.fields.acknowledgment:command.fields.permission;
     await tx.query(`INSERT INTO ls_service_interest.public_applications
      (workspace_id,id,contact_digest,request_digest,payload_ciphertext,notice_version,notice_language,received_at)
      VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,[this.workspaceId,id,contactDigest,requestDigest,
-      seal(JSON.stringify(command.fields),aad(this.workspaceId,id),this.ring),command.fields.permission.version,command.fields.permission.language,now]);
+      seal(JSON.stringify(command.fields),aad(this.workspaceId,id),this.ring),notice.version,notice.language,now]);
    }
    await tx.query(`INSERT INTO ls_service_interest.public_application_operations(workspace_id,operation_id,request_digest,application_id)
     VALUES($1,$2,$3,$4)`,[this.workspaceId,command.operationId,requestDigest,id]);
    const founder=free?await this.founder!.accept(tx,id,command.fields,continuation!):undefined;
-   if(this.founder)await this.founder.bindAttribution(tx,command.operationId,id,attribution);
-   const acknowledgment=!free&&this.emailQueueEnabled?await queueInquiryEmail(tx,this.workspaceId,id,command.fields,this.ring,now):undefined;
+   if(this.founder&&!trip390)await this.founder.bindAttribution(tx,command.operationId,id,attribution);
+   const acknowledgment=!trip390&&!free&&this.emailQueueEnabled?await queueInquiryEmail(tx,this.workspaceId,id,command.fields,this.ring,now):undefined;
    return {saved:true as const,replayed:false,duplicate:false,item:await this.read(tx,id),...(founder?{founder}:{}),...(acknowledgment?{acknowledgment}:{})};
   });
  }
@@ -144,6 +149,9 @@ export class PublicGroupApplicationStore{
    // pagination metadata; bind the opaque cursor to this owner/program/search.
    return {items,nextCursor:scanned<rows.length?this.nextCursor(actor,rows[scanned-1]!.id,needle):null};
   });
+ }
+ async readForOwner(actor:Actor,id:string):Promise<GroupApplicationRecord>{
+  return this.db.transaction(async tx=>{await tx.query('SET TRANSACTION READ ONLY');return this.readForOwnerInTransaction(tx,actor,id);});
  }
  async readForOwnerInTransaction(tx:SqlSession,actor:Actor,id:string):Promise<GroupApplicationRecord>{
   if(actor.workspaceId!==this.workspaceId)throw new AppError("FORBIDDEN");

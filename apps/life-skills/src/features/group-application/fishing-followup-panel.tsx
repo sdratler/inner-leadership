@@ -78,7 +78,7 @@ export function FishingFollowupPanel({locale,applicationId,autoOpen=false,onOper
    {pending&&!busy&&<div role="status" className="lsw-alert"><p>{t("Save outcome unknown. Retry the same operation.","תוצאת השמירה אינה ידועה. יש לנסות שוב את אותה פעולה.")}</p>
     <button type="button" onClick={()=>void save(pending)}>{t("Retry same save","ניסיון חוזר לאותה שמירה")}</button></div>}
    {busy&&!detail&&<p role="status">{t("Loading follow-up…","טוען מעקב…")}</p>}
-   {detail&&<><p>{t("Reply contact","פרטי קשר לתשובה")}: <bdi dir="ltr">{"contact" in detail.application.fields?detail.application.fields.contact:detail.application.fields.parentPhone}</bdi></p>
+   {detail&&<><p>{t("Reply contact","פרטי קשר לתשובה")}: <bdi dir="ltr">{"email" in detail.application.fields?detail.application.fields.email:"contact" in detail.application.fields?detail.application.fields.contact:detail.application.fields.parentPhone}</bdi></p>
     <p>{t("Captured source","מקור שנקלט")}: {detail.attribution?.first.source??t("Unknown","לא ידוע")}
     {detail.attribution?.first.campaign&&<> · {t("Campaign","קמפיין")}: {detail.attribution.first.campaign}</>}
     {detail.attribution?.last.postRef&&<> · {t("Post reference","מזהה פרסום")}: {detail.attribution.last.postRef}</>}
