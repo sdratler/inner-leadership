@@ -1,0 +1,6 @@
+interface:
+  display_name: "Fishing Frontend Design"
+  short_description: "Design Fishing UI with approved copy and assets"
+  default_prompt: "Use $fishing-frontend-design to review this Fishing page against its current sources and protected artwork."
+policy:
+  allow_implicit_invocation: true

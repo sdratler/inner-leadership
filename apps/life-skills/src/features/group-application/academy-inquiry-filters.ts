@@ -1,5 +1,5 @@
 import type {AcademyRegistration} from './academy-registration.ts';
-import type {GroupApplicationRecord} from './contract.ts';
+import {isTrip390Interest,type GroupApplicationRecord} from './contract.ts';
 
 export interface AcademyInquiryFiltersValue {
  stageInterest: AcademyRegistration['stageInterest'] | '';
@@ -22,6 +22,15 @@ export function academyInquiryFilterNumber(value:string,min:number,max:number):n
  * A match retains the complete application, including all siblings. */
 export function matchesAcademyInquiryFilters(record:GroupApplicationRecord,filters:AcademyInquiryFiltersValue):boolean {
  const fields=record.fields;
+ if(fields&&typeof fields==='object'&&isTrip390Interest(fields)){
+  // This offer records ages and an optional instruction language, never a weekly
+  // schedule, stage or driving commitment. Keep matching siblings together.
+  if(filters.stageInterest||filters.day||filters.time||filters.tripMinutes)return false;
+  if(filters.groupLanguage&&(!['en','he','either'].includes(filters.groupLanguage)||!fields.instructionLanguage||fields.instructionLanguage!==filters.groupLanguage&&fields.instructionLanguage!=='either'))return false;
+  if(!filters.ageYears)return true;
+  const age=academyInquiryFilterNumber(filters.ageYears,0,17);
+  return age!==null&&fields.children.some(child=>child.ageYears===age);
+ }
  if(!fields||typeof fields!=='object'||!('programId' in fields)||fields.programId!=='sunday_fishing_academy')return false;
  if(Object.values(filters).every(value=>value===''))return true;
  if(!['','foundation','independent','advanced','leadership','discuss'].includes(filters.stageInterest)||!['','sunday','monday','tuesday','wednesday','thursday','friday','flexible'].includes(filters.day)||!['','morning','afternoon','evening','flexible'].includes(filters.time)||!['','en','he','either'].includes(filters.groupLanguage))return false;

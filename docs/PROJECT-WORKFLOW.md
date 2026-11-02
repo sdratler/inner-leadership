@@ -1,14 +1,16 @@
 # Fishing Academy: one maintained project state
 
+Start with [Fishing — Start here](https://docs.google.com/document/d/1AwB6My_ZrXf09j5ZFXvu42UKW30kCnlWU7_sLDpFHIA/edit?tab=t.4omt1dj3ko64), its current Fishing/mixed transition logs and relevant owning clauses. Use the existing Fishing continuation for current ownership. Keep mutable business, copy, art and task state in those owners. Setup does not adopt proposed copy or transfer integration ownership.
+
 The current `ACADEMY-ONLY-CRM-20261028-01` owner correction in [AGENTS.md](../AGENTS.md) controls the retirement of the Israeli business. Earlier completion packages are history where they conflict: zero legacy lead import, no required permanent lead archive, and no fallback to the retired CRM. Genuine Academy records and separate school/business work remain distinct.
 
 This implements the owner's 11 September request to clarify rambles, save decisions and complete work economically. It extends the existing registered Operating Protocol; it does not introduce another control workbook, SDK or business master. Current task-specific authorization remains valid.
 
-For the current Life Skills app completion, read [LS-DUAL-PACKAGE-20261003-01](https://docs.google.com/document/d/1NJnQXZcWMFZUFH-7c9apkqGRRRL9TzsvNd7x-GM2040/edit) and its coordinated graphics and CRM/Community packages after the CURRENT source entries. Preserve completed assets and acquisition/Community work; implement only the remaining delta. This repository workflow remains derived: later scoped native People and protected same-target release decisions are not undone by an older local-only snapshot, and the process pointer grants no new provider, spending, data or deferred Google sign-in/Calendar/billing authority. Google Contacts is admitted CRM scope.
+The older [LS-DUAL-PACKAGE-20261003-01](https://docs.google.com/document/d/1NJnQXZcWMFZUFH-7c9apkqGRRRL9TzsvNd7x-GM2040/edit) packages remain historical context where compatible with current Fishing decisions. Preserve valid work and implement only the admitted delta. This derived workflow grants no new provider, spending, data or deferred Google sign-in/Calendar/billing authority. Google Contacts is admitted CRM scope.
 
 ## Authority by domain
 
-For Academy website/form/curriculum corrections, read [academy-public-current.md](../apps/life-skills/docs/academy-public-current.md). It records the exact Website/UI/Brand/Content Voice revisions and a concise derived visual/accessibility checklist. The exact05 English/Hebrew packet owns the supplied words; current Product owns prices/rules. This scoped pointer does not replace canonical sources, broaden effects or apply older Israeli baked-hero instructions to Academy routes.
+For Academy website/form corrections, read [academy-public-current.md](../apps/life-skills/docs/academy-public-current.md) and load `fishing-frontend-design`; use `fishing-browser-visual-review` for rendered acceptance. Current Website owns copy/approval status, Product owns rules, Brand owns artwork, and UI owns the visual brief. Exact05 remains immutable historical/versioned evidence where superseded; it does not approve proposed trip390 replacement prose. Skills route to these owners rather than duplicate them.
 
 | Question | Authority | Evidence of completion |
 | --- | --- | --- |
@@ -23,6 +25,8 @@ Source-repository changes do not automatically reach the BNA production reposito
 
 ## Ramble to saved decision
 
+Load `fishing-ramble-save` and read the [current shared Ramble procedure](https://drive.google.com/file/d/1g9-8LNBF2LMKhRq6WWHlcdXnaZWzqYWN/view). Its current clauses control this derived outline. Reuse the existing program log, private register and Delivery; preserve the supervisor's single-writer register/cloud snapshot. Do not start another task master when access is unavailable.
+
 1. Capture the relevant owner instruction in its existing private work record. Distill facts, explicit corrections, proposals, implementation tasks and unresolved questions. Do not expose a private raw transcript in this public repo.
 2. Read the current targeted source first. Identify what already exists and what was already approved. Do not ask the owner to reattach a registered file or approve the same choice again.
 3. Use judgment to develop the idea: point out a meaningful tradeoff or missing constraint, resolve what the evidence answers, and ask one focused question when the remaining answer materially changes the outcome. A precise correction such as “Self-governance” is directly actionable.
@@ -31,6 +35,8 @@ Source-repository changes do not automatically reach the BNA production reposito
 6. Execute in the appropriate lane. A master-image change belongs to the image-producing worker; code consumes the approved pixels. A website control change belongs to Codex. A brainstorm does not automatically authorize paid generation, posting or deployment; apply the user's actual standing/task authorization.
 
 ## Reliable propagation, without an approval maze
+
+Immediately before a source write, reread its affected section, applicable decisions and ownership. Use `requiredRevisionId` or equivalent conditional guard; reconcile conflicts instead of overwriting newer content. Verify changed content and preservation of unrelated sections. Give a save receipt with owning link/section, stable change ID, readback revision/hash or check time with timezone, and implementation/consumer acknowledgment still pending. Keep detailed evidence in existing Delivery. Recheck changed sources and current/transition decisions before closeout. Source saved, repository adopted, skill discovered/loaded and consumer behavior verified are separate outcomes. Name exact Drive access gaps and continue independent authorized work without inventing approval or a saved receipt.
 
 Drive and Git are separate systems; do not claim an atomic transaction across them. Under one change ID, track which source edits, private bindings, derived manifests, tasks and accepted-commit pointers have been applied. An interrupted change resumes from the recorded step; it does not create another “FINAL” document.
 

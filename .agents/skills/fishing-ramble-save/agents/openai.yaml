@@ -1,0 +1,6 @@
+interface:
+  display_name: "Fishing Ramble and Save"
+  short_description: "Capture Fishing corrections and verify source saves"
+  default_prompt: "Use $fishing-ramble-save to reconcile this Fishing correction in its existing source and verify the save receipt."
+policy:
+  allow_implicit_invocation: true
