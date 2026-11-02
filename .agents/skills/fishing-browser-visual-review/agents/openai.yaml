@@ -1,0 +1,6 @@
+interface:
+  display_name: "Fishing Browser and Visual Review"
+  short_description: "Test browsers and inspect Fishing desktop/mobile UI"
+  default_prompt: "Use $fishing-browser-visual-review to inspect actual English and Hebrew Fishing renders on desktop and mobile."
+policy:
+  allow_implicit_invocation: true
