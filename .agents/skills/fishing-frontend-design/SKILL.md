@@ -1,9 +1,11 @@
 ---
 name: fishing-frontend-design
-description: Design or revise Fishing Academy pages, forms and responsive UI using current Fishing copy approval, protected assets and the visual brief. Use for Fishing frontend design; exclude BNA school design and unrestricted brand or copy generation.
+description: Design or improve Fishing Academy pages, forms, spacing and responsive layout, including requests to make them clean or professional. Use current Fishing copy, protected assets and visual review; exclude BNA school design and unrestricted copy generation.
 ---
 
 Read root `AGENTS.md` and `apps/life-skills/docs/academy-public-current.md`. Follow Fishing Start Here to actual current Product, Website, Fishing Brand tab, UI, Architecture, Voice and current/transition decisions. Read the Fishing continuation before editing; preserve frontend/reviewer, integrator and shared-header ownership. Record consumed revisions and exact baseline in the existing task/Delivery record.
+
+For connected sources, discover the currently available connector tools and inspect their schema before calling them. Supply the configured account `link_id`; a document URL is not an account identifier. Do not guess tool aliases or treat a missing argument/failed read as absent source content. Recover a schema error through the supported tool, and record any remaining access gap before relying on a dated snapshot.
 
 Identify the controlling offer and copy status. Supported business facts do not approve proposed bilingual prose. Preserve fixed wording exactly within its current scope; do not independently rewrite translations or restore superseded promotion text from a reference. Keep missing approval explicit and continue disjoint preparation. Mutable business, copy and visual tokens stay in their owning sources.
 
@@ -11,6 +13,8 @@ Resolve the actual Fishing catalog and placement approval. Open referenced image
 
 Identify the accepted coastal/reference direction and actual baseline; state any missing owner acceptance. Reuse Fishing components/fonts and measure inner/outer boxes, gutters, image regions, type hierarchy, line lengths, spacing, alignment and CTA. Do not impose conflicting old snapshot dimensions or flatten artwork into the site. Handle RTL, localized numbers, sibling identity/state and separate communication language. Preserve semantic controls, focus and reflow.
 
+Before coding, write a short task-specific brief in the existing task record: audience/main action, content hierarchy, composition/grid, type scale, spacing/density, imagery/subject placement and responsive/state behavior. Map each current requirement to its component and acceptance evidence. Make routine reversible alignment/readability choices yourself; label proposed art/copy choices honestly. Read the current presentation amendment rather than treating old inline-form, ordinary-flow navigation or unmounted-preview assumptions as current requirements.
+
 Design with intended header, CSS, fonts and assets. Inspect navigation, FAQ, sibling and form idle/invalid/loading/error/unknown/retry/disabled/saved states. Disabled previews must say saving is disabled; they do not prove durable saving. Shared CSS/routes/auth/persistence/schema stay with their owner.
 
-Load `fishing-browser-visual-review` during the public-page slice and after integration. Open actual EN/HE desktop/mobile baseline/candidate images and compare with an identified reference. Record visible defects/fixes, measurements and approval gaps. Hashes, tests and screenshot filenames are separate from visual judgment. Save through existing Ramble/Delivery. No release, send, payment or BNA scope is added.
+Load `fishing-browser-visual-review` early in the public-page slice and after integration. Render with intended styles/fonts, open initial-viewport and representative section/state images, critique against the brief, fix and rerender affected views. Do not defer critique until the implementation is declared complete. Record visible defects/fixes, measurements and approval gaps. Apply its severity/completion gate: known critical/major defects or unresolved owner rejection remain OPEN/NEEDS REVISION; technical passes do not close appearance work. Keep minor optional polish explicit, without invented aesthetic scores or a fixed number of iterations. Save through existing Ramble/Delivery. No release, send, payment or BNA scope is added.
