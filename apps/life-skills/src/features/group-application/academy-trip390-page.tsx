@@ -5,6 +5,7 @@ import {trip390Copy, trip390CitySuggestions, trip390CommandSchema, TRIP390_INTER
 import site from './academy-site.module.css';
 import styles from './academy-trip390.module.css';
 import heroAssets from './academy-hero-assets.json';
+import sceneAssets from './academy-scenes.json';
 
 export type Trip390SaveResult =
  | {state:'saved'; operationId:string; reference:string; email:'pending'|'not_queued'}
@@ -13,8 +14,20 @@ export type Trip390SaveResult =
  | {state:'rejected'; reason:'invalid'|'unavailable'};
 
 type ChildDraft = {id:string; name:string; age:string; experience:string};
-type ContactObstacle = Pick<DOMRect,'left'|'right'|'top'|'bottom'> & {gap:number; kind:'control'|'photo'|'faq'};
+type ContactObstacle = Pick<DOMRect,'left'|'right'|'top'|'bottom'> & {gap:number; kind:'control'|'photo'|'text'};
 const navigation = ['how', 'learn', 'included', 'dates', 'faq'] as const;
+// F10 authorizes these existing illustrations for this offer's supporting
+// sections. The catalog remains byte/dimension provenance, not new copy or
+// historical-stage authority; no generated replacements or venue-photo claim.
+function supportingScene(slot:'foundation'|'advanced'|'advanced-mobile'|'form') {
+ const asset=sceneAssets.assets.find(item=>item.slot===slot);
+ if(!asset)throw new Error('TRIP390_SUPPORTING_ASSET_REQUIRED');
+ return asset;
+}
+const preparationScene=supportingScene('foundation');
+const knowledgeScene=supportingScene('advanced');
+const knowledgeMobileScene=supportingScene('advanced-mobile');
+const outingScene=supportingScene('form');
 
 /** Candidate frontend. The existing integrator owns route mounting and the
  * admitted transport. Never map this payload into fabricated legacy fields. */
@@ -119,17 +132,17 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, submi
     .map(rect=>({left:rect.left,right:rect.right,top:rect.top,bottom:rect.bottom,gap,kind:'control'}));
    // FAQ rows remain full-width touch targets. Only their actual question
    // text and disclosure glyph need overlay clearance, not empty row padding.
-   const addFaqRect=(rect:DOMRect)=>{
+   const addTextRect=(rect:DOMRect)=>{
     if(rect.width>0&&rect.height>0&&rect.bottom>0&&rect.top<window.innerHeight&&rect.left<box.right+4&&rect.right>box.left-4)
-     obstacles.push({left:rect.left,right:rect.right,top:rect.top,bottom:rect.bottom,gap:4,kind:'faq'});
+     obstacles.push({left:rect.left,right:rect.right,top:rect.top,bottom:rect.bottom,gap:4,kind:'text'});
    };
-   page.current?.querySelectorAll<HTMLElement>('[data-trip390-faq]>summary').forEach(summary=>{
-    if(!summary.getClientRects().length||getComputedStyle(summary).visibility==='hidden')return;
+   page.current?.querySelectorAll<HTMLElement>('[data-trip390-faq]>summary,h2,h3').forEach(summary=>{
+    if(summary.closest('dialog')||!summary.getClientRects().length||getComputedStyle(summary).visibility==='hidden')return;
     const walker=document.createTreeWalker(summary,NodeFilter.SHOW_TEXT);
     for(let text=walker.nextNode();text;text=walker.nextNode()){
      if(!text.textContent?.trim())continue;
      const range=document.createRange();range.selectNodeContents(text);
-     Array.from(range.getClientRects()).forEach(addFaqRect);
+     Array.from(range.getClientRects()).forEach(addTextRect);
     }
    });
    const image=hero.current?.querySelector('img');
@@ -155,11 +168,11 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, submi
    const headerFloor=(header.current?.getBoundingClientRect().bottom??0)+gap;
    let top=baseTop,maxLift=168;
    // Three button heights for controls; up to four for a protected photo or
-   // actual FAQ text/glyph. Ordinary paragraphs never displace contact.
+   // actual FAQ text/glyph or heading text. Paragraphs never displace contact.
    for(let index=0;index<=obstacles.length;index++){
     const overlap=obstacles.filter(rect=>rect.top<top+box.height+rect.gap&&rect.bottom>top-rect.gap);
     if(!overlap.length)break;
-    if(overlap.some(rect=>rect.kind==='photo'||rect.kind==='faq'))maxLift=224;
+    if(overlap.some(rect=>rect.kind==='photo'||rect.kind==='text'))maxLift=224;
     top=Math.min(...overlap.map(rect=>rect.top-box.height-rect.gap));
     if(top<Math.max(headerFloor,baseTop-maxLift))break;
    }
@@ -200,9 +213,12 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, submi
   const measure=()=>{
    page.current?.style.setProperty('--header-height',`${header.current?.getBoundingClientRect().height??80}px`);
    page.current?.style.setProperty('--review-height',`${reviewNote.current?.getBoundingClientRect().height??28}px`);
+   // Derive text reflow from font scale, never from the resulting card width.
+   if(page.current)page.current.dataset.textReflow=String(parseFloat(getComputedStyle(page.current).fontSize)>=26);
   };
   const observer=typeof ResizeObserver==='undefined'?null:new ResizeObserver(measure);
   if(header.current)observer?.observe(header.current);if(reviewNote.current)observer?.observe(reviewNote.current);
+  if(page.current)observer?.observe(page.current);
   window.addEventListener('resize',measure);measure();
   return()=>{observer?.disconnect();window.removeEventListener('resize',measure);};
  },[]);
@@ -339,12 +355,23 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, submi
    <section id="how" className={styles.section} aria-labelledby="trip390-how-title">
     <div className={styles.sectionHeading}><h2 id="trip390-how-title">{copy.nav.how}</h2></div>
     <p className={styles.lead}>{copy.hero.includes}</p>
-    <ol className={styles.steps}>{copy.steps.map(step=><li key={step.title}><h3>{step.title}</h3><p>{step.body}</p></li>)}</ol>
+    <div className={styles.preparationFeature}>
+     <figure className={styles.sceneFigure} data-trip390-scene="foundation"><img className={styles.supportingScene} data-academy-scene="foundation" src={preparationScene.publicPath} width={preparationScene.width} height={preparationScene.height} loading="lazy" alt={t('Illustration of organized fishing equipment','איור של ציוד דיג מסודר')}/></figure>
+     <ol className={styles.steps}>{copy.steps.slice(0,2).map(step=><li key={step.title}><h3>{step.title}</h3><p>{step.body}</p></li>)}</ol>
+    </div>
+    <div className={styles.outingFeature}>
+     <figure className={styles.sceneFigure} data-trip390-scene="form"><img className={styles.supportingScene} data-academy-scene="form" src={outingScene.publicPath} width={outingScene.width} height={outingScene.height} loading="lazy" alt={t('Illustration of a calm coastal scene','איור של חוף שקט')}/></figure>
+     <div>{copy.steps.slice(2).map(step=><div key={step.title}><h3>{step.title}</h3><p>{step.body}</p></div>)}</div>
+    </div>
    </section>
    <section id="learn" className={`${styles.section} ${styles.skillsSection}`} aria-labelledby="trip390-learn-title">
     <div className={styles.sectionHeading}><h2 id="trip390-learn-title">{copy.nav.learn}</h2></div>
     <p className={styles.pillars}>{copy.hero.pillars}</p>
-    <div className={styles.skills}>{copy.skills.map(skill=><article key={skill.title}><h3>{skill.title}</h3><p>{skill.body}</p></article>)}</div>
+    <div className={styles.knowledgeFeature}>
+     <figure className={`${styles.sceneFigure} ${styles.knowledgePicture}`} data-trip390-scene="advanced"><picture><source media="(max-width:767px)" srcSet={knowledgeMobileScene.publicPath} width={knowledgeMobileScene.width} height={knowledgeMobileScene.height}/><img className={styles.supportingScene} data-academy-scene="advanced" src={knowledgeScene.publicPath} width={knowledgeScene.width} height={knowledgeScene.height} loading="lazy" alt={t('Illustration of a large fish beneath the surface','איור של דג גדול מתחת לפני המים')}/></picture></figure>
+     <div className={styles.knowledgeText}>{copy.skills.slice(0,2).map(skill=><article key={skill.title}><h3>{skill.title}</h3><p>{skill.body}</p></article>)}</div>
+    </div>
+    <div className={styles.skills}>{copy.skills.slice(2).map(skill=><article key={skill.title}><h3>{skill.title}</h3><p>{skill.body}</p></article>)}</div>
     <div className={styles.torah}><h3>{copy.torah.title}</h3><p>{copy.torah.body}</p></div>
    </section>
    <section id="included" className={styles.packageSection} aria-labelledby="trip390-package-title"><div className={styles.packageInner}>

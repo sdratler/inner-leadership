@@ -54,9 +54,19 @@
 .intro>p:last-child{color:var(--muted);margin:0}
 .audience{background:#eff5f8;text-align:center}
 .audience .section{padding-block:40px;max-inline-size:850px}.audience p{margin:0}
-.steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:28px;margin:32px 0 0;padding:0;list-style:none}
+.steps{display:grid;grid-template-columns:1fr;gap:24px;margin:0;padding:0;list-style:none}
 .steps li{border-block-start:3px solid #d3ac49;padding:24px;background:var(--sand);min-inline-size:0;border-radius:0 0 8px 8px}
 .page .steps h3{font-size:22px;line-height:1.35;margin-block-end:12px}.page .steps p{font-size:18px;color:var(--muted);margin:0}
+/* F10: three purposeful supporting placements, original proportions intact. */
+.sceneFigure{margin:0;min-inline-size:0}
+.supportingScene{display:block;inline-size:100%;block-size:auto;border-radius:8px}
+.preparationFeature{display:grid;grid-template-columns:1.15fr 1fr;align-items:center;gap:40px;margin-block-start:32px}
+.outingFeature{display:grid;grid-template-columns:1.4fr 1fr;align-items:center;gap:40px;margin-block-start:40px;padding-block-start:40px;border-block-start:1px solid var(--line)}
+.page .outingFeature h3,.page .knowledgeText h3{font-size:23px;margin-block-end:12px}
+.outingFeature p,.knowledgeText p{color:var(--muted);margin:0}
+.knowledgeFeature{display:grid;grid-template-columns:1.15fr 1fr;align-items:center;gap:40px;margin-block:28px 32px}
+.knowledgePicture{display:block;min-inline-size:0}
+.knowledgeText{display:grid;gap:28px}
 .skillsSection{border-block-start:1px solid var(--line)}
 .page .pillars{font-size:18px;color:var(--muted);margin:0 0 28px}
 .skills{display:grid;grid-template-columns:1fr 1fr;column-gap:60px}
@@ -162,12 +172,18 @@
  .heroText{inset-block-start:7%;inset-inline:16px}.page .heroText h1{font-size:clamp(28px,8.1vw,42px);line-height:1.12}.heroAction{inset-block-end:calc(90px + env(safe-area-inset-bottom));inset-inline:20px}
  .section,.packageInner,.footer{padding-inline:20px}.section{padding-block:44px}
  .page .sectionHeading h2{font-size:29px}.page .lead{font-size:18px}
- .steps{grid-template-columns:1fr;gap:24px;margin-block-start:28px}
+ .preparationFeature,.outingFeature,.knowledgeFeature{grid-template-columns:1fr;gap:24px}
+ .preparationFeature{margin-block-start:28px}.outingFeature{margin-block-start:32px;padding-block-start:32px}
+ .knowledgePicture{inline-size:min(100%,280px);margin-inline:auto}
+ .steps{gap:24px}
  .page .steps h3{font-size:21px}.page .steps p,.page .skills p,.page .inclusionColumns p,.page .returning p,.page .dates p,.page .faqs details>p,.included li,.separate li{font-size:17px}
  .skills{grid-template-columns:1fr}.skills article{padding-block:20px}.page .skills h3{font-size:22px}.torah{padding:24px 20px}
  .packageInner{grid-template-columns:1fr;gap:28px;padding-block:44px}.page .packageIntro h2{font-size:30px}.packageIntro .action{inline-size:100%}
  .inclusionColumns{gap:24px;grid-template-columns:1fr}.inclusionColumns>div+div{border-block-start:1px solid #deddd4;padding-block-start:24px}
  .dates{grid-template-columns:1fr;gap:28px;padding:28px 24px}.page .dates h2{font-size:27px}
+ .page[data-text-reflow=true] .dates{padding:0;background:transparent;color:inherit;border-radius:0}
+ .page[data-text-reflow=true] .dates p{color:var(--muted)}
+ .page[data-text-reflow=true] .location{border-block-start-color:var(--line)}
  .location{border-inline-start:0;border-block-start:1px solid #ffffff35;padding-inline-start:0;padding-block-start:24px}
  .founder{grid-template-columns:1fr;gap:24px;text-align:center}.founder>img{inline-size:136px;block-size:136px;margin-inline:auto}.founder p{margin-inline:auto}
  .faqLayout{grid-template-columns:1fr;gap:36px}.faqGroup>h3{font-size:21px}.page .faqs summary{padding:32px 0}

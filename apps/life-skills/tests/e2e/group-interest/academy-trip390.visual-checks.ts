@@ -99,3 +99,26 @@ export async function inspectFaqContact(page:Page){
   return {findings,lang:document.querySelector('[class*="trip390"][lang]')?.getAttribute('lang'),position:{x:b.x,y:b.y,width:b.width,height:b.height}};
  });
 }
+
+/** Catch an isolated-letter heading fragment without banning useful reflow. */
+export async function inspectBodyHeadings(page:Page){
+ return page.evaluate(()=>{
+  const findings:Array<{heading:string;word:string;lineLengths:number[]}>=[];
+  for(const heading of document.querySelectorAll('h2,h3')){
+   if(!heading.getClientRects().length)continue;
+   const walker=document.createTreeWalker(heading,NodeFilter.SHOW_TEXT);
+   for(let text=walker.nextNode();text;text=walker.nextNode())for(const match of (text.textContent??'').matchAll(/\p{L}{4,}/gu)){
+    const range=document.createRange();range.setStart(text,match.index!);range.setEnd(text,match.index!+match[0].length);
+    if(range.getClientRects().length<2)continue;
+    const lines=new Map<number,number>();
+    for(let i=0;i<match[0].length;i++){
+     const char=document.createRange();char.setStart(text,match.index!+i);char.setEnd(text,match.index!+i+1);
+     const box=char.getBoundingClientRect(),top=Math.round(box.top);
+     if(box.width>0)lines.set(top,(lines.get(top)??0)+1);
+    }
+    if([...lines.values()].includes(1))findings.push({heading:heading.id||heading.textContent||'',word:match[0],lineLengths:[...lines.values()]});
+   }
+  }
+  return findings;
+ });
+}

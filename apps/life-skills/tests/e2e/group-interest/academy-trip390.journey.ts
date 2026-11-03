@@ -1,15 +1,23 @@
-import {randomUUID} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import {readFileSync,writeFileSync} from 'node:fs';
 import {expect,test} from '@playwright/test';
 import {trip390CommandSchema,trip390Copy,TRIP390_NOTICE_VERSION,type Trip390Command} from '../../../src/features/group-application/academy-trip390-contract.ts';
 import {TRIP390_MEDIA_TYPE} from '../../../src/features/group-application/academy-trip390-transport.ts';
-import {inspectLanding,inspectDialog,inspectFaqContact} from './academy-trip390.visual-checks.ts';
+import {inspectLanding,inspectDialog,inspectFaqContact,inspectBodyHeadings} from './academy-trip390.visual-checks.ts';
+import scenes from '../../../src/features/group-application/academy-scenes.json' with {type:'json'};
 
 const fixture=process.env.LS_GROUP_INTEREST_FIXTURE_PATH;
 if(!fixture||process.env.LS_ACADEMY_TRIP390_UI_ONLY!=='true')throw Error('TRIP390_DISPOSABLE_FIXTURE_REQUIRED');
 const runtime=JSON.parse(readFileSync(fixture,'utf8')) as {origin:string;academy:{email:string;password:string}};
 if(!/^https:\/\/localhost:310[5678]$/.test(runtime.origin)||!runtime.academy)throw Error('TRIP390_FIXTURE_ORIGIN_REQUIRED');
 test.use({baseURL:runtime.origin});
+test.beforeAll(()=>{
+ for(const slot of ['foundation','advanced','advanced-mobile','form']){
+  const asset=scenes.assets.find(item=>item.slot===slot)!;
+  const bytes=readFileSync('public'+asset.publicPath);
+  expect(bytes.length).toBe(asset.bytes);expect(createHash('sha256').update(bytes).digest('hex')).toBe(asset.sha256);
+ }
+});
 
 for(const locale of ['en','he'] as const)test(`${locale}: real two-child save, response loss, exact retry and authenticated owner readback`,async({page})=>{
  const copy=trip390Copy[locale],other=locale==='en'?'he':'en';
@@ -111,12 +119,24 @@ test('landing matrix, native dialog interactions and independent holdout regress
    await page.setViewportSize({width,height});
    await page.goto('/'+locale+'/florida');
    await expect(page.locator('#trip390-title')).toBeVisible();
+   await expect(page.locator('[data-trip390-scene]')).toHaveCount(3);
+   for(const slot of ['foundation','advanced','form']){
+    const figure=page.locator(`[data-trip390-scene="${slot}"]`),image=figure.locator('img');
+    await image.scrollIntoViewIfNeeded();
+    await expect.poll(()=>image.evaluate(node=>(node as HTMLImageElement).complete&&(node as HTMLImageElement).naturalWidth>0)).toBe(true);
+    const selected=slot==='advanced'&&width<768?'advanced-mobile':slot;
+    const asset=scenes.assets.find(item=>item.slot===selected)!;
+    const dimensions=await image.evaluate(node=>{const image=node as HTMLImageElement,b=image.getBoundingClientRect();return{source:new URL(image.currentSrc).pathname,width:image.naturalWidth,height:image.naturalHeight,ratio:b.width/b.height};});
+    expect(dimensions).toMatchObject({source:asset.publicPath,width:asset.width,height:asset.height});
+    expect(Math.abs(dimensions.ratio-asset.width/asset.height)).toBeLessThan(.005);
+    if(width===1440||width===390)await page.screenshot({path:info.outputPath(`${locale}-${width}x${height}-${slot}-placement.png`)});
+   }
    const portrait=page.locator('img[src="/groups/people/founder-head.jpg"]');
    await portrait.scrollIntoViewIfNeeded();
    await expect.poll(()=>portrait.evaluate(image=>(image as HTMLImageElement).complete&&(image as HTMLImageElement).naturalWidth>0)).toBe(true);
    if(width===1440||width===390)await page.screenshot({path:info.outputPath(`${locale}-${width}x${height}-founder.png`)});
    await page.evaluate(async()=>{await document.fonts.ready;window.scrollTo(0,0);});
-   await expect.poll(()=>page.locator('picture img').evaluate(image=>(image as HTMLImageElement).complete&&(image as HTMLImageElement).naturalWidth>0)).toBe(true);
+   await expect.poll(()=>page.locator('section[aria-labelledby="trip390-title"] picture img').evaluate(image=>(image as HTMLImageElement).complete&&(image as HTMLImageElement).naturalWidth>0)).toBe(true);
    await expect.poll(async()=>(await inspectLanding(page)).findings).toEqual([]);
    const landing=await inspectLanding(page);diagnostics.push({locale,width,height,landing});
    await page.screenshot({path:info.outputPath(`${locale}-${width}x${height}-hero.png`)});
@@ -173,6 +193,10 @@ test('landing matrix, native dialog interactions and independent holdout regress
   await expect.poll(()=>page.locator('section[data-reflow="true"]').count()).toBe(1);
   const enlargedPortrait=page.locator('img[src="/groups/people/founder-head.jpg"]');await enlargedPortrait.scrollIntoViewIfNeeded();
   await expect.poll(()=>enlargedPortrait.evaluate(image=>(image as HTMLImageElement).complete&&(image as HTMLImageElement).naturalWidth>0)).toBe(true);
+  await expect.poll(()=>inspectBodyHeadings(page)).toEqual([]);
+  diagnostics.push({locale,enlargedBodyHeadingFindings:await inspectBodyHeadings(page)});
+  await page.evaluate(()=>document.querySelector('#trip390-dates-title')?.scrollIntoView({block:'start'}));
+  await page.screenshot({path:info.outputPath(`${locale}-200percent-dates-viewport.png`)});
   await page.evaluate(()=>window.scrollTo(0,0));
   await expect.poll(async()=>(await inspectLanding(page)).findings).toEqual([]);
   const enlarged=await inspectLanding(page);diagnostics.push({locale,textEmulation:'200% computed font sizes',enlarged});
