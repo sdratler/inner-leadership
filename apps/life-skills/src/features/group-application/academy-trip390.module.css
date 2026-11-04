@@ -166,10 +166,12 @@
 .page .whatsapp[hidden]{display:none}
 @media(max-width:1099px){.headerInner{gap:12px}.desktopNav{gap:14px}.desktopNav a{font-size:14px}.page .headerAction{display:none}.languages{margin-inline-start:auto}.packageInner{gap:36px}.faqLayout{gap:32px}}
 @media(max-width:999px){.desktopNav{display:none}.menuButton{display:flex}.headerInner{max-inline-size:none}.skills{grid-template-columns:repeat(2,minmax(0,1fr))}}
+/* Keep foreground above the mobile-original subjects; static short/enlarged flow ignores this inset. */
+@media(max-width:767px),(max-width:999px) and (orientation:portrait){.heroText{inset-block-start:12px}}
 @media(max-width:767px){
  .page{font-size:17px;--header-height:74px}
  .headerInner{min-block-size:74px;padding:7px 20px;gap:10px}.logo img{inline-size:58px;block-size:58px}.languages button{font-size:14px;padding-inline:7px}
- .heroText{inset-block-start:7%;inset-inline:16px}.page .heroText h1{font-size:clamp(28px,8.1vw,42px);line-height:1.12}.heroAction{inset-block-end:calc(90px + env(safe-area-inset-bottom));inset-inline:20px}
+ .heroText{inset-inline:16px}.page .heroText h1{font-size:clamp(28px,8.1vw,42px);line-height:1.12}.heroAction{inset-block-end:calc(90px + env(safe-area-inset-bottom));inset-inline:20px}
  .section,.packageInner,.footer{padding-inline:20px}.section{padding-block:48px}
  .page .sectionHeading h2,.page .packageIntro h2,.page .founder h2,.page .finalInterest h2{font-size:32px}
  .skills{gap:20px}.logisticsPair{grid-template-columns:1fr}
