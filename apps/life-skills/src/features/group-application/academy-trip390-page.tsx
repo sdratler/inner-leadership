@@ -297,7 +297,10 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, reser
    // A tall viewport must not enlarge the original beyond the full width:
    // retain its natural image height and continue the navy hero below it.
    node.dataset.photoFit=node.getBoundingClientRect().width*image.naturalHeight/image.naturalWidth<=height?'width':'cover';
-   setHeroReflow(heading.getBoundingClientRect().height>height*.25||action.getBoundingClientRect().height>height*.18);
+   // A portrait viewport receiving the landscape original uses the existing
+   // natural flow: no photo enlargement/crop or tall empty continuation band.
+   const portraitLandscape=window.matchMedia('(orientation: portrait)').matches&&image.naturalWidth>image.naturalHeight;
+   setHeroReflow(portraitLandscape||heading.getBoundingClientRect().height>height*.25||action.getBoundingClientRect().height>height*.18);
   };
   const observer=typeof ResizeObserver==='undefined' ? null : new ResizeObserver(measure);
   [image,heading,action].forEach(element=>observer?.observe(element));

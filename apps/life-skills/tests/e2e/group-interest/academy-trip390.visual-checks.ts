@@ -1,9 +1,22 @@
 import type {Page} from '@playwright/test';
 import {trip390Copy} from '../../../src/features/group-application/academy-trip390-contract.ts';
 
+export type HeroContentSnapshot={locale:string|null;blocks:string[];allText:string;headingCount:number;titleCount:number;paragraphCount:number;actionCount:number;linkCount:number};
+
+/** Match the approved locale's complete hero, not an obsolete keyword blacklist. */
+export function matchesCurrentHeroContent(observed:HeroContentSnapshot,copy:typeof trip390Copy=trip390Copy){
+ if(observed.locale!=='en'&&observed.locale!=='he')return false;
+ const hero=copy[observed.locale].hero;
+ const expected=[hero.eyebrow,hero.title,hero.pillars,hero.interest_cta];
+ const normalize=(value:string)=>value.replace(/\s+/g,' ').trim();
+ return observed.headingCount===1&&observed.titleCount===1&&observed.paragraphCount===2&&observed.actionCount===1&&observed.linkCount===1
+  &&observed.blocks.length===expected.length&&observed.blocks.every((value,index)=>normalize(value)===normalize(expected[index]!))
+  &&normalize(observed.allText)===normalize(expected.join(' '));
+}
+
 /** Scoped measurable checks, not a visual score or substitute for image review. */
 export async function inspectLanding(page:Page){
- return page.evaluate(expectedFaqIds=>{
+ const observed=await page.evaluate(expectedFaqIds=>{
   const findings:string[]=[];
   const box=(node:Element)=>node.getBoundingClientRect();
   const heading=document.querySelector('#trip390-title')!;
@@ -13,7 +26,13 @@ export async function inspectLanding(page:Page){
   if(document.documentElement.scrollWidth>innerWidth+1)findings.push('page-horizontal-overflow');
   if(Math.abs(hb.left)>1||Math.abs(hb.right-width)>1)findings.push('hero-boxed');
   if(!photo.complete||!photo.naturalWidth)findings.push('hero-image-unloaded');
-  if(/390|USD|9\+|אחריות|Cooperation/.test(hero.textContent??''))findings.push('hero-competing-details');
+  const headingBlocks=hero.querySelectorAll('[data-hero-heading]'),actions=hero.querySelectorAll('[data-hero-action]');
+  const paragraphs=hero.querySelectorAll('[data-hero-heading] > p'),links=hero.querySelectorAll('[data-hero-action] a');
+  const textNodes:string[]=[],walker=document.createTreeWalker(hero,NodeFilter.SHOW_TEXT);
+  for(let text=walker.nextNode();text;text=walker.nextNode())if(text.textContent?.trim())textNodes.push(text.textContent);
+  const heroContent:HeroContentSnapshot={locale:hero.closest('[lang]')?.getAttribute('lang')??null,
+   blocks:[paragraphs[0]?.textContent??'',[...heading.querySelectorAll('span')].map(span=>span.textContent??'').join(' '),paragraphs[1]?.textContent??'',links[0]?.textContent??''],
+   allText:textNodes.join(' '),headingCount:headingBlocks.length,titleCount:hero.querySelectorAll('h1').length,paragraphCount:paragraphs.length,actionCount:actions.length,linkCount:links.length};
   for(const span of heading.querySelectorAll('span')){
    const walker=document.createTreeWalker(span,NodeFilter.SHOW_TEXT);
    for(let text=walker.nextNode();text;text=walker.nextNode())for(const match of (text.textContent??'').matchAll(/\S+/g)){
@@ -65,8 +84,10 @@ export async function inspectLanding(page:Page){
     if(c.left<b.right&&c.right>b.left&&c.top<b.bottom&&c.bottom>b.top)findings.push('whatsapp-obscures-control');
    }
   }
-  return {findings,viewport:{width:innerWidth,height:innerHeight},headerHeight:header.height,hero:{left:hb.left,width:hb.width,height:hb.height,bottom:hb.bottom},image:{src:photo.currentSrc,fit,subject},faqCount:faq.querySelectorAll('[data-trip390-faq]').length};
+  return {findings,heroContent,viewport:{width:innerWidth,height:innerHeight},headerHeight:header.height,hero:{left:hb.left,width:hb.width,height:hb.height,bottom:hb.bottom},image:{src:photo.currentSrc,fit,subject},faqCount:faq.querySelectorAll('[data-trip390-faq]').length};
  },trip390Copy.en.faqs.map(item=>item.id));
+ if(!matchesCurrentHeroContent(observed.heroContent))observed.findings.push('hero-competing-details');
+ return observed;
 }
 
 export async function inspectDialog(page:Page){
