@@ -3,7 +3,7 @@ import {readFileSync,writeFileSync} from 'node:fs';
 import {expect,test} from '@playwright/test';
 import {trip390CommandSchema,trip390Copy,TRIP390_NOTICE_VERSION,type Trip390Command} from '../../../src/features/group-application/academy-trip390-contract.ts';
 import {TRIP390_MEDIA_TYPE} from '../../../src/features/group-application/academy-trip390-transport.ts';
-import {inspectLanding,inspectDialog,inspectFaqContact,inspectBodyHeadings} from './academy-trip390.visual-checks.ts';
+import {inspectLanding,inspectDialog,inspectFaqContact,inspectBodyHeadings,inspectBodyContact} from './academy-trip390.visual-checks.ts';
 import scenes from '../../../src/features/group-application/academy-scenes.json' with {type:'json'};
 
 const fixture=process.env.LS_GROUP_INTEREST_FIXTURE_PATH;
@@ -27,12 +27,14 @@ for(const locale of ['en','he'] as const)test(`${locale}: real two-child save, r
  await page.goto('/'+locale+'/florida');
  await expect(page.locator('#trip390-title')).toBeVisible();
  await expect(page).toHaveTitle(copy.metadata.title);
- await expect(page.locator('#main')).toContainText(copy.hero.offer);
+ await expect(page.locator('#main')).toContainText(copy.price.amount);
+ await expect(page.locator('#main')).toContainText(copy.price.per_boy);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1)).toBe(true);
  await page.screenshot({path:test.info().outputPath(locale+'-trip390-landing.png'),fullPage:true});
  await page.goto('/'+locale+'/florida/apply#academy-form');
  await expect(page).toHaveURL('/'+locale+'/florida/apply#interest');
  const dialog=page.getByRole('dialog'),form=dialog.locator('form');
+ await expect.poll(()=>page.locator('img[src="/groups/people/founder-head.jpg"]').evaluate(node=>(node as HTMLImageElement).complete&&(node as HTMLImageElement).naturalWidth>0)).toBe(true);
  await expect(dialog).toBeVisible();
  await expect(form.locator('button[type=submit]')).toBeVisible();
  await expect(form.locator('button[type=submit]')).toBeEnabled();
@@ -75,7 +77,7 @@ for(const locale of ['en','he'] as const)test(`${locale}: real two-child save, r
  });
  await form.locator('button[type=submit]').click();
  await expect(form.locator('button[type=submit]')).toBeDisabled();
- await expect(form.locator('button[type=submit]')).toHaveText(copy.form.sending+'↗');
+ await expect(form.locator('button[type=submit]')).toHaveText(copy.form.sending);
  await expect(form.getByRole('alert')).toHaveText(copy.form.save_unknown);
  await expect(form.locator('[name=guardianName]')).toBeDisabled();expect(requests).toHaveLength(1);
  // The native modal makes the page header inert; locale switching is local to it.
@@ -108,6 +110,25 @@ for(const locale of ['en','he'] as const)test(`${locale}: real two-child save, r
  const read=await page.request.get(privatePath);expect(read.status()).toBe(200);expect(read.headers()['cache-control']).toContain('no-store');
  const {data}=await read.json();expect(data.items).toHaveLength(1);expect(data.items[0].id).toBe(reference);expect(data.items[0].fields).toEqual(fields);
  await page.reload();await expect(article).toContainText(reference);await expect(article).toContainText(fields.children[1]!.name);
+ const followup=await page.request.get('/api/private/group-applications/followups?id='+reference);
+ expect(followup.status()).toBe(200);
+ const followupResult=await followup.json();expect(followupResult.ok).toBe(true);expect(followupResult.data.followup.version).toBe(0);
+ await expect(page.getByText(locale==='en'?'Follow-up could not be read. Try again.':'לא ניתן לקרוא את המעקב. אפשר לנסות שוב.',{exact:true})).toHaveCount(0);
+ await page.screenshot({path:test.info().outputPath(locale+'-owner-detail.png'),fullPage:true});
+ await page.getByRole('button',{name:locale==='en'?'Back to all inquiries':'חזרה לכל הפניות',exact:true}).click();
+ await expect(page).not.toHaveURL(/inquiryId=/);
+ // Start at the ordinary list URL, without inheriting the initial direct-link
+ // reference; selection must survive a real reload in its own right.
+ await page.goto('/'+locale+'/app/group-applications');
+ await page.getByLabel(locale==='en'?'Search saved inquiries':'חיפוש בפניות שמורות',{exact:true}).fill(guardian);
+ await page.getByRole('button',{name:locale==='en'?'Search':'חיפוש',exact:true}).click();
+ const row=page.locator(`[data-inquiry-row="${reference}"]`);await expect(row).toContainText(guardian);
+ for(const child of children)await expect(row).toContainText(child.name);
+ await page.screenshot({path:test.info().outputPath(locale+'-owner-list.png'),fullPage:true});
+ await row.getByRole('button',{name:locale==='en'?'Open inquiry from '+guardian:'פתיחת הפנייה של '+guardian,exact:true}).click();
+ await expect(page).toHaveURL(new RegExp('inquiryId='+reference));
+ await expect(article).toContainText(zip);await expect(article).toContainText(fields.children[1]!.name);
+ await page.reload();await expect(article).toContainText(fields.children[0]!.name);await expect(article).toContainText(fields.children[1]!.name);
 });
 
 test('landing matrix, native dialog interactions and independent holdout regression',async({page},info)=>{
@@ -119,6 +140,9 @@ test('landing matrix, native dialog interactions and independent holdout regress
    await page.setViewportSize({width,height});
    await page.goto('/'+locale+'/florida');
    await expect(page.locator('#trip390-title')).toBeVisible();
+   await page.evaluate(()=>document.fonts.ready);
+   // Cold page / no scroll: eager portrait must load on every route and size.
+   await expect.poll(()=>page.locator('img[src="/groups/people/founder-head.jpg"]').evaluate(node=>(node as HTMLImageElement).complete&&(node as HTMLImageElement).naturalWidth>0)).toBe(true);
    await expect(page.locator('[data-trip390-scene]')).toHaveCount(3);
    for(const slot of ['foundation','advanced','form']){
     const figure=page.locator(`[data-trip390-scene="${slot}"]`),image=figure.locator('img');
@@ -129,7 +153,10 @@ test('landing matrix, native dialog interactions and independent holdout regress
     const dimensions=await image.evaluate(node=>{const image=node as HTMLImageElement,b=image.getBoundingClientRect();return{source:new URL(image.currentSrc).pathname,width:image.naturalWidth,height:image.naturalHeight,ratio:b.width/b.height};});
     expect(dimensions).toMatchObject({source:asset.publicPath,width:asset.width,height:asset.height});
     expect(Math.abs(dimensions.ratio-asset.width/asset.height)).toBeLessThan(.005);
-    if(width===1440||width===390)await page.screenshot({path:info.outputPath(`${locale}-${width}x${height}-${slot}-placement.png`)});
+    if(width===1440||width===390){
+     await expect.poll(async()=>(await inspectBodyContact(page)).findings).toEqual([]);
+     await page.screenshot({path:info.outputPath(`${locale}-${width}x${height}-${slot}-placement.png`)});
+    }
    }
    const portrait=page.locator('img[src="/groups/people/founder-head.jpg"]');
    await portrait.scrollIntoViewIfNeeded();
@@ -146,6 +173,15 @@ test('landing matrix, native dialog interactions and independent holdout regress
    const dialog=page.getByRole('dialog');await expect(dialog).toBeVisible();
    await expect.poll(async()=>(await inspectDialog(page)).findings).toEqual([]);
    await page.screenshot({path:info.outputPath(`${locale}-${width}x${height}-dialog.png`)});
+   if(width===320||width===375||height===390){
+    const submit=dialog.locator('button[type=submit]');
+    await dialog.locator('[name=whatsapp]').focus();await page.keyboard.press('Tab');await expect(submit).toBeFocused();
+    await expect.poll(async()=>{const b=await submit.boundingBox(),h=await dialog.getByRole('heading',{name:trip390Copy[locale].form.title,exact:true}).locator('..').boundingBox();return b!==null&&h!==null&&b.y>=h.y+h.height&&b.y+b.height<=height;}).toBe(true);
+    await page.screenshot({path:info.outputPath(`${locale}-${width}x${height}-dialog-submit-keyboard.png`)});
+    await submit.click();await expect(dialog.getByRole('alert')).toBeVisible();
+    await expect(dialog.locator('[name=guardianName]')).toHaveAttribute('aria-invalid','true');
+    await page.screenshot({path:info.outputPath(`${locale}-${width}x${height}-dialog-validation.png`)});
+   }
    await page.keyboard.press('Escape');await expect(dialog).not.toBeVisible();
    await expect(page.locator('[data-hero-action] a')).toBeFocused();
   }
@@ -173,6 +209,13 @@ test('landing matrix, native dialog interactions and independent holdout regress
   expect(anchor!.y).toBeGreaterThanOrEqual(header!.height);
   await page.locator('header button[lang="'+locale+'"]').click();
   await expect(page.locator('header button[lang="'+locale+'"]')).toHaveAttribute('aria-pressed','true');
+  await menu.click();await page.locator('#trip390-menu a[href="#faq"]').click();
+  const faqHeading=page.locator('#trip390-faq-title');await expect.poll(async()=>{const h=await page.locator('header').boundingBox(),q=await faqHeading.boundingBox();return q!.y>=h!.height;}).toBe(true);
+  await details.nth(longest).locator('summary').click();await expect(details.nth(longest)).toHaveAttribute('open','');
+  await details.nth(longest).locator('summary').scrollIntoViewIfNeeded();
+  await expect.poll(async()=>(await inspectBodyContact(page)).findings).toEqual([]);
+  await page.screenshot({path:info.outputPath(`${locale}-mobile-faq-expanded.png`)});
+  await details.nth(longest).locator('summary').click();
   await page.evaluate(()=>document.querySelector('#faq')?.scrollIntoView({block:'start'}));
   await expect.poll(async()=>(await inspectFaqContact(page)).findings).toEqual([]);
   await page.screenshot({path:info.outputPath(`${locale}-mobile-faq-viewport.png`)});
@@ -196,6 +239,7 @@ test('landing matrix, native dialog interactions and independent holdout regress
   await expect.poll(()=>inspectBodyHeadings(page)).toEqual([]);
   diagnostics.push({locale,enlargedBodyHeadingFindings:await inspectBodyHeadings(page)});
   await page.evaluate(()=>document.querySelector('#trip390-dates-title')?.scrollIntoView({block:'start'}));
+  await expect.poll(async()=>(await inspectBodyContact(page)).findings).toEqual([]);
   await page.screenshot({path:info.outputPath(`${locale}-200percent-dates-viewport.png`)});
   await page.evaluate(()=>window.scrollTo(0,0));
   await expect.poll(async()=>(await inspectLanding(page)).findings).toEqual([]);

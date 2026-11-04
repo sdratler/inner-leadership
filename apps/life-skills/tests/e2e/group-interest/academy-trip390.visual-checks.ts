@@ -22,6 +22,10 @@ export async function inspectLanding(page:Page){
   }
   if(innerHeight>600&&hero.getAttribute('data-reflow')!=='true'&&Math.abs(hb.bottom-innerHeight)>3)findings.push('hero-first-screen-height');
   if(getComputedStyle(document.querySelector('header')!).position!=='sticky')findings.push('header-not-sticky');
+  const primary=[...document.querySelectorAll<HTMLAnchorElement>('[data-hero-action] a,header a[href="#interest"]')];
+  if(!primary.some(node=>{const b=box(node),s=getComputedStyle(node);return s.display!=='none'&&s.visibility!=='hidden'&&b.width>=48&&b.height>=48&&b.top>=0&&b.bottom<=innerHeight&&b.left>=0&&b.right<=innerWidth;}))findings.push('initial-primary-action-unreachable');
+  if(primary.some(node=>/[↗→]/.test(node.textContent??'')))findings.push('ornamental-primary-arrow');
+  if(document.body.textContent?.includes('Review candidate ·'))findings.push('internal-review-banner');
   // These focal rectangles come from inspecting the exact protected originals
   // for this task. They cover faces/hands/people, not a second asset master.
   const mobile=photo.currentSrc.includes('hero-mobile');
@@ -77,6 +81,8 @@ export async function inspectDialog(page:Page){
   const scrollable=[...node.querySelectorAll<HTMLElement>('*')].filter(x=>['auto','scroll'].includes(getComputedStyle(x).overflowY)&&x.scrollHeight>x.clientHeight+1);
   if(scrollable.length!==1)findings.push('dialog-scroll-regions');
   if(document.documentElement.scrollWidth>innerWidth+1)findings.push('dialog-horizontal-overflow');
+  const contact=document.querySelector<HTMLAnchorElement>('a[class*="whatsapp"]');
+  if(contact&&getComputedStyle(contact).display!=='none'&&getComputedStyle(contact).visibility!=='hidden')findings.push('background-contact-visible-in-modal');
   return {findings,viewport:{width:innerWidth,height:innerHeight},close:{x:c.x,y:c.y,width:c.width,height:c.height},scrollRegions:scrollable.length};
  });
 }
@@ -100,7 +106,7 @@ export async function inspectFaqContact(page:Page){
  });
 }
 
-/** Catch an isolated-letter heading fragment without banning useful reflow. */
+/** Whole words reflow between lines; letter fragments are not readable headings. */
 export async function inspectBodyHeadings(page:Page){
  return page.evaluate(()=>{
   const findings:Array<{heading:string;word:string;lineLengths:number[]}>=[];
@@ -116,9 +122,30 @@ export async function inspectBodyHeadings(page:Page){
      const box=char.getBoundingClientRect(),top=Math.round(box.top);
      if(box.width>0)lines.set(top,(lines.get(top)??0)+1);
     }
-    if([...lines.values()].includes(1))findings.push({heading:heading.id||heading.textContent||'',word:match[0],lineLengths:[...lines.values()]});
+    if(lines.size>1)findings.push({heading:heading.id||heading.textContent||'',word:match[0],lineLengths:[...lines.values()]});
    }
   }
   return findings;
+ });
+}
+
+/** Actual text ranges, not paragraph boxes, distinguish whitespace from copy. */
+export async function inspectBodyContact(page:Page){
+ return page.evaluate(()=>{
+  const wa=document.querySelector<HTMLAnchorElement>('a[class*="whatsapp"]')!,b=wa.getBoundingClientRect(),findings:string[]=[];
+  if(getComputedStyle(wa).visibility!=='visible'||getComputedStyle(wa).display==='none')findings.push('body-contact-hidden');
+  for(const node of document.querySelectorAll('main p,main li,main h2,main h3,main summary')){
+   if(node.closest('dialog')||!node.getClientRects().length)continue;
+   // Native collapsed details may retain layout rectangles for unpainted text.
+   const closed=node.closest<HTMLDetailsElement>('details:not([open])');
+   if(closed&&!closed.querySelector(':scope > summary')?.contains(node))continue;
+   const walker=document.createTreeWalker(node,NodeFilter.SHOW_TEXT);
+   for(let text=walker.nextNode();text;text=walker.nextNode()){
+    if(!text.textContent?.trim())continue;
+    const range=document.createRange();range.selectNodeContents(text);
+    for(const r of range.getClientRects())if(r.width>0&&r.height>0&&r.left<b.right&&r.right>b.left&&r.top<b.bottom&&r.bottom>b.top)findings.push('body-contact-over-text');
+   }
+  }
+  return {findings,position:{left:b.left,top:b.top,width:b.width,height:b.height}};
  });
 }

@@ -63,6 +63,9 @@ describe("ordinary owner Trip390 interest review",()=>{
   for(const detail of [ref,firstChild,secondChild,"Synthetic Older","Synthetic Younger","01234-5678","Custom &lt;area&gt;","&lt;test note&gt;",fields.offerVersion,fields.version,fields.acknowledgment.version])expect(html).toContain(detail);
   for(const [label,value] of locale==="en"?[["Parent message language","Hebrew"],["Preferred instruction language","English"],["Acknowledgment language","English"],["WhatsApp permission","No"]]:[["שפת ההודעות להורה","עברית"],["שפת הדרכה מועדפת","אנגלית"],["שפת האישור","אנגלית"],["הסכמה להודעות WhatsApp","לא"]])expect(html).toContain("<dt>"+label+"</dt><dd>"+value+"</dd>");
   expect(html).not.toMatch(/<(button|input|form|a)\b/);
+  expect(html).toContain(locale==="he"?"פנייה שמורה לטיול לקיז":"Saved Keys trip inquiry");
+  expect(html).not.toMatch(/awaiting owner review|ממתינה לבדיקת המנהל/);
+  expect(html).toContain("<details><summary>");
  });
  it("filters siblings and actual instruction language while leaving absent historical preferences unknown",()=>{
   const matches=(f:Partial<typeof emptyAcademyInquiryFilters>,record=item)=>matchesAcademyInquiryFilters(record,{...emptyAcademyInquiryFilters,...f});

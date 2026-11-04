@@ -6,6 +6,16 @@ import {trip390InterestSchema,trip390CommandSchema,trip390Quote,trip390Location,
 import {trip390Capacity,trip390SeatDecision,trip390ShopHelperCost,trip390AgeOnDate,trip390Readiness,trip390PublicEvent,trip390ReminderPreview,trip390CapabilityDecision,trip390CheckoutBlockers,trip390Checkout,trip390TestOrder} from '../../src/features/group-application/academy-trip390-operations.ts';
 const fields=()=>({version:TRIP390_INTEREST_VERSION,offerVersion:'JLFA-KEYS390-v1' as const,guardianName:'Synthetic Guardian',email:'synthetic@example.invalid',city:'My Local Neighborhood',postalCode:'01234-5678',messageLanguage:'he' as const,children:[{id:'11111111-1111-4111-8111-111111111111',name:'Synthetic Boy',ageYears:10,experience:'new' as const}],acknowledgment:{version:TRIP390_NOTICE_VERSION,language:'en' as const,conductExplained:true as const,interestPrivacySafety:true as const,whatsapp:false}});
 describe('trip390 versioned interest candidate',()=>{
+ it.each(['en','he'] as const)('uses the selected request copy without implying a confirmed place (%s)',locale=>{
+  const copy=trip390Copy[locale];
+  expect(copy.hero.interest_cta).toBe(locale==='en'?'Reserve Your Spot Now':'שריינו מקום עכשיו');
+  expect(copy.form.title).toBe(locale==='en'?'Request a Spot':'בקשת מקום');
+  expect(copy.form.submit).toBe(locale==='en'?'Send My Request':'שליחת הבקשה');
+  expect(copy.form.saved).toBe(locale==='en'?'Your request has been saved.':'הבקשה שלכם נשמרה.');
+  expect(copy.form.place_not_confirmed).toBeTruthy();
+  expect([copy.hero.interest_cta,copy.form.title,copy.form.submit].join(' ')).not.toMatch(/trip updates|עדכונים על טיולים|↗|→/i);
+  expect(copy.price.amount).toBe('$390');expect(copy.price.per_boy).toBeTruthy();
+ });
  it('accepts arbitrary typed city without creating legacy fields',()=>{const value=trip390InterestSchema.parse(fields());expect(value).not.toHaveProperty('stagePreference');expect(value).not.toHaveProperty('gradeBand');expect(trip390Location(value)).toEqual({city:'My Local Neighborhood',cityKey:'my local neighborhood',postalCode:'01234-5678',postalCode5:'01234'});});
  it.each(['ירושלים','O’Town','St. Somewhere','My-Local Area'])('accepts custom locality %s',city=>expect(trip390InterestSchema.safeParse({...fields(),city}).success).toBe(true));
  it.each(['','A','A\nTown','<\u0000>','Ab\u202eTown'])('rejects invalid/control-bearing city %j',city=>expect(trip390InterestSchema.safeParse({...fields(),city}).success).toBe(false));
