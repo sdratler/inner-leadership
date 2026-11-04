@@ -6,17 +6,20 @@ import {
 import type {Trip390SaveResult} from './academy-trip390-page.tsx';
 import {academyPath,type AcademyRouteMode} from './academy-routing.ts';
 import type {Locale} from '../../lib/locale.ts';
+import {trip390ReservationNotice} from './academy-trip390-reservation-notice.ts';
 
-export const TRIP390_MEDIA_TYPE='application/vnd.jlfa.trip390-interest-v1+json';
+export const TRIP390_V1_MEDIA_TYPE='application/vnd.jlfa.trip390-interest-v1+json';
+export const TRIP390_V2_MEDIA_TYPE='application/vnd.jlfa.trip390-interest-v2+json';
+export const TRIP390_MEDIA_TYPE='application/vnd.jlfa.trip390-interest-v3+json';
 export function academyPublicOffer(environment:Record<string,string|undefined>){
  const selected=environment.LS_ACADEMY_PUBLIC_OFFER;
  if(!selected)return 'legacy';
- return selected===TRIP390_OFFER.version?'trip390':'unavailable';
+ return selected===TRIP390_OFFER.version||selected==='JLFA-KEYS390-v1'?'trip390':'unavailable';
 }
 const endpoint='/api/public/group-applications?program=sunday_fishing_academy';
 function noticeFor(locale:Locale){
  const {form,hero}=trip390Copy[locale];
- return {conduct:form.conduct,interest:form.interest_ack,privacy:form.privacy_short,whatsapp:form.whatsapp,interestNote:hero.interest_note};
+ return {conduct:form.conduct,interest:trip390ReservationNotice(locale).acknowledgment,privacy:form.privacy_short,whatsapp:form.whatsapp,interestNote:hero.interest_note};
 }
 export const trip390Notice={en:noticeFor('en'),he:noticeFor('he')};
 function noticeSchema(locale:Locale){
@@ -30,7 +33,7 @@ const challengeEnvelope=z.object({ok:z.literal(true),requestId:z.uuid(),data:z.o
  challenge:z.string().min(80).max(1024),
 }).strict()}).strict();
 const savedEnvelope=z.object({ok:z.literal(true),requestId:z.uuid(),data:z.object({
- operationId:z.uuid(),reference:z.uuid(),acknowledgment:z.literal('not_queued'),replayed:z.boolean(),
+ operationId:z.uuid(),reference:z.uuid(),acknowledgment:z.enum(['not_queued','queued','sent','unknown','canceled']),replayed:z.boolean(),
 }).strict()}).strict();
 const errorEnvelope=z.object({ok:z.literal(false),requestId:z.uuid(),error:z.object({code:z.string()}).strict()}).strict();
 
@@ -59,7 +62,7 @@ export function createTrip390Transport(
    if(reply.status===200||reply.status===201){
     const saved=savedEnvelope.safeParse(json);
     if(!saved.success||saved.data.data.operationId!==command.operationId)return {state:'unknown'};
-    pending=null;return {state:'saved',operationId:command.operationId,reference:saved.data.data.reference,email:'not_queued'};
+    pending=null;return {state:'saved',operationId:command.operationId,reference:saved.data.data.reference,email:saved.data.data.acknowledgment};
    }
    const failure=errorEnvelope.safeParse(json);
    if(failure.success){

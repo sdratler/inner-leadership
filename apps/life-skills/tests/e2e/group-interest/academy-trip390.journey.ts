@@ -1,7 +1,10 @@
 import {createHash,randomUUID} from 'node:crypto';
 import {readFileSync,writeFileSync} from 'node:fs';
 import {expect,test} from '@playwright/test';
-import {trip390CommandSchema,trip390Copy,TRIP390_NOTICE_VERSION,type Trip390Command} from '../../../src/features/group-application/academy-trip390-contract.ts';
+import {trip390CommandSchema,trip390Copy,TRIP390_NOTICE_VERSION,TRIP390_INTEREST_VERSION,TRIP390_OFFER,TRIP390_DRIVING_VERSION,type Trip390Command} from '../../../src/features/group-application/academy-trip390-contract.ts';
+import {trip390ReservationNotice} from '../../../src/features/group-application/academy-trip390-reservation-notice.ts';
+import {trip390StudentConduct} from '../../../src/features/group-application/academy-trip390-student-conduct.ts';
+import {trip390LearningAssets} from '../../../src/features/group-application/academy-trip390-learning-assets.ts';
 import {TRIP390_MEDIA_TYPE} from '../../../src/features/group-application/academy-trip390-transport.ts';
 import {inspectLanding,inspectDialog,inspectFaqContact,inspectBodyHeadings,inspectBodyContact} from './academy-trip390.visual-checks.ts';
 import scenes from '../../../src/features/group-application/academy-scenes.json' with {type:'json'};
@@ -39,8 +42,15 @@ for(const locale of ['en','he'] as const)test(`${locale}: real two-child save, r
  await expect(form.locator('button[type=submit]')).toBeVisible();
  await expect(form.locator('button[type=submit]')).toBeEnabled();
  await expect(form.locator('input[type=checkbox]')).toHaveCount(3);
+ expect(await form.locator('input[type=checkbox]').evaluateAll(nodes=>nodes.map(node=>({name:(node as HTMLInputElement).name,required:(node as HTMLInputElement).required})))).toEqual([{name:'interest',required:true},{name:'conduct',required:true},{name:'whatsapp',required:false}]);
+ await expect(form.locator('[name=guardianTypedName],[name=guardianSignature],[data-program-terms-version],[data-student-agreement-version]')).toHaveCount(0);
+ await expect(form.locator('[name=email]')).toHaveAttribute('required','');
+ await expect(form.locator('[name=phoneE164]')).toHaveAttribute('required','');
+ await expect(form.locator('[name=interest]').locator('..').locator('span[lang]')).toHaveText(trip390ReservationNotice(locale).acknowledgment);
+ await expect(form.locator('[name=conduct]').locator('..').locator('span[lang]')).toHaveText(trip390StudentConduct(locale).acknowledgment);
  for(const name of ['conduct','interest','whatsapp'])await expect(form.locator('[name='+name+']')).not.toBeChecked();
- for(const [name,value] of Object.entries({guardianName:guardian,email,city,postalCode:zip}))await form.locator('[name='+name+']').fill(value);
+ for(const [name,value] of Object.entries({guardianName:guardian,email,phoneE164:'+12025550107',city,postalCode:zip}))await form.locator('[name='+name+']').fill(value);
+ await form.locator('[name=lessonDayDriving]').selectOption('up_to_90');
  await form.getByRole('button',{name:copy.form.add_child}).click();
  for(let i=0;i<children.length;i++){
   const child=children[i]!,name=form.locator('input[name^="child-"][name$="-name"]').nth(i),section=name.locator('xpath=ancestor::fieldset[1]');
@@ -75,23 +85,31 @@ for(const locale of ['en','he'] as const)test(`${locale}: real two-child save, r
   if(requests.length===1){reference=response.data.reference;await route.abort('failed');}
   else{expect(response.data.reference).toBe(reference);await route.fulfill({response:upstream});}
  });
+ const issued=page.waitForResponse(response=>response.request().method()==='GET'&&new URL(response.url()).pathname==='/api/public/group-applications');
  await form.locator('button[type=submit]').click();
  await expect(form.locator('button[type=submit]')).toBeDisabled();
  await expect(form.locator('button[type=submit]')).toHaveText(copy.form.sending);
  await expect(form.getByRole('alert')).toHaveText(copy.form.save_unknown);
  await expect(form.locator('[name=guardianName]')).toBeDisabled();expect(requests).toHaveLength(1);
+ const challenge=await issued;expect(challenge.status()).toBe(200);expect(challenge.request().headers().accept).toBe(TRIP390_MEDIA_TYPE);
+ expect((await challenge.json()).data).toMatchObject({version:TRIP390_INTEREST_VERSION,offerVersion:TRIP390_OFFER.version,noticeVersion:TRIP390_NOTICE_VERSION});
  // The native modal makes the page header inert; locale switching is local to it.
  const languageToggle=dialog.locator('button[lang="'+other+'"]');await languageToggle.click();
  await expect(form.locator('[name=city]')).toHaveValue(city);await expect(form.locator('[name=postalCode]')).toHaveValue(zip);
  await expect(form.locator('[name=messageLanguage]')).toHaveValue(other);
+ await expect(form.locator('[name=phoneE164]')).toHaveValue('+12025550107');await expect(form.locator('[name=lessonDayDriving]')).toHaveValue('up_to_90');
  await form.locator('button[type=submit]').click();
  const status=dialog.locator('[role=status]');
  await expect(status).toContainText(reference);await expect(status).toContainText(trip390Copy[other].form.saved);
- await expect(status).toContainText(other==='en'?'No confirmation email has been queued.':'לא הוכנסה הודעת אישור לתור השליחה.');
+ await expect(status).toContainText(trip390Copy[other].form.email_not_queued);
  expect(requests).toHaveLength(2);expect(requests[1]).toEqual(requests[0]);
  const fields=requests[0]!.fields;
- expect(fields).toMatchObject({guardianName:guardian,email,city,postalCode:zip,messageLanguage:other,instructionLanguage:'either',
+ expect(fields).toMatchObject({version:TRIP390_INTEREST_VERSION,offerVersion:TRIP390_OFFER.version,guardianName:guardian,email,phone:'+12025550107',city,postalCode:zip,messageLanguage:other,instructionLanguage:'either',lessonDayDriving:{version:TRIP390_DRIVING_VERSION,limit:'up_to_90'},
   acknowledgment:{version:TRIP390_NOTICE_VERSION,language:locale,conductExplained:true,interestPrivacySafety:true,whatsapp:false}});
+ for(const [key,document] of [['reservationNotice',trip390ReservationNotice(locale)],['studentConduct',trip390StudentConduct(locale)]] as const){
+  expect(fields.acknowledgment[key]).toEqual({version:document.version,language:locale,text:document.text,textDigest:document.textDigest});
+ }
+ expect(fields.acknowledgment).not.toHaveProperty('studentAgreement');expect(fields.acknowledgment).not.toHaveProperty('programTerms');
  expect(fields.children.map(({name,ageYears,experience})=>({name,ageYears,experience}))).toEqual(children);
  expect(new Set(fields.children.map(child=>child.id)).size).toBe(2);
  await page.unroute(endpoint);
@@ -143,12 +161,26 @@ test('landing matrix, native dialog interactions and independent holdout regress
    await page.evaluate(()=>document.fonts.ready);
    // Cold page / no scroll: eager portrait must load on every route and size.
    await expect.poll(()=>page.locator('img[src="/groups/people/founder-head.jpg"]').evaluate(node=>(node as HTMLImageElement).complete&&(node as HTMLImageElement).naturalWidth>0)).toBe(true);
-   await expect(page.locator('[data-trip390-scene]')).toHaveCount(3);
-   for(const slot of ['foundation','advanced','form']){
+   const cards=page.locator('[data-trip390-skill]');await expect(cards).toHaveCount(6);
+   for(const [index,asset] of trip390LearningAssets.entries()){
+    const card=cards.nth(index);await expect(card).toHaveAttribute('data-trip390-skill',String(index+1));
+    await expect(card.locator('h3')).toHaveText(trip390Copy[locale].skills[index]!.title);await expect(card.locator('p')).toHaveText(trip390Copy[locale].skills[index]!.body);
+    await card.scrollIntoViewIfNeeded();
+    if(asset.src===null){await expect(card.locator('img')).toHaveCount(0);await expect(card.locator('[data-trip390-image-unavailable]')).toHaveCount(1);diagnostics.push({locale,width,height,assetId:asset.assetId,status:'MISSING_ORIGINAL_MAJOR_OPEN'});}
+    else{
+     const image=card.locator('img');await expect(image).toHaveAttribute('src',asset.src);await expect(image).toHaveAttribute('alt',asset.alt[locale]);
+     await expect.poll(()=>image.evaluate(node=>(node as HTMLImageElement).complete&&(node as HTMLImageElement).naturalWidth>0)).toBe(true);
+     const bytes=await (await page.request.get(asset.src)).body();expect(createHash('sha256').update(bytes).digest('hex')).toBe(createHash('sha256').update(readFileSync('public'+asset.src)).digest('hex'));
+    }
+    const frame=card.locator('img,[data-trip390-image-unavailable]');const ratio=await frame.evaluate(node=>{const b=node.getBoundingClientRect();return b.width/b.height;});expect(Math.abs(ratio-16/9)).toBeLessThan(.005);
+   }
+   await expect(page.locator('[data-trip390-image-unavailable]')).toHaveCount(trip390LearningAssets.filter(asset=>asset.src===null).length);
+   await expect(page.locator('[data-trip390-scene]')).toHaveCount(2);
+   for(const slot of ['foundation','form']){
     const figure=page.locator(`[data-trip390-scene="${slot}"]`),image=figure.locator('img');
     await image.scrollIntoViewIfNeeded();
     await expect.poll(()=>image.evaluate(node=>(node as HTMLImageElement).complete&&(node as HTMLImageElement).naturalWidth>0)).toBe(true);
-    const selected=slot==='advanced'&&width<768?'advanced-mobile':slot;
+    const selected=slot;
     const asset=scenes.assets.find(item=>item.slot===selected)!;
     const dimensions=await image.evaluate(node=>{const image=node as HTMLImageElement,b=image.getBoundingClientRect();return{source:new URL(image.currentSrc).pathname,width:image.naturalWidth,height:image.naturalHeight,ratio:b.width/b.height};});
     expect(dimensions).toMatchObject({source:asset.publicPath,width:asset.width,height:asset.height});
@@ -220,7 +252,7 @@ test('landing matrix, native dialog interactions and independent holdout regress
   await expect.poll(async()=>(await inspectFaqContact(page)).findings).toEqual([]);
   await page.screenshot({path:info.outputPath(`${locale}-mobile-faq-viewport.png`)});
   const faqPositions=[];
-  for(const index of [0,5,11,18]){
+  for(const index of [0,Math.floor((trip390Copy[locale].faqs.length-1)/3),Math.floor(2*(trip390Copy[locale].faqs.length-1)/3),trip390Copy[locale].faqs.length-1]){
    await details.nth(index).locator('summary').scrollIntoViewIfNeeded();
    await expect.poll(async()=>(await inspectFaqContact(page)).findings).toEqual([]);
    faqPositions.push({index,...await inspectFaqContact(page)});
@@ -238,7 +270,7 @@ test('landing matrix, native dialog interactions and independent holdout regress
   await expect.poll(()=>enlargedPortrait.evaluate(image=>(image as HTMLImageElement).complete&&(image as HTMLImageElement).naturalWidth>0)).toBe(true);
   await expect.poll(()=>inspectBodyHeadings(page)).toEqual([]);
   diagnostics.push({locale,enlargedBodyHeadingFindings:await inspectBodyHeadings(page)});
-  await page.evaluate(()=>document.querySelector('#trip390-dates-title')?.scrollIntoView({block:'start'}));
+  await page.locator('#trip390-how-title').scrollIntoViewIfNeeded();
   await expect.poll(async()=>(await inspectBodyContact(page)).findings).toEqual([]);
   await page.screenshot({path:info.outputPath(`${locale}-200percent-dates-viewport.png`)});
   await page.evaluate(()=>window.scrollTo(0,0));
@@ -259,7 +291,8 @@ test('landing matrix, native dialog interactions and independent holdout regress
  const retainedSibling=await form.locator('input[name^="child-"][name$="-name"]').nth(1).getAttribute('name');
  await form.getByRole('button',{name:trip390Copy.he.form.remove_child+' 3',exact:true}).click();
  expect(await form.locator('input[name^="child-"][name$="-name"]').nth(1).getAttribute('name')).toBe(retainedSibling);
- for(const [name,value] of Object.entries({guardianName:'Synthetic long-label holdout',email:'holdout@example.invalid',city:'Synthetic district',postalCode:'01234'}))await form.locator('[name='+name+']').fill(value);
+ for(const [name,value] of Object.entries({guardianName:'Synthetic long-label holdout',email:'holdout@example.invalid',phoneE164:'+12025550108',city:'Synthetic district',postalCode:'01234'}))await form.locator('[name='+name+']').fill(value);
+ await form.locator('[name=lessonDayDriving]').selectOption('up_to_60');
  for(let i=0;i<2;i++){await form.locator('input[name^="child-"][name$="-name"]').nth(i).fill('Synthetic boy '+i);await form.locator('input[name^="child-"][name$="-age"]').nth(i).fill('10');}
  await form.locator('[name=conduct]').check();await form.locator('[name=interest]').check();
  await page.route('**/api/public/group-applications?program=sunday_fishing_academy',route=>route.request().method()==='GET'?route.continue():route.fulfill({status:400,contentType:'application/json',body:JSON.stringify({ok:false,requestId:randomUUID(),error:{code:'INVALID_REQUEST'}})}));

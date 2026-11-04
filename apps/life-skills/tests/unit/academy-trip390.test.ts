@@ -1,17 +1,38 @@
+import {currentTrip390Fields} from '../fixtures/trip390-current.ts';
 import {describe,it,expect} from 'vitest';
 import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {AcademyTrip390Page} from '../../src/features/group-application/academy-trip390-page.tsx';
-import {trip390InterestSchema,trip390CommandSchema,trip390Quote,trip390Location,trip390CitySuggestions,TRIP390_INTEREST_VERSION,TRIP390_NOTICE_VERSION,trip390Copy,trip390Metadata} from '../../src/features/group-application/academy-trip390-contract.ts';
+import {trip390InterestSchema,trip390CommandSchema,trip390Quote,trip390Location,trip390CitySuggestions,trip390Copy,trip390Metadata} from '../../src/features/group-application/academy-trip390-contract.ts';
 import {trip390Capacity,trip390SeatDecision,trip390ShopHelperCost,trip390AgeOnDate,trip390Readiness,trip390PublicEvent,trip390ReminderPreview,trip390CapabilityDecision,trip390CheckoutBlockers,trip390Checkout,trip390TestOrder} from '../../src/features/group-application/academy-trip390-operations.ts';
-const fields=()=>({version:TRIP390_INTEREST_VERSION,offerVersion:'JLFA-KEYS390-v1' as const,guardianName:'Synthetic Guardian',email:'synthetic@example.invalid',city:'My Local Neighborhood',postalCode:'01234-5678',messageLanguage:'he' as const,children:[{id:'11111111-1111-4111-8111-111111111111',name:'Synthetic Boy',ageYears:10,experience:'new' as const}],acknowledgment:{version:TRIP390_NOTICE_VERSION,language:'en' as const,conductExplained:true as const,interestPrivacySafety:true as const,whatsapp:false}});
+const fields=currentTrip390Fields;
 describe('trip390 versioned interest candidate',()=>{
+ it.each(['en','he'] as const)('preserves the exact single introduction heading through discretionary reflow (%s)',initialLocale=>{
+  const html=renderToStaticMarkup(createElement(AcademyTrip390Page,{initialLocale}));
+  const headings=[...html.matchAll(/<h2\b[^>]*id="trip390-intro-title"[^>]*>([\s\S]*?)<\/h2>/g)];
+  expect(headings).toHaveLength(1);
+  const heading=headings[0]![1]!;
+  const serializedCopy=renderToStaticMarkup(createElement('span',null,trip390Copy[initialLocale].intro.title));
+  expect(heading.replace(/<[^>]*>/g,'')).toBe(serializedCopy.replace(/<[^>]*>/g,''));
+  expect(heading.match(/<wbr\s*\/?\s*>/g)??[]).toHaveLength(initialLocale==='en'?1:0);
+ });
+ it.each(['en','he'] as const)('keeps the readable documents inside genuinely disabled permission controls (%s)',initialLocale=>{
+  const html=renderToStaticMarkup(createElement(AcademyTrip390Page,{initialLocale}));
+  const permissions=[...html.matchAll(/<fieldset\b[^>]*>[\s\S]*?<\/fieldset>/g)].map(match=>match[0]).filter(value=>value.includes('data-reservation-notice-version='));
+  expect(permissions).toHaveLength(1);
+  expect(permissions[0]).toMatch(/^<fieldset\b[^>]*disabled=""/);
+  const boxes=permissions[0]!.match(/<input\b[^>]*type="checkbox"[^>]*>/g)??[];
+  expect(boxes).toHaveLength(3);for(const box of boxes)expect(box).not.toMatch(/\bchecked(?:=|\s|>)/);
+  expect(permissions[0]).not.toMatch(/name="guardianTypedName"/);
+  expect(html).toMatch(/<button\b(?=[^>]*type="submit")(?=[^>]*disabled="")[^>]*>/);
+ });
+
  it.each(['en','he'] as const)('uses the selected request copy without implying a confirmed place (%s)',locale=>{
   const copy=trip390Copy[locale];
   expect(copy.hero.interest_cta).toBe(locale==='en'?'Reserve Your Spot Now':'שריינו מקום עכשיו');
-  expect(copy.form.title).toBe(locale==='en'?'Request a Spot':'בקשת מקום');
-  expect(copy.form.submit).toBe(locale==='en'?'Send My Request':'שליחת הבקשה');
-  expect(copy.form.saved).toBe(locale==='en'?'Your request has been saved.':'הבקשה שלכם נשמרה.');
+  expect(copy.form.title).toBe(locale==='en'?'Reserve Your Spot Now':'שריינו מקום עכשיו');
+  expect(copy.form.submit).toBe(locale==='en'?'Reserve Your Spot Now':'שריינו מקום עכשיו');
+  expect(copy.form.saved).toBe(locale==='en'?'Thank you—your request has been received.':'תודה—בקשתכם התקבלה.');
   expect(copy.form.place_not_confirmed).toBeTruthy();
   expect([copy.hero.interest_cta,copy.form.title,copy.form.submit].join(' ')).not.toMatch(/trip updates|עדכונים על טיולים|↗|→/i);
   expect(copy.price.amount).toBe('$390');expect(copy.price.per_boy).toBeTruthy();
@@ -21,12 +42,12 @@ describe('trip390 versioned interest candidate',()=>{
  it.each(['','A','A\nTown','<\u0000>','Ab\u202eTown'])('rejects invalid/control-bearing city %j',city=>expect(trip390InterestSchema.safeParse({...fields(),city}).success).toBe(false));
  it.each(['1234','123456','12 345',12345])('rejects invalid ZIP %j',postalCode=>expect(trip390InterestSchema.safeParse({...fields(),postalCode}).success).toBe(false));
  it('suggestions are optional bounded hints, never a validator',()=>{expect(trip390CitySuggestions('beach').length).toBeLessThanOrEqual(8);expect(trip390CitySuggestions('Unlisted Place')).toEqual([]);expect(trip390InterestSchema.safeParse({...fields(),city:'Unlisted Place'}).success).toBe(true);});
- it('requires both acknowledgments and a phone for WhatsApp only',()=>{expect(trip390InterestSchema.safeParse({...fields(),acknowledgment:{...fields().acknowledgment,conductExplained:false}}).success).toBe(false);expect(trip390InterestSchema.safeParse({...fields(),acknowledgment:{...fields().acknowledgment,interestPrivacySafety:false}}).success).toBe(false);const opted={...fields(),acknowledgment:{...fields().acknowledgment,whatsapp:true}};expect(trip390InterestSchema.safeParse(opted).success).toBe(false);expect(trip390InterestSchema.safeParse({...opted,phone:'+12025550101'}).success).toBe(true);});
- it('does not fabricate eligibility or merge sibling IDs',()=>{expect(trip390InterestSchema.safeParse({...fields(),children:[{...fields().children[0],ageYears:22}]}).success).toBe(true);expect(trip390InterestSchema.safeParse({...fields(),children:[fields().children[0],fields().children[0]]}).success).toBe(false);});
+ it('requires both acknowledgments and current phone with optional WhatsApp',()=>{expect(trip390InterestSchema.safeParse({...fields(),acknowledgment:{...fields().acknowledgment,conductExplained:false}}).success).toBe(false);expect(trip390InterestSchema.safeParse({...fields(),acknowledgment:{...fields().acknowledgment,interestPrivacySafety:false}}).success).toBe(false);const opted={...fields(),acknowledgment:{...fields().acknowledgment,whatsapp:true}};expect(trip390InterestSchema.safeParse({...opted,phone:undefined}).success).toBe(false);expect(trip390InterestSchema.safeParse({...opted,phone:'+12025550101'}).success).toBe(true);});
+ it('does not fabricate eligibility or merge sibling IDs',()=>{expect(trip390InterestSchema.safeParse({...fields(),children:[{...fields().children[0],ageYears:22}]}).success).toBe(false);expect(trip390InterestSchema.safeParse({...fields(),children:[fields().children[0],fields().children[0]]}).success).toBe(false);});
  it('rejects client prices, scopes and fabricated legacy selections',()=>{for(const extra of [{priceCents:1},{workspaceId:'other'},{stagePreference:'foundation'},{password:'secret'}])expect(trip390InterestSchema.safeParse({...fields(),...extra}).success).toBe(false);expect(trip390CommandSchema.safeParse({operationId:'not-an-id',fields:fields()}).success).toBe(false);});
  it('quotes per child without a sibling reduction or renewal',()=>{expect(trip390Quote(2)).toMatchObject({totalCents:78000,discountCents:0,automaticRenewal:false});expect(trip390Quote(3).totalCents).toBe(117000);expect(()=>trip390Quote(0)).toThrow();expect(()=>trip390TestOrder(['same','same'])).toThrow();});
  it('pairs exact EN/HE keys and no legacy sales promotion in metadata',()=>{expect(trip390Copy.en.faqs.map(item=>item.id)).toEqual(trip390Copy.he.faqs.map(item=>item.id));for(const locale of ['en','he'] as const){expect(trip390Metadata(locale).robots).toEqual({index:false,follow:false});expect(JSON.stringify(trip390Metadata(locale))).toContain('390');expect(JSON.stringify(trip390Metadata(locale))).not.toMatch(/650|first 30|self-governance/i);}});
- it.each(['en','he'] as const)('renders %s without old sales controls, login or fake save',initialLocale=>{const html=renderToStaticMarkup(createElement(AcademyTrip390Page,{initialLocale}));expect(html).toContain('390');expect(html).toContain('USD');expect(html).toContain('hero-desktop-20261018.png');expect(html).not.toMatch(/first 30|parent_activation|type="password"|65000/);expect(html.match(/type="checkbox"/g)).toHaveLength(3);expect(html.match(/<input(?=[^>]*name="(?:conduct|interest)")(?=[^>]*required)[^>]*>/g)).toHaveLength(2);expect(html).toContain('disabled=""');expect(html).toContain(`dir="${initialLocale==='he'?'rtl':'ltr'}"`);});
+ it.each(['en','he'] as const)('renders %s without old sales controls, login or fake save',initialLocale=>{const html=renderToStaticMarkup(createElement(AcademyTrip390Page,{initialLocale}));expect(html).toContain('390');expect(html).toContain('hero-desktop-20261018.png');expect(html).not.toMatch(/first 30|parent_activation|type="password"|65000/);expect(html.match(/type="checkbox"/g)).toHaveLength(3);expect(html.match(/<input(?=[^>]*name="(?:conduct|interest)")(?=[^>]*required)[^>]*>/g)).toHaveLength(2);expect(html).toContain('disabled=""');expect(html).toContain(`dir="${initialLocale==='he'?'rtl':'ltr'}"`);});
 });
 describe('trip390 disabled operations candidate',()=>{
  const vehicle={seats:50,staff:5,otherPassengers:0,cargoSeatReduction:0,approvedChildLimit:45,approved:true};

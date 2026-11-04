@@ -1,8 +1,9 @@
 import type {Page} from '@playwright/test';
+import {trip390Copy} from '../../../src/features/group-application/academy-trip390-contract.ts';
 
 /** Scoped measurable checks, not a visual score or substitute for image review. */
 export async function inspectLanding(page:Page){
- return page.evaluate(()=>{
+ return page.evaluate(expectedFaqIds=>{
   const findings:string[]=[];
   const box=(node:Element)=>node.getBoundingClientRect();
   const heading=document.querySelector('#trip390-title')!;
@@ -40,8 +41,8 @@ export async function inspectLanding(page:Page){
    if(overlap)findings.push('hero-text-over-subject');
    if(b.left<0||b.right>width+1||b.bottom>hb.bottom+1)findings.push('hero-control-clipped');
   }
-  const faq=document.querySelector('#faq')!,groups=[...faq.querySelectorAll('section')];
-  if(groups.length!==2||faq.querySelectorAll('[data-trip390-faq]').length!==19)findings.push('faq-structure-missing');
+  const faq=document.querySelector('#faq')!,items=[...faq.querySelectorAll('[data-trip390-faq]')],groups=[...new Set(items.map(item=>item.parentElement!))];
+  if(groups.length!==2||JSON.stringify(items.map(item=>item.id))!==JSON.stringify(expectedFaqIds))findings.push('faq-structure-missing');
   if(groups.length===2){
    const a=box(groups[0]!),b=box(groups[1]!),title=box(faq.querySelector('h2')!);
    if(title.bottom>Math.min(a.top,b.top)+1)findings.push('faq-heading-rail');
@@ -65,7 +66,7 @@ export async function inspectLanding(page:Page){
    }
   }
   return {findings,viewport:{width:innerWidth,height:innerHeight},headerHeight:header.height,hero:{left:hb.left,width:hb.width,height:hb.height,bottom:hb.bottom},image:{src:photo.currentSrc,fit,subject},faqCount:faq.querySelectorAll('[data-trip390-faq]').length};
- });
+ },trip390Copy.en.faqs.map(item=>item.id));
 }
 
 export async function inspectDialog(page:Page){
@@ -78,8 +79,9 @@ export async function inspectDialog(page:Page){
   const close=node.querySelector<HTMLButtonElement>('button[aria-label]')!,c=close.getBoundingClientRect();
   const hit=document.elementFromPoint(c.x+c.width/2,c.y+c.height/2);
   if(c.left<b.left||c.right>b.right||c.top<b.top||c.bottom>b.bottom||c.width<48||c.height<48||!hit||!close.contains(hit))findings.push('dialog-close-obscured');
-  const scrollable=[...node.querySelectorAll<HTMLElement>('*')].filter(x=>['auto','scroll'].includes(getComputedStyle(x).overflowY)&&x.scrollHeight>x.clientHeight+1);
-  if(scrollable.length!==1)findings.push('dialog-scroll-regions');
+  const scrollable=[...node.querySelectorAll<HTMLElement>('*')].filter(x=>!x.closest('details:not([open])')&&x.getClientRects().length>0&&['auto','scroll'].includes(getComputedStyle(x).overflowY)&&x.scrollHeight>x.clientHeight+1);
+  const panels=scrollable.filter(x=>x.matches('[data-reservation-notice-version],[data-student-conduct-version]'));
+  if(scrollable.length-panels.length!==1||panels.length>1||node.querySelectorAll('details[name="trip390-notice"][open]').length>1||panels.some(x=>x.tabIndex!==0||x.getAttribute('role')!=='region'||x.clientHeight>=innerHeight))findings.push('dialog-scroll-regions');
   if(document.documentElement.scrollWidth>innerWidth+1)findings.push('dialog-horizontal-overflow');
   const contact=document.querySelector<HTMLAnchorElement>('a[class*="whatsapp"]');
   if(contact&&getComputedStyle(contact).display!=='none'&&getComputedStyle(contact).visibility!=='hidden')findings.push('background-contact-visible-in-modal');
@@ -106,23 +108,27 @@ export async function inspectFaqContact(page:Page){
  });
 }
 
-/** Whole words reflow between lines; letter fragments are not readable headings. */
+/** Approved discretionary/hyphen breaks are readable; orphan letters are not.
+ * Reconstruct words across text nodes so a wbr cannot hide a final-letter defect. */
 export async function inspectBodyHeadings(page:Page){
  return page.evaluate(()=>{
   const findings:Array<{heading:string;word:string;lineLengths:number[]}>=[];
   for(const heading of document.querySelectorAll('h2,h3')){
    if(!heading.getClientRects().length)continue;
-   const walker=document.createTreeWalker(heading,NodeFilter.SHOW_TEXT);
-   for(let text=walker.nextNode();text;text=walker.nextNode())for(const match of (text.textContent??'').matchAll(/\p{L}{4,}/gu)){
-    const range=document.createRange();range.setStart(text,match.index!);range.setEnd(text,match.index!+match[0].length);
-    if(range.getClientRects().length<2)continue;
-    const lines=new Map<number,number>();
+   if(heading.closest('dialog:not([open]),details:not([open])'))continue;
+   const walker=document.createTreeWalker(heading,NodeFilter.SHOW_TEXT),offsets:Array<{node:Node;offset:number}>=[];let text='';
+   for(let node=walker.nextNode();node;node=walker.nextNode()){
+    const value=node.textContent??'';text+=value;for(let offset=0;offset<value.length;offset++)offsets.push({node,offset});
+   }
+   if(text!==heading.textContent)throw Error('HEADING_TEXT_OFFSET_MISMATCH');
+   for(const match of text.matchAll(/\p{L}{3,}/gu)){
+    const lines:Array<{top:number;length:number}>=[];
     for(let i=0;i<match[0].length;i++){
-     const char=document.createRange();char.setStart(text,match.index!+i);char.setEnd(text,match.index!+i+1);
-     const box=char.getBoundingClientRect(),top=Math.round(box.top);
-     if(box.width>0)lines.set(top,(lines.get(top)??0)+1);
+     const position=offsets[match.index!+i]!;const char=document.createRange();char.setStart(position.node,position.offset);char.setEnd(position.node,position.offset+1);
+     const box=char.getBoundingClientRect();if(box.width<=0)continue;
+     let line=lines.at(-1);if(!line||Math.abs(line.top-box.top)>2){line={top:box.top,length:0};lines.push(line);}line.length++;
     }
-    if(lines.size>1)findings.push({heading:heading.id||heading.textContent||'',word:match[0],lineLengths:[...lines.values()]});
+    if(lines.length>1&&lines.some(line=>line.length===1))findings.push({heading:heading.id||text,word:match[0],lineLengths:lines.map(line=>line.length)});
    }
   }
   return findings;

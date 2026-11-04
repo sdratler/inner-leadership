@@ -1,3 +1,4 @@
+import {currentTrip390Fields} from '../fixtures/trip390-current.ts';
 import {randomUUID} from 'node:crypto';
 import pg from 'pg';
 import {afterAll,beforeAll,expect,test,vi} from 'vitest';
@@ -19,14 +20,14 @@ let pool:pg.Pool;
 beforeAll(()=>{pool=new pg.Pool({connectionString:safeTestUrl(),ssl:false,max:5});});
 afterAll(async()=>{await pool?.end();});
 
-test('Trip390 v3 challenge, simultaneous save/replay, encrypted receipts and authenticated exact-reference readback',async()=>{
+test('Trip390 v5 challenge, simultaneous save/replay, encrypted receipts and authenticated exact-reference readback',async()=>{
  const f=await academyWorkspace(pool),other=await academyWorkspace(pool);
- const command:Trip390Command={operationId:randomUUID(),fields:{
+ const command:Trip390Command={operationId:randomUUID(),fields:{...currentTrip390Fields(),
   version:TRIP390_INTEREST_VERSION,offerVersion:TRIP390_OFFER.version,
   guardianName:'Synthetic Trip390 Guardian',email:'trip390-'+randomUUID()+'@example.invalid',
   city:'עיר סינתטית שלא ברשימה',postalCode:'01234-5678',messageLanguage:'he',instructionLanguage:'either',
   children:[{id:randomUUID(),name:'Synthetic first child',ageYears:12,experience:'some'},{id:randomUUID(),name:'Synthetic sibling',ageYears:9,experience:'new'}],
-  notes:'Synthetic preparation note',acknowledgment:{version:TRIP390_NOTICE_VERSION,language:'en',conductExplained:true,interestPrivacySafety:true,whatsapp:false}
+  phone:'+12025550101',acknowledgment:{version:TRIP390_NOTICE_VERSION,language:'en',conductExplained:true,interestPrivacySafety:true,whatsapp:false,studentConduct:currentTrip390Fields().acknowledgment.studentConduct,reservationNotice:currentTrip390Fields().acknowledgment.reservationNotice}
  }};
  const host=new URL(f.origin).host;
  const url=f.origin+'/api/public/group-applications?program=sunday_fishing_academy';
@@ -34,12 +35,12 @@ test('Trip390 v3 challenge, simultaneous save/replay, encrypted receipts and aut
  let now=Date.now();
  // Even when legacy dependencies exist, this version must bypass every legacy
  // founder, attribution and outbound branch. All stores below use the PG binder.
- const apps=()=>new PublicGroupApplicationStore(poolStore(pool),f.workspace,f.ring,f.digestKey,systemClock,true,f.founder);
+ const apps=()=>new PublicGroupApplicationStore(poolStore(pool),f.workspace,f.ring,f.digestKey,systemClock,false,f.founder);
  const founderCalls=[vi.spyOn(f.founder,'accept'),vi.spyOn(f.founder,'bindAttribution'),vi.spyOn(f.founder,'checkAttribution'),vi.spyOn(f.founder,'publicResult')];
  const afterCommit=vi.fn(async()=>undefined),refreshFounder=vi.fn(async()=>undefined);
  const deps=async(trip:boolean)=>{
   expect(trip).toBe(true);
-  return {enabled:true,environment:{NODE_ENV:'test',LS_APP_ORIGIN:f.origin,LS_ACADEMY_PUBLIC_OFFER:TRIP390_OFFER.version},challengeKey:f.digestKey,now:()=>now,limits:f.runtime.limits,store:apps(),afterCommit,refreshFounder};
+  return {trip390ReservationAdmitted:true,enabled:true,environment:{NODE_ENV:'test',LS_APP_ORIGIN:f.origin,LS_ACADEMY_PUBLIC_OFFER:TRIP390_OFFER.version},challengeKey:f.digestKey,now:()=>now,limits:f.runtime.limits,store:apps(),afterCommit,refreshFounder};
  };
  const get=await publicGroupApplicationHttp(new Request(url,{headers}),deps);
  expect(get.status).toBe(200);
@@ -49,7 +50,7 @@ test('Trip390 v3 challenge, simultaneous save/replay, encrypted receipts and aut
  expect(setCookie).toContain('HttpOnly; Secure; SameSite=Strict');
  const cookie=setCookie!.split(';')[0]!;
  now+=1600;
- expect(verifyGroupApplicationChallenge(issued.challenge,f.digestKey,now)).toMatchObject({v:3,programId:'sunday_fishing_academy',noticeVersion:TRIP390_NOTICE_VERSION});
+ expect(verifyGroupApplicationChallenge(issued.challenge,f.digestKey,now)).toMatchObject({v:5,programId:'sunday_fishing_academy',noticeVersion:TRIP390_NOTICE_VERSION});
  const body={...command,website:'',challenge:issued.challenge};
  const post=(payload:typeof body,continuation=cookie)=>publicGroupApplicationHttp(new Request(url,{method:'POST',headers:{...headers,origin:f.origin,'sec-fetch-site':'same-origin','content-type':'application/json',cookie:continuation},body:JSON.stringify(payload)}),deps);
  expect((await post(body,'ls_academy_registration='+opaqueToken())).status).toBe(403);

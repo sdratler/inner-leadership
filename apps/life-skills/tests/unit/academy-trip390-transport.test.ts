@@ -1,3 +1,4 @@
+import {currentTrip390Fields} from '../fixtures/trip390-current.ts';
 import {randomUUID} from 'node:crypto';
 import {describe,expect,it,vi} from 'vitest';
 vi.mock('server-only',()=>({}));
@@ -6,13 +7,10 @@ import {TRIP390_MEDIA_TYPE,createTrip390Transport,trip390RouteMetadata} from '..
 import {TRIP390_INTEREST_VERSION,TRIP390_NOTICE_VERSION,TRIP390_OFFER,trip390CommandSchema,trip390Copy} from '../../src/features/group-application/academy-trip390-contract.ts';
 import {verifyGroupApplicationChallenge} from '../../src/features/group-application/challenge.ts';
 import {floridaGroupApplicationNotice} from '../../src/features/group-application/contract.ts';
+import {trip390ReservationNotice} from '../../src/features/group-application/academy-trip390-reservation-notice.ts';
 const origin='https://synthetic.example.invalid',host='synthetic.example.invalid',key='synthetic-trip390-unit-only-key-material';
 const endpoint='/api/public/group-applications?program=sunday_fishing_academy';
-const command=trip390CommandSchema.parse({operationId:randomUUID(),fields:{
- version:TRIP390_INTEREST_VERSION,offerVersion:TRIP390_OFFER.version,guardianName:'Synthetic parent',email:'synthetic@example.invalid',city:'Unlisted area',
- postalCode:'01234-5678',messageLanguage:'he',children:[{id:randomUUID(),name:'Synthetic child',ageYears:10,experience:'new'}],
- acknowledgment:{version:TRIP390_NOTICE_VERSION,language:'en',conductExplained:true,interestPrivacySafety:true,whatsapp:false},
-}});
+const command=trip390CommandSchema.parse({operationId:randomUUID(),fields:currentTrip390Fields()});
 const legacyFields={parentName:'Synthetic Parent',contact:'parent@example.invalid',language:'en',childAge:'10',cityArea:'Hollywood',neighborhood:'Example',programId:'sunday_fishing_academy',schedulePreference:['sunday'],scheduleNotes:'Synthetic',permission:{confirmed:true,version:floridaGroupApplicationNotice.version,language:'en'}};
 
 function setup(offer:string=TRIP390_OFFER.version){
@@ -20,7 +18,7 @@ function setup(offer:string=TRIP390_OFFER.version){
  const item={id:ref,source:'public_group_application',state:'owner_review',receivedAt:new Date(time).toISOString(),fields:command.fields};
  const submit=vi.fn().mockResolvedValue({saved:true,replayed:false,duplicate:false,item}),replaySaved=vi.fn(),afterCommit=vi.fn(),refreshFounder=vi.fn();
  const consume=vi.fn().mockResolvedValue({count:1,retryAfterMs:1000});
- const deps={enabled:true,environment:{NODE_ENV:'production',LS_APP_ORIGIN:origin,LS_IDENTITY_ENABLED:'true',LS_ACADEMY_PUBLIC_OFFER:offer},challengeKey:key,now:()=>time,limits:{consume},store:{submit,replaySaved},afterCommit,refreshFounder};
+ const deps={trip390ReservationAdmitted:true,enabled:true,environment:{NODE_ENV:'production',LS_APP_ORIGIN:origin,LS_IDENTITY_ENABLED:'true',LS_ACADEMY_PUBLIC_OFFER:offer},challengeKey:key,now:()=>time,limits:{consume},store:{submit,replaySaved},afterCommit,refreshFounder};
  const load=vi.fn(async()=>deps);
  const get=(accept=TRIP390_MEDIA_TYPE,path=endpoint)=>publicGroupApplicationHttp(new Request(origin+path,{headers:{host,accept}}),load);
  const post=(body:unknown,cookie:string,accept=TRIP390_MEDIA_TYPE,extra:Record<string,string>={})=>publicGroupApplicationHttp(new Request(origin+endpoint,{method:'POST',headers:{host,origin,cookie,accept,'sec-fetch-site':'same-origin','content-type':'application/json',...extra},body:JSON.stringify(body)}),load);
@@ -31,11 +29,11 @@ function setup(offer:string=TRIP390_OFFER.version){
 describe('Trip390 guest wire and recovery',()=>{
  it('binds the exact program, offer, acknowledgment and interest to the challenge and returns only the saved receipt',async()=>{
   const h=setup(),{challenge,cookie,notice}=await h.issue();
-  expect(notice.he.interest).toBe(trip390Copy.he.form.interest_ack);
+  expect(notice.he.interest).toBe(trip390ReservationNotice('he').acknowledgment);
   const body={...command,challenge,website:''};
   expect((await h.post(body,cookie)).status).toBe(403);
   h.advance(1600);
-  expect(verifyGroupApplicationChallenge(challenge,key,h.now())).toMatchObject({v:3,programId:'sunday_fishing_academy',offerVersion:TRIP390_OFFER.version,version:TRIP390_INTEREST_VERSION,noticeVersion:TRIP390_NOTICE_VERSION});
+  expect(verifyGroupApplicationChallenge(challenge,key,h.now())).toMatchObject({v:5,programId:'sunday_fishing_academy',offerVersion:TRIP390_OFFER.version,version:TRIP390_INTEREST_VERSION,noticeVersion:TRIP390_NOTICE_VERSION});
   const saved=await h.post(body,cookie);expect(saved.status).toBe(201);
   expect((await saved.json()).data).toEqual({operationId:command.operationId,reference:h.ref,replayed:false,acknowledgment:'not_queued'});
   expect(h.submit).toHaveBeenCalledExactlyOnceWith(command);expect(h.consume).toHaveBeenCalledTimes(1);
@@ -67,6 +65,30 @@ describe('Trip390 guest wire and recovery',()=>{
   expect((await h.post(body,cookie,'application/json')).status).toBe(400);
   expect((await h.post(body,cookie,'application/json')).status).toBe(200);
   expect(h.replaySaved).toHaveBeenCalledTimes(2);expect(h.submit).not.toHaveBeenCalled();expect(h.afterCommit).not.toHaveBeenCalled();expect(h.refreshFounder).not.toHaveBeenCalled();
+ });
+ it('runs the acknowledgment only after a fresh durable save and retains the lead when delivery fails',async()=>{
+  const h=setup(),{challenge,cookie}=await h.issue();h.advance(1600);let durable=false;
+  h.submit.mockImplementationOnce(async()=>{durable=true;return {saved:true,replayed:false,duplicate:false,item:{id:h.ref},acknowledgment:'queued'};});
+  h.afterCommit.mockImplementationOnce(async()=>{expect(durable).toBe(true);throw Error('SYNTHETIC_DELIVERY_PROBLEM');});
+  const response=await h.post({...command,challenge,website:''},cookie);expect(response.status).toBe(201);
+  expect((await response.json()).data).toEqual({reference:h.ref,operationId:command.operationId,acknowledgment:'unknown',replayed:false});
+  expect(h.afterCommit).toHaveBeenCalledExactlyOnceWith(h.ref);
+ });
+ it('does not send retroactively for duplicate/same-command receipt recovery or failed saving',async()=>{
+  const h=setup(),{challenge,cookie}=await h.issue();h.advance(1600);const body={...command,challenge,website:''};
+  h.replaySaved.mockResolvedValueOnce({saved:true,replayed:true,duplicate:true,item:{id:h.ref},acknowledgment:'queued'});
+  expect((await h.post(body,cookie)).status).toBe(200);expect(h.afterCommit).not.toHaveBeenCalled();
+  h.submit.mockResolvedValueOnce({saved:true,replayed:false,duplicate:true,item:{id:h.ref},acknowledgment:'queued'});
+  expect((await h.post(body,cookie)).status).toBe(200);expect(h.afterCommit).not.toHaveBeenCalled();
+  h.submit.mockRejectedValueOnce(Error('SYNTHETIC_SAVE_FAILURE'));expect((await h.post(body,cookie)).status).toBe(503);expect(h.afterCommit).not.toHaveBeenCalled();
+ });
+ it.each(['sent','queued','not_requested'] as const)('returns a recoverable saved receipt for callback outcome %s',async outcome=>{
+  const h=setup(),{challenge,cookie}=await h.issue();h.advance(1600);
+  h.submit.mockResolvedValueOnce({saved:true,replayed:false,duplicate:false,item:{id:h.ref},acknowledgment:'queued'});
+  h.afterCommit.mockResolvedValueOnce(outcome);
+  const response=await h.post({...command,challenge,website:''},cookie);expect(response.status).toBe(201);
+  expect((await response.json()).data).toEqual({reference:h.ref,operationId:command.operationId,replayed:false,acknowledgment:outcome==='not_requested'?'not_queued':outcome});
+  expect(h.afterCommit).toHaveBeenCalledExactlyOnceWith(h.ref);
  });
  it('keeps a lost write locked across failed GETs and definitive retry rejection; only a matching persisted receipt resolves it',async()=>{
   const h=setup(),posted:unknown[]=[];let cookie='',attempt=0,getCount=0;

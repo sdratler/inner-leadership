@@ -4,7 +4,7 @@ import type {Locale} from '../../lib/locale.ts';
 import {AcademyTrip390Page} from './academy-trip390-page.tsx';
 import {createTrip390Transport} from './academy-trip390-transport.ts';
 
-export function AcademyTrip390Client({locale,openForm=false}:{locale:Locale;openForm?:boolean}){
+export function AcademyTrip390Client({locale,openForm=false,reservationCollectionEnabled=false}:{locale:Locale;openForm?:boolean;reservationCollectionEnabled?:boolean}){
  const [submitInterest]=useState(()=>createTrip390Transport());
  useEffect(()=>{
   const url=new URL(window.location.href);
@@ -23,5 +23,5 @@ export function AcademyTrip390Client({locale,openForm=false}:{locale:Locale;open
    document.getElementById(section)?.scrollIntoView();
   }
  },[openForm]);
- return <AcademyTrip390Page initialLocale={locale} initialOpen={openForm} submitInterest={submitInterest}/>;
+ return <AcademyTrip390Page initialLocale={locale} initialOpen={openForm} submitInterest={submitInterest} reservationCollectionEnabled={reservationCollectionEnabled}/>;
 }

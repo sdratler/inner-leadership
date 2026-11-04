@@ -1,0 +1,22 @@
+import {afterEach,beforeEach,expect,it,vi} from 'vitest';
+const m=vi.hoisted(()=>({load:vi.fn(),identity:vi.fn(),close:vi.fn(),page:vi.fn(),single:vi.fn(),supervise:vi.fn(),founder:vi.fn()}));
+vi.mock('server-only',()=>({}));
+vi.mock('../../src/features/group-application/academy-trip390-ack-admission.ts',()=>({loadTrip390AckAdmission:m.load}));
+vi.mock('../../src/features/group-application/academy-signup-population-runtime.ts',()=>({loadSignupPopulation:vi.fn()}));
+vi.mock('../../src/features/identity/runtime.ts',()=>({identityRuntime:m.identity}));
+vi.mock('../../src/db/client.ts',()=>({closeDatabase:m.close}));
+vi.mock('../../src/features/group-application/inquiry-email.ts',()=>({InquiryEmailOutbox:class{dispatchTrip390One=m.single;dispatchTrip390Page=m.page;}}));
+vi.mock('../../src/features/group-application/academy-founder-store.ts',()=>({AcademyFounderStore:m.founder}));
+vi.mock('../../scripts/signup-worker-supervisor.ts',()=>({superviseSignupWorker:m.supervise}));
+const policy={workspaceId:'synthetic-workspace',origin:'https://synthetic.example.invalid',expiresAt:'2035-01-01T14:00:00Z'},clock={now:()=>new Date('2035-01-01T12:00:00Z')};
+beforeEach(()=>{vi.resetModules();vi.clearAllMocks();vi.spyOn(process,'argv','get').mockReturnValue(['node','worker','--hosted-trip390-ack']);vi.spyOn(process,'on').mockReturnValue(process);vi.spyOn(process,'off').mockReturnValue(process);vi.spyOn(console,'log').mockImplementation(()=>{});m.load.mockReturnValue(policy);m.identity.mockResolvedValue({store:{},config:{workspaceId:policy.workspaceId,keyring:{},lookupKey:Buffer.alloc(32,23),origin:policy.origin},clock});m.page.mockResolvedValue({processed:0,inspected:0,scanComplete:true,continuation:undefined});m.supervise.mockImplementation(async o=>o.cycle());});
+afterEach(()=>vi.restoreAllMocks());
+it('missing admission closes before identity DB/provider construction',async()=>{m.load.mockReturnValue(null);await import('../../scripts/inquiry-email-worker.ts');expect(m.identity).not.toHaveBeenCalled();expect(m.page).not.toHaveBeenCalled();expect(m.close).not.toHaveBeenCalled();});
+it('hosted mode dispatches only Trip pages and closes its existing runtime',async()=>{await import('../../scripts/inquiry-email-worker.ts');expect(m.page).toHaveBeenCalledWith(policy,process.env,undefined);expect(m.founder).not.toHaveBeenCalled();expect(m.single).not.toHaveBeenCalled();expect(m.close).toHaveBeenCalledTimes(1);});
+it('one exact ID cannot trigger a queue scan or founder path',async()=>{vi.spyOn(process,'argv','get').mockReturnValue(['node','worker','--dispatch-trip390-ack-one','70000000-0000-4000-8000-000000000001']);m.single.mockResolvedValue('unknown');await import('../../scripts/inquiry-email-worker.ts');expect(m.single).toHaveBeenCalledTimes(1);expect(m.page).not.toHaveBeenCalled();expect(m.founder).not.toHaveBeenCalled();expect(console.log).toHaveBeenCalledWith('{"state":"unknown"}');});
+it('policy closes while runtime initializes without dispatch',async()=>{m.load.mockReturnValueOnce(policy).mockReturnValue(null);await import('../../scripts/inquiry-email-worker.ts');expect(m.page).not.toHaveBeenCalled();expect(m.single).not.toHaveBeenCalled();expect(m.close).toHaveBeenCalledTimes(1);});
+it('cursor survives cycles but changed authority closes instead of silently renewing the worker',async()=>{const cursor={createdAt:'2035-01-01 12:00:00.000001+00',id:'70000000-0000-4000-8000-000000000001'};m.page.mockResolvedValue({processed:0,inspected:50,scanComplete:false,continuation:cursor});m.supervise.mockImplementation(async o=>{await o.cycle();await o.cycle();m.load.mockReturnValue({...policy,approvalReceiptSha256:'changed'});await o.cycle();expect(o.signal.aborted).toBe(true);});await import('../../scripts/inquiry-email-worker.ts');expect(m.page.mock.calls.map(c=>c[2])).toEqual([undefined,cursor]);vi.resetModules();m.page.mockClear();m.supervise.mockImplementation(async o=>o.cycle());await import('../../scripts/inquiry-email-worker.ts');expect(m.page.mock.calls[0]?.[2]).toBeUndefined();});
+it('initial source/policy refusal explicitly tells startup not to restart this closed authority',async()=>{
+ const old=process.send,send=vi.fn();process.send=send as NonNullable<typeof process.send>;
+ try{m.load.mockReturnValue(null);await import('../../scripts/inquiry-email-worker.ts');expect(send).toHaveBeenCalledWith({type:'JLFA_TRIP_ACK_COMPLETE',reason:'ADMISSION_CLOSED'});expect(m.identity).not.toHaveBeenCalled();}finally{if(old)process.send=old;else delete process.send;}
+});

@@ -1,0 +1,64 @@
+{
+  "version": "JLFA-TRIP390-TRANSACTIONAL-20261104-02-v1",
+  "source": "JLFA-COPY-CARD-CASH-CODEX-20261104-02",
+  "locales": {
+    "en": {
+      "greeting": "Hi {parent},",
+      "ack": {
+        "subject": "We received your Fishing Academy reservation request",
+        "opening": "Thanks for requesting a place for {children} at Jewish Leadership Fishing Academy.",
+        "openingPlural": "Thanks for requesting places for {children} at Jewish Leadership Fishing Academy.",
+        "groups": "We’re organizing groups by age and location. As soon as we have an update for your area, we’ll be in touch.",
+        "next": "Once your group is ready, we’ll send the confirmed dates and location, payment instructions, and a secure form for the participation details and waiver.",
+        "package": "The program includes two full Sunday fishing lessons and a full-day Florida Keys bridge-fishing trip. The price is $390 per boy.",
+        "payment": "Payment is by credit card or cash. Cash payment is due by the end of the first lesson. All participation forms must be completed before your son's first lesson. Please review the Student Agreement with him again before the first lesson.",
+        "paymentPlural": "Payment is by credit card or cash. Cash payment is due by the end of the first lesson. All participation forms must be completed before your sons' first lesson. Please review the Student Agreement with them again before the first lesson.",
+        "closing": "We look forward to fishing together,",
+        "signature": "Shlomo Dratler\nJewish Leadership Fishing Academy"
+      },
+      "groupReady": {
+        "subject": "Your Fishing Academy group is ready — {area}",
+        "opening": "We have a group ready for {children}.",
+        "lessonOne": "Sunday lesson 1:",
+        "lessonTwo": "Sunday lesson 2:",
+        "trip": "Florida Keys trip:",
+        "complete": "To complete enrollment, use the secure link below to review your group, fill in the participation information, sign the required agreements and arrange the ${total} payment.",
+        "action": "Complete enrollment",
+        "payment": "Please complete the participation forms before the first lesson. Pay by credit card online, or select cash and pay by the end of the first lesson. A boy whose fee has not been paid cannot join the second lesson until full payment is received; cash can be paid at check-in before that lesson begins.",
+        "conduct": "Please review the Student Agreement together, including the no-smartphone/tablet rule for all group activities.",
+        "signature": "Shlomo Dratler",
+        "pickup": "Pickup",
+        "return": "Return"
+      }
+    },
+    "he": {
+      "greeting": "שלום {parent},",
+      "ack": {
+        "subject": "קיבלנו את בקשתכם למקום באקדמיה לדיג",
+        "opening": "תודה שביקשתם מקום עבור {children} באקדמיה היהודית לדיג ולמנהיגות.",
+        "openingPlural": "תודה שביקשתם מקומות עבור {children} באקדמיה היהודית לדיג ולמנהיגות.",
+        "groups": "אנחנו מארגנים קבוצות לפי גיל ואזור מגורים. ברגע שיהיה עדכון לגבי האזור שלכם, ניצור איתכם קשר.",
+        "next": "כשהקבוצה שלכם תהיה מוכנה, נשלח את התאריכים והמיקום שאושרו, הוראות תשלום וטופס מאובטח להשלמת פרטי ההשתתפות וכתב הוויתור.",
+        "package": "התוכנית כוללת שני שיעורי דיג מלאים בימי ראשון ויום שלם של דיג מגשרים בפלורידה קיז. המחיר הוא 390 דולר לכל בן.",
+        "payment": "אפשר לשלם בכרטיס אשראי או במזומן. התשלום במזומן נדרש עד סוף השיעור הראשון. יש להשלים את כל טופסי ההשתתפות לפני השיעור הראשון של בנכם. אנא עברו איתו שוב על הסכם התלמיד לפני השיעור הראשון.",
+        "paymentPlural": "אפשר לשלם בכרטיס אשראי או במזומן. התשלום במזומן נדרש עד סוף השיעור הראשון. יש להשלים את כל טופסי ההשתתפות לפני השיעור הראשון של בניכם. אנא עברו איתם שוב על הסכם התלמיד לפני השיעור הראשון.",
+        "closing": "מצפים לדוג יחד,",
+        "signature": "שלמה דרטלר\nהאקדמיה היהודית לדיג ולמנהיגות"
+      },
+      "groupReady": {
+        "subject": "הקבוצה שלכם באקדמיה לדיג מוכנה — {area}",
+        "opening": "יש לנו קבוצה מוכנה עבור {children}.",
+        "lessonOne": "שיעור יום ראשון 1:",
+        "lessonTwo": "שיעור יום ראשון 2:",
+        "trip": "יציאה לפלורידה קיז:",
+        "complete": "להשלמת ההרשמה, השתמשו בקישור המאובטח למטה כדי לעיין בפרטי הקבוצה, למלא את פרטי ההשתתפות, לחתום על ההסכמים הנדרשים ולהסדיר את התשלום בסך {total} דולר.",
+        "action": "השלמת ההרשמה",
+        "payment": "אנא השלימו את טופסי ההשתתפות לפני השיעור הראשון. אפשר לשלם בכרטיס אשראי באינטרנט, או לבחור במזומן ולשלם עד סוף השיעור הראשון. בן שהתשלום עבורו לא התקבל לא יוכל להשתתף בשיעור השני עד לקבלת מלוא התשלום; אפשר לשלם במזומן בעת ההגעה, לפני תחילת השיעור.",
+        "conduct": "אנא עברו יחד על הסכם התלמיד, כולל האיסור על סמארטפונים וטאבלטים בכל פעילויות הקבוצה.",
+        "signature": "שלמה דרטלר",
+        "pickup": "איסוף",
+        "return": "חזרה"
+      }
+    }
+  }
+}

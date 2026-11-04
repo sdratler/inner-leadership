@@ -6,33 +6,43 @@ import site from './academy-site.module.css';
 import styles from './academy-trip390.module.css';
 import heroAssets from './academy-hero-assets.json';
 import sceneAssets from './academy-scenes.json';
+import {trip390ReservationNotice} from './academy-trip390-reservation-notice.ts';
+import {trip390StudentConduct} from './academy-trip390-student-conduct.ts';
+import {trip390LearningAssets} from './academy-trip390-learning-assets.ts';
+import {ACADEMY_CONTACT} from './academy-contact.ts';
 
 export type Trip390SaveResult =
- | {state:'saved'; operationId:string; reference:string; email:'pending'|'not_queued'}
+ | {state:'saved'; operationId:string; reference:string; email:'pending'|'not_queued'|'queued'|'sent'|'unknown'|'canceled'}
  | {state:'unknown'} | {state:'conflict'}
  /** Only an authoritative rejection may unlock editing. Transport errors are UNKNOWN. */
  | {state:'rejected'; reason:'invalid'|'unavailable'};
 
 type ChildDraft = {id:string; name:string; age:string; experience:string};
 type ContactObstacle = Pick<DOMRect,'left'|'right'|'top'|'bottom'> & {gap:number; kind:'control'|'photo'|'text'};
-const navigation = ['how', 'learn', 'included', 'dates', 'faq'] as const;
-// F10 authorizes these existing illustrations for this offer's supporting
-// sections. The catalog remains byte/dimension provenance, not new copy or
-// historical-stage authority; no generated replacements or venue-photo claim.
-function supportingScene(slot:'foundation'|'advanced'|'advanced-mobile'|'form') {
+const navigation = ['learn', 'how', 'included', 'faq'] as const;
+// The current Brand map assigns the existing backpack and bridge to matched
+// logistics panels. Catalog provenance does not assert a booked venue.
+function supportingScene(slot:'foundation'|'form') {
  const asset=sceneAssets.assets.find(item=>item.slot===slot);
  if(!asset)throw new Error('TRIP390_SUPPORTING_ASSET_REQUIRED');
  return asset;
 }
 const preparationScene=supportingScene('foundation');
-const knowledgeScene=supportingScene('advanced');
-const knowledgeMobileScene=supportingScene('advanced-mobile');
 const outingScene=supportingScene('form');
+
+// A discretionary word break preserves the catalog text and normal whole-word
+// layout, while avoiding a stranded final letter when enlarged beyond its box.
+function introHeading(text:string) {
+ return text.split(/(\bExperience\b)/u).map((part,index)=>index%2===1
+  ? <span className={styles.headingWord} key={index}>{part.slice(0,6)}<wbr/>{part.slice(6)}</span>
+  : part);
+}
+
 
 /** Candidate frontend. The existing integrator owns route mounting and the
  * admitted transport. Never map this payload into fabricated legacy fields. */
-export function AcademyTrip390Page({initialLocale='en', initialOpen=false, submitInterest}: {
- initialLocale?:'en'|'he'; initialOpen?:boolean; submitInterest?:(command:Trip390Command)=>Promise<Trip390SaveResult>;
+export function AcademyTrip390Page({initialLocale='en', initialOpen=false, reservationCollectionEnabled=false, submitInterest}: {
+ initialLocale?:'en'|'he'; initialOpen?:boolean; reservationCollectionEnabled?:boolean; submitInterest?:(command:Trip390Command)=>Promise<Trip390SaveResult>;
 }) {
  const [locale, setLocale] = useState(initialLocale);
  const [children, setChildren] = useState<ChildDraft[]>([{id:'first', name:'', age:'', experience:'new'}]);
@@ -40,10 +50,13 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, submi
  const [menuOpen, setMenuOpen] = useState(false);
  const [activeSection, setActiveSection] = useState('');
  const [result, setResult] = useState<Trip390SaveResult|null>(null);
+ const [operationLocale,setOperationLocale]=useState<'en'|'he'|null>(null);
  const [busy, setBusy] = useState(false);
  const [error, setError] = useState('');
  const [errorTarget, setErrorTarget] = useState('');
  const [whatsapp, setWhatsapp] = useState(false);
+ const [conductExplained, setConductExplained] = useState(false);
+ const [reservationAccepted,setReservationAccepted]=useState(false);
  const [heroReflow, setHeroReflow] = useState(false);
  const [dialogOpen, setDialogOpen] = useState(false);
  const operation = useRef<Trip390Command|null>(null);
@@ -57,6 +70,8 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, submi
  const header = useRef<HTMLElement>(null);
  const dialog = useRef<HTMLDialogElement>(null);
  const dialogTitle = useRef<HTMLHeadingElement>(null);
+ const privacyDisclosure = useRef<HTMLDetailsElement>(null);
+ const privacyRequested = useRef(false);
  const contact = useRef<HTMLAnchorElement>(null);
  const dialogReturn = useRef<{element:HTMLElement|null; x:number; y:number; url:string; pushed:boolean}|null>(null);
  const copy = trip390Copy[locale];
@@ -64,6 +79,9 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, submi
  const unresolved = result?.state==='unknown';
  const saved = result?.state==='saved';
  const locked = busy || unresolved || result?.state==='conflict';
+ const documentLocale=operationLocale??locale;
+ const conduct=trip390StudentConduct(documentLocale),reservationNotice=trip390ReservationNotice(documentLocale);
+ const consentCopy=trip390Copy[documentLocale].form;
  const interestLabel=copy.hero.interest_cta;
 
  function openInterest(event?:React.MouseEvent<HTMLElement>) {
@@ -74,6 +92,12 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, submi
   dialogReturn.current={element:event?.currentTarget??(document.activeElement instanceof HTMLElement?document.activeElement:null),x:window.scrollX,y:window.scrollY,url:url.pathname+url.search+url.hash,pushed};
   if(pushed){url.hash='interest';window.history.pushState({...window.history.state,academyTrip390Dialog:true},'',url.pathname+url.search+url.hash);}
   setMenuOpen(false);setDialogOpen(true);
+ }
+ function openPrivacy(event:React.MouseEvent<HTMLElement>) {
+  privacyRequested.current=true;openInterest(event);
+ }
+ function oneInformationPanel(event:React.SyntheticEvent<HTMLDetailsElement>) {
+  if(event.currentTarget.open)dialog.current?.querySelectorAll<HTMLDetailsElement>('details[name="trip390-notice"]').forEach(node=>{if(node!==event.currentTarget)node.open=false;});
  }
  function closeInterest() {
   setDialogOpen(false);
@@ -207,7 +231,10 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, submi
   const overflow=root.style.overflow;
   root.style.overflow='hidden';
   if(!node.open)node.showModal();
-  dialogTitle.current?.focus({preventScroll:true});
+  if(privacyRequested.current&&privacyDisclosure.current){
+   privacyRequested.current=false;privacyDisclosure.current.open=true;
+   privacyDisclosure.current.querySelector('summary')?.focus();
+  } else dialogTitle.current?.focus({preventScroll:true});
   return()=>{
    if(node.open)node.close();root.style.overflow=overflow;
    const previous=dialogReturn.current;
@@ -278,22 +305,24 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, submi
   return ()=>{observer?.disconnect();image.removeEventListener('load',measure);window.removeEventListener('resize',measure);};
  }, [locale]);
 
+ function resetAcknowledgments(){setConductExplained(false);setReservationAccepted(false);}
  function changeChild(id:string, field:keyof Omit<ChildDraft,'id'>, value:string) {
+  if(field==='name')resetAcknowledgments();
   setChildren(items=>items.map(item=>item.id===id ? {...item,[field]:value} : item));
  }
  function changeLocale(value:'en'|'he') {
+  if(value!==locale&&!operation.current)resetAcknowledgments();
   setLocale(value); setMenuOpen(false); setError(''); setErrorTarget('');
  }
  function reportError(message:string, target='') {setErrorTarget(target); setError(message);}
 
  async function save(event:React.FormEvent<HTMLFormElement>) {
   event.preventDefault();
-  if (!submitInterest || inFlight.current || result?.state==='conflict') return;
+  if (!submitInterest || !reservationCollectionEnabled || inFlight.current || result?.state==='conflict') return;
   setError(''); setErrorTarget('');
   if (!operation.current) {
    const values = new FormData(event.currentTarget);
-   const phone = String(values.get('phone')??'').trim();
-   const notes = String(values.get('notes')??'').trim();
+   const phoneE164 = String(values.get('phoneE164')??'').trim();
    const firstInvalid=event.currentTarget.querySelector<HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement>('input:invalid,select:invalid,textarea:invalid');
    if(firstInvalid){
     reportError(firstInvalid.validity.valueMissing?copy.form.required_field:copy.form.invalid_field,firstInvalid.id);
@@ -301,36 +330,41 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, submi
    }
    const command = trip390CommandSchema.safeParse({operationId:crypto.randomUUID(), fields:{
     version:TRIP390_INTEREST_VERSION, offerVersion:TRIP390_OFFER.version,
-    guardianName:values.get('guardianName'), email:values.get('email'), ...(phone ? {phone} : {}),
+    guardianName:values.get('guardianName'), email:values.get('email'), phone:phoneE164,
     city, postalCode:values.get('postalCode'), messageLanguage:values.get('messageLanguage'),
-    instructionLanguage:values.get('instructionLanguage'), ...(notes ? {notes} : {}),
+    instructionLanguage:values.get('instructionLanguage'),
+    lessonDayDriving:{version:'JLFA-SUNDAY-TOTAL-DRIVE-v1',limit:values.get('lessonDayDriving')},
     children:children.map(child=>({id:child.id==='first' ? crypto.randomUUID() : child.id,
      name:child.name, ageYears:child.age.trim() ? Number(child.age) : NaN, experience:child.experience})),
     acknowledgment:{version:TRIP390_NOTICE_VERSION, language:locale,
      conductExplained:values.get('conduct')==='on', interestPrivacySafety:values.get('interest')==='on',
-     whatsapp:values.get('whatsapp')==='on'},
+     whatsapp:values.get('whatsapp')==='on',
+     reservationNotice:{version:reservationNotice.version,language:documentLocale,text:reservationNotice.text,textDigest:reservationNotice.textDigest},
+     studentConduct:{version:conduct.version,language:documentLocale,text:conduct.text,textDigest:conduct.textDigest}},
    }});
    if (!command.success) {
     const path=command.error.issues[0]?.path;
-    const target=path?.[1]==='children' ? `trip390-child-${children[Number(path[2])]?.id}-${String(path[3])}` : `trip390-${String(path?.[1]??'')}`;
-    reportError(path?.[1]==='phone'
-     ? t('Enter an international phone number, for example +12025550101. WhatsApp updates require a phone number.','הזינו מספר טלפון בינלאומי, לדוגמה +12025550101. עדכוני וואטסאפ מחייבים מספר טלפון.')
-     : t('Please check the highlighted field and the two required acknowledgments.','בדקו את השדה המסומן ואת שני האישורים הנדרשים.'), target);
+    const target=path?.[1]==='children' ? `trip390-child-${children[Number(path[2])]?.id}-${String(path[3])}`
+     :path?.[1]==='acknowledgment'?(path.includes('interestPrivacySafety')||path.includes('reservationNotice'))?'trip390-interest':'trip390-conduct'
+     :path?.[1]==='phone'?'trip390-phoneE164':`trip390-${String(path?.[1]??'')}`;
+    reportError(copy.form.invalid_field, target);
     return;
    }
    operation.current=command.data;
+   setOperationLocale(command.data.fields.acknowledgment.language);
   }
   inFlight.current=true; setBusy(true);
   try {
    const next=await submitInterest(operation.current);
    // Malformed/unbound success must never produce a permanent success screen.
-   if (next?.state==='saved' && (next.operationId!==operation.current.operationId || typeof next.reference!=='string' || !next.reference.trim() || !['pending','not_queued'].includes(next.email))) {
+   if (next?.state==='saved' && (next.operationId!==operation.current.operationId || typeof next.reference!=='string' || !next.reference.trim() || !['pending','not_queued','queued','sent','unknown','canceled'].includes(next.email))) {
     setResult({state:'unknown'});
    } else if (next?.state==='saved' || next?.state==='unknown' || next?.state==='conflict') {
     setResult(next);
     if (next.state==='conflict') reportError(t('This submission needs private owner review. Do not create a duplicate.','הפנייה דורשת בדיקה פרטית של הבעלים. אין ליצור פנייה כפולה.'));
    } else if (next?.state==='rejected' && ['invalid','unavailable'].includes(next.reason)) {
-    setResult(next); operation.current=null;
+    if(operation.current.fields.acknowledgment.language!==locale)resetAcknowledgments();
+    setResult(next); operation.current=null;setOperationLocale(null);
     reportError(next.reason==='unavailable'
      ? t('Saving is currently unavailable. Your information is still here. Please try again later.','השמירה אינה זמינה כעת. הפרטים שהזנתם נשמרו בטופס. נסו שוב מאוחר יותר.')
      : t('The server did not accept this submission. Check your information and try again.','המערכת לא קיבלה את הפנייה. בדקו את הפרטים ונסו שוב.'));
@@ -348,6 +382,7 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, submi
  }}>{copy.nav[key]}</a>);
  const invalid = (id:string) => errorTarget===id ? {'aria-invalid':true as const,'aria-describedby':id+'-error'} : {};
  const fieldError = (id:string) => errorTarget===id?<small id={id+'-error'} className={styles.inlineError}>{error}</small>:null;
+ const privacyPanel=<details name="trip390-notice" ref={privacyDisclosure} onToggle={oneInformationPanel}><summary>{reservationNotice.title}<span aria-hidden="true">+</span></summary><div className={styles.agreementPanel} tabIndex={0} role="region" aria-label={reservationNotice.title} data-reservation-notice-version={reservationNotice.version} data-reservation-notice-digest={reservationNotice.textDigest} lang={documentLocale}>{reservationNotice.paragraphs.map((paragraph,index)=><p key={index}>{paragraph}</p>)}</div></details>;
 
  return <div className={`${site.site} ${styles.page}`} ref={page} lang={locale} dir={locale==='he'?'rtl':'ltr'}>
   <a className={site.skip} href="#main">{t('Skip to content','דלגו לתוכן')}</a>
@@ -364,87 +399,71 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, submi
   <main id="main" tabIndex={-1}>
    <section className={styles.hero} ref={hero} data-reflow={heroReflow?'true':undefined} aria-labelledby="trip390-title">
     <picture><source media="(max-width:767px), (max-width:999px) and (orientation:portrait)" srcSet="/groups/academy/hero-mobile-20261018.png" width="1143" height="2048"/><img src="/groups/academy/hero-desktop-20261018.png" width="2048" height="1143" alt={t('An adult and a boy preparing fishing equipment by the water','מבוגר וילד מכינים ציוד דיג ליד המים')} fetchPriority="high"/></picture>
-    <div className={styles.heroText} data-hero-heading><h1 id="trip390-title" lang="en" dir="ltr"><span>Jewish Leadership</span><span>Fishing Academy</span></h1></div>
+    <div className={styles.heroText} data-hero-heading><p className={styles.heroEyebrow}>{copy.hero.eyebrow}</p><h1 id="trip390-title" lang="en" dir="ltr"><span>Jewish Leadership</span><span>Fishing Academy</span></h1><p className={styles.heroPillars}>{copy.hero.pillars}</p></div>
     <div className={styles.heroAction} data-hero-action><a className={styles.action} href="#interest" onClick={openInterest}>{interestLabel}</a></div>
    </section>
    <section className={`${styles.section} ${styles.introduction}`} aria-labelledby="trip390-intro-title">
-    <div className={styles.sectionHeading}><h2 id="trip390-intro-title">{copy.intro.title}</h2></div>
-    <p className={styles.lead}>{copy.hero.description}</p>
-    <div className={styles.intro}><p className={styles.lead}>{copy.intro.body}</p><p>{copy.intro.values}</p></div>
-   </section>
-   <section className={styles.audience} aria-labelledby="trip390-audience-title"><div className={styles.section}>
-    <h2 id="trip390-audience-title">{copy.hero.eyebrow}</h2><p>{copy.faqs.find(item=>item.id==='age')?.a}</p>
-   </div></section>
-   <section id="how" className={styles.section} aria-labelledby="trip390-how-title">
-    <div className={styles.sectionHeading}><h2 id="trip390-how-title">{copy.nav.how}</h2></div>
-    <p className={styles.lead}>{copy.hero.includes}</p>
-    <div className={styles.preparationFeature}>
-     <figure className={styles.sceneFigure} data-trip390-scene="foundation"><img className={styles.supportingScene} data-academy-scene="foundation" src={preparationScene.publicPath} width={preparationScene.width} height={preparationScene.height} loading="lazy" alt={t('Illustration of organized fishing equipment','איור של ציוד דיג מסודר')}/></figure>
-     <ol className={styles.steps}>{copy.steps.slice(0,2).map(step=><li key={step.title}><h3>{step.title}</h3><p>{step.body}</p></li>)}</ol>
-    </div>
-    <div className={styles.outingFeature}>
-     <figure className={styles.sceneFigure} data-trip390-scene="form"><img className={styles.supportingScene} data-academy-scene="form" src={outingScene.publicPath} width={outingScene.width} height={outingScene.height} loading="lazy" alt={t('Illustration of a calm coastal scene','איור של חוף שקט')}/></figure>
-     <div>{copy.steps.slice(2).map(step=><div key={step.title}><h3>{step.title}</h3><p>{step.body}</p></div>)}</div>
-    </div>
+    <div className={styles.sectionHeading}><h2 id="trip390-intro-title">{introHeading(copy.intro.title)}</h2></div>
+    <p className={styles.lead}>{copy.intro.body}</p><p className={styles.audienceLine}>{copy.intro.audience}</p>
    </section>
    <section id="learn" className={`${styles.section} ${styles.skillsSection}`} aria-labelledby="trip390-learn-title">
-    <div className={styles.sectionHeading}><h2 id="trip390-learn-title">{copy.nav.learn}</h2></div>
-    <p className={styles.pillars}>{copy.hero.pillars}</p>
-    <div className={styles.knowledgeFeature}>
-     <figure className={`${styles.sceneFigure} ${styles.knowledgePicture}`} data-trip390-scene="advanced"><picture><source media="(max-width:767px)" srcSet={knowledgeMobileScene.publicPath} width={knowledgeMobileScene.width} height={knowledgeMobileScene.height}/><img className={styles.supportingScene} data-academy-scene="advanced" src={knowledgeScene.publicPath} width={knowledgeScene.width} height={knowledgeScene.height} loading="lazy" alt={t('Illustration of a large fish beneath the surface','איור של דג גדול מתחת לפני המים')}/></picture></figure>
-     <div className={styles.knowledgeText}>{copy.skills.slice(3,5).map(skill=><article key={skill.title}><h3>{skill.title}</h3><p>{skill.body}</p></article>)}</div>
-    </div>
-    <div className={styles.skills}>{copy.skills.filter((_,index)=>index<3||index>4).map(skill=><article key={skill.title}><h3>{skill.title}</h3><p>{skill.body}</p></article>)}</div>
+    <div className={styles.sectionHeading}><h2 id="trip390-learn-title">{copy.learning.title}</h2><p>{copy.learning.subtitle}</p></div>
+    <div className={styles.skills}>{copy.skills.map((skill,index)=>{const asset=trip390LearningAssets[index];return <article key={skill.title} data-trip390-skill={index+1}>
+     {asset?.src?<img className={styles.skillImage} data-academy-scene={asset.assetId} src={asset.src} width="1400" height="788" loading="lazy" alt={asset.alt[locale]}/>:<div className={styles.skillImageUnavailable} data-trip390-image-unavailable={index+1} aria-hidden="true"/>}
+     <div className={styles.skillCopy}><h3>{skill.title}</h3><p>{skill.body}</p></div></article>;})}</div>
     <div className={styles.torah}><h3>{copy.torah.title}</h3><p>{copy.torah.body}</p></div>
    </section>
+   <section id="how" className={styles.section} aria-labelledby="trip390-how-title">
+    <div className={styles.sectionHeading}><h2 id="trip390-how-title">{copy.nav.how}</h2></div>
+    <ul className={styles.logisticsBullets}>{copy.logistics.bullets.map(item=><li key={item}>{item}</li>)}</ul><p>{copy.logistics.details}</p>
+    <div className={styles.logisticsPair}>{[preparationScene,outingScene].map((asset,index)=><figure className={styles.sceneFigure} key={asset.slot} data-trip390-scene={asset.slot}><img className={styles.supportingScene} data-academy-scene={asset.slot} src={asset.publicPath} width={asset.width} height={asset.height} loading="lazy" alt={index===0?t('Fishing tackle backpack and organized equipment.','תיק דיג וציוד מסודר.'):t('Illustration of a fishing bridge over coastal water.','איור של גשר דיג מעל מי חוף.')}/><figcaption>{copy.logistics.captions[index]}</figcaption></figure>)}</div>
+   </section>
    <section id="included" className={styles.packageSection} aria-labelledby="trip390-package-title"><div className={styles.packageInner}>
-    <div className={styles.packageIntro}><h2 id="trip390-package-title">{copy.price.title}</h2><p className={styles.packagePrice}><span dir="ltr"><bdi>{copy.price.amount}</bdi><small>USD</small></span><span className={styles.priceUnit}>{copy.price.per_boy}</span></p><p>{copy.price.unit}</p><p className={styles.finePrint}>{copy.price.renewal}</p><a className={styles.action} href="#interest" onClick={openInterest}>{interestLabel}</a></div>
-    <div className={styles.packageDetails}><div className={styles.inclusionColumns}><div><h3>{copy.nav.included}</h3><ul className={styles.included}>{copy.price.included.map(item=><li key={item}>{item}</li>)}</ul></div><div><h3>{t('Separate','בנפרד')}</h3><ul className={styles.separate}>{copy.price.separate.map(item=><li key={item}>{item}</li>)}</ul></div></div><div className={styles.returning}><h3>{copy.returning.title}</h3><p>{copy.returning.body}</p></div></div>
-   </div></section>
-   <section id="dates" className={styles.section} aria-labelledby="trip390-dates-title"><div className={styles.dates}>
-    <div><h2 id="trip390-dates-title">{copy.dates.title}</h2><p>{copy.dates.empty}</p></div><div className={styles.location}><h3>{copy.location.title}</h3><p>{copy.location.body}</p></div>
+    <div className={styles.packageIntro}><h2 id="trip390-package-title">{copy.price.title}</h2><p className={styles.packagePrice}><bdi>{copy.price.amount}</bdi><span className={styles.priceUnit}>{copy.price.per_boy}</span></p><a className={styles.action} href="#interest" onClick={openInterest}>{interestLabel}</a></div>
+    <div className={styles.packageDetails}><ul className={styles.included}>{copy.price.included.map(item=><li key={item}>{item}</li>)}</ul><p className={styles.separate}><strong>{t('Separate:','בנפרד:')}</strong> {copy.price.separate.join(' ')}</p></div>
    </div></section>
    <section className={`${styles.section} ${styles.founder}`} aria-labelledby="trip390-founder-title"><img src="/groups/people/founder-head.jpg" width="180" height="180" loading="eager" decoding="async" alt={copy.founder.title}/><div><h2 id="trip390-founder-title">{copy.founder.title}</h2><p>{copy.founder.body}</p></div></section>
-   <section id="faq" className={styles.section} aria-labelledby="trip390-faq-title"><div className={styles.sectionHeading}><h2 id="trip390-faq-title">{copy.nav.faq}</h2></div><div className={styles.faqLayout}>{[copy.faqs.slice(0,9),copy.faqs.slice(9)].map((items,index)=><section key={index} className={styles.faqGroup} aria-labelledby={`trip390-faq-group-${index}`}><h3 id={`trip390-faq-group-${index}`}>{index===0?t('Participation, preparation & travel','השתתפות, הכנה ונסיעה'):t('The trip, safety & registration','הטיול, בטיחות והתעניינות')}</h3><div className={styles.faqs}>{items.map(item=><details key={item.id} id={item.id} data-trip390-faq name="trip390-faq" onToggle={event=>{if(event.currentTarget.open)page.current?.querySelectorAll<HTMLDetailsElement>('[data-trip390-faq]').forEach(node=>{if(node!==event.currentTarget)node.open=false;});}}><summary><span className={styles.faqQuestion}>{item.q}</span><span data-faq-glyph aria-hidden="true">+</span></summary><p>{item.a}</p></details>)}</div></section>)}</div></section>
-   <section id="interest" className={styles.finalInterest}><div className={styles.section}><h2>{copy.form.title}</h2><p>{copy.hero.interest_note}</p><a className={styles.action} href="#interest" onClick={openInterest}>{interestLabel}</a></div></section>
+   <section id="faq" className={styles.section} aria-labelledby="trip390-faq-title"><div className={styles.sectionHeading}><h2 id="trip390-faq-title">{copy.nav.faq}</h2></div><div className={styles.faqLayout}>{[copy.faqs.slice(0,Math.ceil(copy.faqs.length/2)),copy.faqs.slice(Math.ceil(copy.faqs.length/2))].map((items,index)=><div key={index} className={styles.faqs}>{items.map(item=><details key={item.id} id={item.id} data-trip390-faq name="trip390-faq" onToggle={event=>{if(event.currentTarget.open)page.current?.querySelectorAll<HTMLDetailsElement>('[data-trip390-faq]').forEach(node=>{if(node!==event.currentTarget)node.open=false;});}}><summary><span className={styles.faqQuestion}>{item.q}</span><span data-faq-glyph aria-hidden="true">+</span></summary><p>{item.a}</p></details>)}</div>)}</div></section>
+   <section id="interest" className={styles.finalInterest}><div className={styles.section}><h2>{copy.closing.title}</h2><p>{copy.closing.body}</p><a className={styles.action} href="#interest" onClick={openInterest}>{interestLabel}</a></div></section>
    <dialog className={styles.dialog} ref={dialog} aria-labelledby="trip390-interest-title" onKeyDown={containDialogTab} onCancel={event=>{event.preventDefault();closeInterest();}} onClose={()=>{if(!dialog.current?.open)setDialogOpen(false);}}>
     <div className={styles.dialogHeader}><h2 id="trip390-interest-title" ref={dialogTitle} tabIndex={-1}>{copy.form.title}</h2><button className={styles.closeDialog} type="button" onClick={closeInterest} aria-label={t('Close interest form','סגירת טופס ההתעניינות')}>×</button><div className={styles.languages} aria-label={t('Form language','שפת הטופס')}>{(['en','he'] as const).map(value=><button key={value} type="button" lang={value} aria-pressed={value===locale} onClick={()=>changeLocale(value)}>{value==='en'?'English':'עברית'}</button>)}</div></div>
-    <div className={styles.dialogBody}><div className={styles.formIntro}><p>{copy.form.intro}</p><p className={styles.privateNote}>{copy.form.place_not_confirmed}</p>{!submitInterest&&<p className={styles.unavailableNote}>{t('Preview only. Saving is unavailable until the existing inquiry integration is admitted.','תצוגה מקדימה בלבד. השמירה אינה זמינה עד לחיבור למערכת הפניות הקיימת.')}</p>}</div>
-    {saved?<div className={styles.saved} role="status" ref={savedSummary} tabIndex={-1}><span className={styles.savedMark} aria-hidden="true">✓</span><h3>{copy.form.saved}</h3><p>{result.email==='pending'?copy.form.email_pending:t('No confirmation email has been queued.','לא הוכנסה הודעת אישור לתור השליחה.')}</p><p>{copy.form.saved_reference}: <bdi>{result.reference}</bdi></p></div>
+    <div className={styles.dialogBody}><div className={styles.formIntro}><p>{copy.form.intro}</p>{(!submitInterest||!reservationCollectionEnabled)&&<p className={styles.unavailableNote}>{t('New registration is currently unavailable.','הרישום החדש אינו זמין כרגע.')}</p>}</div>
+    {saved?<><div className={styles.saved} role="status" ref={savedSummary} tabIndex={-1}><span className={styles.savedMark} aria-hidden="true">✓</span><h3>{copy.form.saved}</h3><p>{copy.form.saved_body}</p><p>{({pending:copy.form.email_pending,queued:t('Your confirmation email is waiting to be sent.','הודעת האישור ממתינה לשליחה.'),sent:t('Your confirmation email has been sent.','הודעת האישור נשלחה.'),unknown:t('We are checking whether the confirmation email was sent.','אנחנו בודקים אם הודעת האישור נשלחה.'),canceled:t('No confirmation email will be sent.','לא תישלח הודעת אישור.'),not_queued:copy.form.email_not_queued})[result.email]}</p><p>{copy.form.saved_reference}: <bdi>{result.reference}</bdi></p></div><div className={styles.permissions}>{privacyPanel}</div></>
     :<form className={styles.form} ref={form} onSubmit={save} noValidate aria-busy={busy}>
      {error&&<p className={styles.error} role="alert" id="trip390-error" ref={errorSummary} tabIndex={-1}>{errorTarget?copy.form.validation_summary:error}{errorTarget&&<a href={'#'+errorTarget} onClick={event=>{event.preventDefault();document.getElementById(errorTarget)?.focus();}}>{t('Go to field','מעבר לשדה')}</a>}</p>}
      {unresolved&&<p className={styles.error} role="alert">{copy.form.save_unknown}</p>}
      <fieldset disabled={locked}><legend>{t('Parent & location','הורה ומיקום')}</legend><div className={styles.columns}>
       <label htmlFor="trip390-guardianName">{copy.form.guardian_name}<input id="trip390-guardianName" name="guardianName" required maxLength={100} autoComplete="name" {...invalid('trip390-guardianName')}/>{fieldError('trip390-guardianName')}</label>
       <label htmlFor="trip390-email">{copy.form.email}<input id="trip390-email" name="email" type="email" required maxLength={254} autoComplete="email" dir="ltr" {...invalid('trip390-email')}/>{fieldError('trip390-email')}</label>
-      <label className={styles.fullWidth} htmlFor="trip390-phone">{copy.form.phone}<input id="trip390-phone" name="phone" type="tel" autoComplete="tel" placeholder="+1…" dir="ltr" required={whatsapp} {...invalid('trip390-phone')}/>{fieldError('trip390-phone')}{whatsapp&&<small>{t('Required for WhatsApp updates. Use an international number, for example +12025550101.','נדרש לעדכוני וואטסאפ. השתמשו במספר בינלאומי, לדוגמה +12025550101.')}</small>}</label>
+      <label className={styles.fullWidth} htmlFor="trip390-phoneE164">{copy.form.phone}<input id="trip390-phoneE164" name="phoneE164" type="tel" autoComplete="tel" placeholder="+12025550101" pattern="\+[1-9][0-9]{7,14}" maxLength={16} dir="ltr" required aria-describedby="trip390-phone-hint" {...invalid('trip390-phoneE164')}/>{fieldError('trip390-phoneE164')}<small id="trip390-phone-hint">{copy.form.phone_hint}</small></label>
       <label htmlFor="trip390-city">{copy.form.city}<input id="trip390-city" name="city" required minLength={2} maxLength={120} value={city} onChange={event=>setCity(event.target.value)} list="trip390-cities" aria-describedby="trip390-city-hint" autoComplete="address-level2" {...invalid('trip390-city')}/><datalist id="trip390-cities">{trip390CitySuggestions(city).map(value=><option key={value} value={value}/>)}</datalist>{fieldError('trip390-city')}<small id="trip390-city-hint">{copy.form.city_hint}</small></label>
       <label htmlFor="trip390-postalCode">{copy.form.zip}<input id="trip390-postalCode" name="postalCode" required inputMode="numeric" pattern="[0-9]{5}(-[0-9]{4})?" maxLength={10} autoComplete="postal-code" dir="ltr" aria-describedby="trip390-zip-hint" {...invalid('trip390-postalCode')}/>{fieldError('trip390-postalCode')}<small id="trip390-zip-hint">{copy.form.zip_hint}</small></label>
      </div></fieldset>
      <fieldset disabled={locked}><legend>{t('The boys','הילדים')}</legend>
       {children.map((child,index)=><fieldset className={styles.child} key={child.id}><legend>{copy.form.child_heading.replace('{number}',String(index+1))}</legend><div className={styles.columns}>
        <label htmlFor={`trip390-child-${child.id}-name`}>{copy.form.child_name}<input id={`trip390-child-${child.id}-name`} required name={`child-${child.id}-name`} value={child.name} maxLength={100} onChange={event=>changeChild(child.id,'name',event.target.value)} {...invalid(`trip390-child-${child.id}-name`)}/>{fieldError(`trip390-child-${child.id}-name`)}</label>
-       <label htmlFor={`trip390-child-${child.id}-ageYears`}>{copy.form.child_age}<input id={`trip390-child-${child.id}-ageYears`} required name={`child-${child.id}-age`} type="number" min={0} max={120} step={1} inputMode="numeric" value={child.age} onChange={event=>changeChild(child.id,'age',event.target.value)} {...invalid(`trip390-child-${child.id}-ageYears`)}/>{fieldError(`trip390-child-${child.id}-ageYears`)}</label>
+       <label htmlFor={`trip390-child-${child.id}-ageYears`}>{copy.form.child_age}<input id={`trip390-child-${child.id}-ageYears`} required name={`child-${child.id}-age`} type="number" min={9} max={15} step={1} inputMode="numeric" value={child.age} onChange={event=>changeChild(child.id,'age',event.target.value)} {...invalid(`trip390-child-${child.id}-ageYears`)}/>{fieldError(`trip390-child-${child.id}-ageYears`)}</label>
        <label className={styles.fullWidth} htmlFor={`trip390-child-${child.id}-experience`}>{copy.form.experience}<select id={`trip390-child-${child.id}-experience`} value={child.experience} onChange={event=>changeChild(child.id,'experience',event.target.value)}>{['new','some','experienced','not_sure'].map((value,i)=><option key={value} value={value}>{copy.form.experience_choices[i]}</option>)}</select></label>
-      </div>{children.length>1&&<button className={styles.removeChild} type="button" onClick={()=>setChildren(items=>items.filter(item=>item.id!==child.id))}>{copy.form.remove_child} {index+1}</button>}</fieldset>)}
-      <button className={styles.addChild} type="button" disabled={children.length>=10} onClick={()=>setChildren(items=>[...items,{id:crypto.randomUUID(),name:'',age:'',experience:'new'}])}><span aria-hidden="true">+</span> {copy.form.add_child}</button>
+      </div>{children.length>1&&<button className={styles.removeChild} type="button" onClick={()=>{resetAcknowledgments();setChildren(items=>items.filter(item=>item.id!==child.id));}}>{copy.form.remove_child} {index+1}</button>}</fieldset>)}
+      <button className={styles.addChild} type="button" disabled={children.length>=10} onClick={()=>{resetAcknowledgments();setChildren(items=>[...items,{id:crypto.randomUUID(),name:'',age:'',experience:'new'}]);}}><span aria-hidden="true">+</span> {copy.form.add_child}</button>
      </fieldset>
      <fieldset disabled={locked}><legend>{t('Preferences & questions','העדפות ושאלות')}</legend><div className={styles.columns}>
+      <label className={styles.fullWidth} htmlFor="trip390-lessonDayDriving">{copy.form.driving_label}<select id="trip390-lessonDayDriving" name="lessonDayDriving" required defaultValue="" aria-describedby="trip390-driving-hint" {...invalid('trip390-lessonDayDriving')}><option value="" disabled>{t('Choose your driving-time preference','בחרו את העדפת זמן הנסיעה')}</option>{(['up_to_30','up_to_60','up_to_90','up_to_120','flexible'] as const).map((value,index)=><option key={value} value={value}>{copy.form.driving_choices[index]}</option>)}</select>{fieldError('trip390-lessonDayDriving')}<small id="trip390-driving-hint">{copy.form.driving_hint}</small></label>
       <label htmlFor="trip390-messageLanguage">{copy.form.message_language}<select id="trip390-messageLanguage" name="messageLanguage" defaultValue={initialLocale}><option value="en">English</option><option value="he">עברית</option></select></label>
       <label htmlFor="trip390-instructionLanguage">{copy.form.group_language}<select id="trip390-instructionLanguage" name="instructionLanguage" defaultValue="either"><option value="either">{t('Either','כל שפה')}</option><option value="en">English</option><option value="he">עברית</option></select></label>
-     </div><label htmlFor="trip390-notes">{copy.form.notes}<textarea id="trip390-notes" name="notes" maxLength={600} aria-describedby="trip390-notes-hint"/><small id="trip390-notes-hint">{copy.form.notes_hint}</small></label></fieldset>
-     <fieldset disabled={locked} className={styles.permissions}><legend>{t('Information & permissions','מידע ואישורים')}</legend>
-      <details name="trip390-notice"><summary>{copy.conduct.title}<span aria-hidden="true">+</span></summary><div tabIndex={0} role="region" aria-label={copy.conduct.title}>{copy.conduct.body}</div></details>
-      <details name="trip390-notice"><summary>{t('Interest, safety and privacy','התעניינות, בטיחות ופרטיות')}<span aria-hidden="true">+</span></summary><div tabIndex={0} role="region" aria-label={t('Interest, safety and privacy','התעניינות, בטיחות ופרטיות')}><p>{copy.form.privacy_short}</p><p>{copy.form.interest_ack}</p><p>{copy.hero.interest_note}</p></div></details>
-      <label className={styles.check}><input id="trip390-conduct" type="checkbox" name="conduct" required {...invalid('trip390-conduct')}/><span>{copy.form.conduct}{fieldError('trip390-conduct')}</span></label>
-      <label className={styles.check}><input id="trip390-interest" type="checkbox" name="interest" required {...invalid('trip390-interest')}/><span>{copy.form.interest_ack}{fieldError('trip390-interest')}</span></label>
-      <label className={styles.check}><input type="checkbox" name="whatsapp" checked={whatsapp} onChange={event=>setWhatsapp(event.target.checked)}/>{copy.form.whatsapp}</label>
+     </div></fieldset>
+     <fieldset disabled={locked||!reservationCollectionEnabled} className={styles.permissions}><legend>{t('Information & permissions','מידע ואישורים')}</legend>
+      {privacyPanel}
+      <label className={styles.check}><input id="trip390-interest" type="checkbox" name="interest" required checked={reservationAccepted} onChange={event=>setReservationAccepted(event.target.checked)} {...invalid('trip390-interest')}/><span lang={documentLocale}>{reservationNotice.acknowledgment}{fieldError('trip390-interest')}</span></label>
+      <details name="trip390-notice" onToggle={oneInformationPanel}><summary>{conduct.title}<span aria-hidden="true">+</span></summary><div className={styles.agreementPanel} tabIndex={0} role="region" aria-label={conduct.title} data-student-conduct-version={conduct.version} data-student-conduct-digest={conduct.textDigest} lang={documentLocale}><p>{conduct.intro}</p>{conduct.sections.map(section=><section key={section.title}><h3>{section.title}</h3><p>{section.body}</p></section>)}</div></details>
+      <label className={styles.check}><input id="trip390-conduct" type="checkbox" name="conduct" required checked={conductExplained} onChange={event=>setConductExplained(event.target.checked)} {...invalid('trip390-conduct')}/><span lang={documentLocale}>{conduct.acknowledgment}{fieldError('trip390-conduct')}</span></label>
+      <label className={styles.check}><input type="checkbox" name="whatsapp" checked={whatsapp} onChange={event=>setWhatsapp(event.target.checked)}/><span lang={documentLocale}>{consentCopy.whatsapp}</span></label>
      </fieldset>
-     <div className={styles.submitArea}>{!submitInterest&&<p role="status">{t('Saving is unavailable in this review preview.','השמירה אינה זמינה בתצוגת הבדיקה הזאת.')}</p>}<button className={styles.action} type="submit" disabled={!submitInterest||busy||result?.state==='conflict'}>{busy?copy.form.sending:unresolved?t('Check same submission','בדיקת אותה פנייה'):copy.form.submit}</button><p className={styles.finePrint}>{copy.hero.interest_note}</p></div>
+     <div className={styles.submitArea}><p className={styles.finePrint}>{copy.form.place_not_confirmed}</p>{(!submitInterest||!reservationCollectionEnabled)&&<p role="status">{t('New registration is currently unavailable.','הרישום החדש אינו זמין כרגע.')}</p>}<button className={styles.action} type="submit" disabled={!submitInterest||!reservationCollectionEnabled||busy||result?.state==='conflict'}>{busy?copy.form.sending:unresolved?t('Check same submission','בדיקת אותה פנייה'):copy.form.submit}</button></div>
     </form>}
    </div></dialog>
   </main>
-  <footer className={styles.footer}><a href="#main" className={styles.footerBrand}><img src="/groups/brand/jlfa-logo-locked-v1.png" width="64" height="64" alt=""/><span>{copy.brand}</span></a><a href={'https://wa.me/13054916674?text='+encodeURIComponent(copy.whatsapp_inquiry)} rel="noopener noreferrer" referrerPolicy="no-referrer">{t('Contact us on WhatsApp','דברו איתנו בוואטסאפ')}</a><p className={styles.affiliation}>{copy.footer.affiliation}</p></footer>
+  <footer className={styles.footer}><a href="#main" className={styles.footerBrand}><img src="/groups/brand/jlfa-logo-locked-v1.png" width="64" height="64" alt=""/><span>{copy.brand}</span></a><p className={styles.affiliation}>{copy.footer.affiliation}</p><nav className={styles.footerLinks} aria-label={t('Contact and privacy','יצירת קשר ופרטיות')}><a href={ACADEMY_CONTACT.telephone}>{copy.footer.contact}</a><a href={'https://wa.me/13054916674?text='+encodeURIComponent(copy.whatsapp_inquiry)} rel="noopener noreferrer" referrerPolicy="no-referrer">{copy.footer.whatsapp}</a><a href="#interest" onClick={openPrivacy}>{copy.footer.privacy}</a></nav></footer>
   <a className={styles.whatsapp} ref={contact} hidden={dialogOpen} tabIndex={dialogOpen?-1:0} aria-hidden={dialogOpen||undefined} href={'https://wa.me/13054916674?text='+encodeURIComponent(copy.whatsapp_inquiry)} aria-label={t('Contact us on WhatsApp','דברו איתנו בוואטסאפ')} rel="noopener noreferrer" referrerPolicy="no-referrer"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M26 15a11 11 0 0 1-16.5 9.5L4 26l1.6-5.3A11 11 0 1 1 26 15Z"/><path d="m10.4 9.4 2.1-.2 1.5 3-1.4 1.5c1 2 2.5 3.4 4.6 4.3l1.5-1.4 3 1.5-.3 2c-.2 1.4-2.3 1.6-3.5 1.1-4.9-1.8-8.4-5.4-9-9.1-.2-1.3.2-2.4 1.5-2.7Z"/></svg></a>
  </div>;
 }

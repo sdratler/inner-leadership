@@ -1,7 +1,29 @@
 /** Existing worker; hosted mode is explicitly disabled without full v2 admission. */
 import {loadSignupPopulation} from '../src/features/group-application/academy-signup-population-runtime.ts';
+import {loadTrip390AckAdmission} from '../src/features/group-application/academy-trip390-ack-admission.ts';
 import {superviseSignupWorker} from './signup-worker-supervisor.ts';
 import type {SignupDispatchCursor} from '../src/features/group-application/academy-founder-store.ts';
+const tripArgs=process.argv.slice(2),tripHosted=tripArgs.length===1&&tripArgs[0]==='--hosted-trip390-ack',tripSingle=tripArgs.length===2&&tripArgs[0]==='--dispatch-trip390-ack-one'&&/^[-0-9a-f]{36}$/.test(tripArgs[1]!);
+if(tripHosted||tripSingle){
+ const initial=loadTrip390AckAdmission(process.env,new Date());
+ if(!initial){process.send?.({type:'JLFA_TRIP_ACK_COMPLETE',reason:'ADMISSION_CLOSED'});console.log(JSON.stringify({state:'TRIP_ACK_DISABLED',processed:0}));}
+ else{
+  const [{identityRuntime},{closeDatabase},{InquiryEmailOutbox}]=await Promise.all([import('../src/features/identity/runtime.ts'),import('../src/db/client.ts'),import('../src/features/group-application/inquiry-email.ts')]);
+  const admittedIdentity=JSON.stringify(initial);
+  const control=new AbortController(),stop=()=>control.abort();if(tripHosted){process.on('SIGINT',stop);process.on('SIGTERM',stop);}
+  try{
+   const r=await identityRuntime();let cursor:import('../src/features/group-application/inquiry-email.ts').Trip390AckCursor|undefined;
+   const cycle=async()=>{
+    const policy=loadTrip390AckAdmission(process.env,r.clock.now());
+    if(!policy||JSON.stringify(policy)!==admittedIdentity||policy.workspaceId!==r.config.workspaceId||policy.origin!==r.config.origin){control.abort();process.send?.({type:'JLFA_TRIP_ACK_COMPLETE',reason:'ADMISSION_CLOSED'});return;}
+    const outbox=new InquiryEmailOutbox(r.store,r.config.workspaceId,r.config.keyring,r.clock,r.config.lookupKey.toString('hex'));
+    if(tripSingle){const state=await outbox.dispatchTrip390One(tripArgs[1]!,policy,process.env);console.log(JSON.stringify({state}));return;}
+    const result=await outbox.dispatchTrip390Page(policy,process.env,cursor);cursor=result.continuation;
+   };
+   if(tripHosted)await superviseSignupWorker({signal:control.signal,cycle,event:event=>console.log(JSON.stringify(event)),wait:(delay,signal)=>new Promise<void>(resolve=>{if(signal.aborted){resolve();return;}const done=()=>{clearTimeout(timer);signal.removeEventListener('abort',done);resolve();};const timer=setTimeout(done,delay);signal.addEventListener('abort',done,{once:true});})});else await cycle();
+  }finally{if(tripHosted){process.off('SIGINT',stop);process.off('SIGTERM',stop);}await closeDatabase();}
+ }
+}else{
 const args=process.argv.slice(2),hosted=args.length===1&&args[0]==='--hosted-signup',due=args.length===1&&['--prepare-due','--drain-due'].includes(args[0]!);
 const single=args.length===2&&args[0]==='--dispatch-signup-one'&&/^[-0-9a-f]{36}$/.test(args[1]!);
 const generic=args.length===2&&args[0]==='--dispatch-one'&&/^[-0-9a-f]{36}$/.test(args[1]!);
@@ -65,4 +87,6 @@ if((!generic&&!initial)||(generic&&process.env.LS_INQUIRY_EMAIL_SEND_ENABLED!=='
    if(signal.aborted){resolve();return;}const done=()=>{clearTimeout(timer);signal.removeEventListener('abort',done);resolve();};const timer=setTimeout(done,delayMs);signal.addEventListener('abort',done,{once:true});
   })});else await cycle();
  }finally{if(hosted){process.off('SIGINT',stop);process.off('SIGTERM',stop);}await closeDatabase();}
+}
+
 }

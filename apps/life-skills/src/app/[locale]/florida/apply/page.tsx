@@ -7,6 +7,7 @@ import{isLocale}from"../../../../lib/locale.ts";
 import{publicGroupApplicationEnvironmentEnabled}from"../../../../features/group-application/candidate.ts";
 import{AcademyIntakePage}from"../../../../features/group-application/academy-intake-page.tsx";
 import {AcademyTrip390Client} from "../../../../features/group-application/academy-trip390-client.tsx";
+import {trip390ReservationCollectionEnabled} from '../../../../features/group-application/academy-trip390-reservation-admission.ts';
 import {academyPublicOffer,trip390RouteMetadata} from "../../../../features/group-application/academy-trip390-transport.ts";
 export const dynamic="force-dynamic";
 export async function generateMetadata({params}:{params:Promise<{locale:string}>}){
@@ -18,6 +19,6 @@ export async function generateMetadata({params}:{params:Promise<{locale:string}>
 export default async function Page({params}:{params:Promise<{locale:string}>}){
  const {locale}=await params,offer=academyPublicOffer(process.env);
  if(!isLocale(locale)||!publicGroupApplicationEnvironmentEnabled()||offer==='unavailable')notFound();
- if(offer==='trip390')return <AcademyTrip390Client locale={locale} openForm/>;
+ if(offer==='trip390')return <AcademyTrip390Client locale={locale} openForm reservationCollectionEnabled={trip390ReservationCollectionEnabled(process.env)}/>;
  return <AcademyPublicRoute mode={await academyRouteMode()} campaign={await academyCampaignSnapshot()}><AcademyIntakePage locale={locale} privacyLinkEnabled={process.env.LS_BNA_PRIVACY_LINK_ENABLED==="true"}/></AcademyPublicRoute>;
 }
