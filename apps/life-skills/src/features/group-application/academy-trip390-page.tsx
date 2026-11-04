@@ -194,18 +194,26 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, reser
     }
    }
    const headerFloor=(header.current?.getBoundingClientRect().bottom??0)+gap;
-   let top=baseTop,maxLift=168;
-   // Three button heights for controls; up to four for a protected photo or
-   // actual readable text. No clear bounded slot means temporarily hiding the
-   // floating control; the footer contact remains available.
+   let top=baseTop,floor=Math.max(headerFloor,baseTop-168),metText=false;
    for(let index=0;index<=obstacles.length;index++){
     const overlap=obstacles.filter(rect=>rect.top<top+box.height+rect.gap&&rect.bottom>top-rect.gap);
     if(!overlap.length)break;
-    if(overlap.some(rect=>rect.kind==='photo'||rect.kind==='text'))maxLift=224;
+    metText ||= overlap.some(rect=>rect.kind==='text');
+    if(overlap.some(rect=>rect.kind==='photo'||rect.kind==='text'))floor=Math.min(floor,Math.max(headerFloor,baseTop-224));
     top=Math.min(...overlap.map(rect=>rect.top-box.height-rect.gap));
-    if(top<Math.max(headerFloor,baseTop-maxLift))break;
+    if(top>=floor)continue;
+    // Exhaust the lower band first. Above it, use the closest clear body slot
+    // only after the hero has scrolled behind the header and the menu is closed.
+    if(top<headerFloor||!metText||menuOpen||!hero.current||hero.current.getBoundingClientRect().bottom>headerFloor-gap)break;
+    floor=headerFloor;
+    // A higher dock must also leave supporting photos and their captions clear.
+    page.current?.querySelectorAll('main img,main figcaption').forEach(node=>{
+     const rect=node.getBoundingClientRect();
+     if(rect.width>0&&rect.height>0&&rect.bottom>headerFloor&&rect.top<window.innerHeight&&rect.left<box.right+gap&&rect.right>box.left-gap)
+      obstacles.push({left:rect.left,right:rect.right,top:rect.top,bottom:rect.bottom,gap,kind:'photo'});
+    });
    }
-   const blocked=top<Math.max(headerFloor,baseTop-maxLift);
+   const blocked=top<floor;
    lift=blocked?0:baseTop-top;
    link.style.setProperty('--contact-lift',`${lift}px`);
    link.style.visibility=blocked?'hidden':'';
