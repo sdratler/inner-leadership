@@ -3,15 +3,22 @@ import {identityRuntime} from "@/features/identity/runtime.ts";
 import {publicGroupApplicationEnabled} from "@/features/group-application/candidate.ts";
 import {publicGroupApplicationHttp} from "@/features/group-application/http.ts";
 import {PublicGroupApplicationStore} from "@/features/group-application/store.ts";
-import {inquiryEmailQueueEnabled,createInquiryEmailTransport,InquiryEmailOutbox} from "@/features/group-application/inquiry-email.ts";
+import {trip390ReservationCollectionEnabled} from '@/features/group-application/academy-trip390-reservation-admission.ts';
+import {inquiryEmailQueueEnabled,createInquiryEmailTransport,InquiryEmailOutbox,dispatchAdmittedTrip390Acknowledgment} from "@/features/group-application/inquiry-email.ts";
+import {trip390AckQueueEnabled} from '@/features/group-application/academy-trip390-ack-admission.ts';
 import {AcademyFounderStore} from '@/features/group-application/academy-founder-store.ts';
 import {AcademyOwnerNotificationOutbox,createAcademyOwnerNotificationTransport} from '@/features/group-application/academy-owner-notification.ts';
 export const runtime="nodejs";export const dynamic="force-dynamic";
 async function handle(request:Request){return publicGroupApplicationHttp(request,async(trip390)=>{
  const r=await identityRuntime();
  if(trip390)return {enabled:publicGroupApplicationEnabled(request),environment:process.env,
+  trip390ReservationAdmitted:trip390ReservationCollectionEnabled(process.env),
   challengeKey:r.config.rateLimitKey,now:()=>r.clock.now().getTime(),limits:r.services.limits,
-  store:new PublicGroupApplicationStore(r.store,r.config.workspaceId,r.config.keyring,r.config.lookupKey.toString('hex'),r.clock,false)};
+  store:new PublicGroupApplicationStore(r.store,r.config.workspaceId,r.config.keyring,r.config.lookupKey.toString('hex'),r.clock,trip390AckQueueEnabled(process.env)),
+  afterCommit:(reference:string)=>dispatchAdmittedTrip390Acknowledgment(reference,{
+   store:r.store,workspaceId:r.config.workspaceId,keyring:r.config.keyring,clock:r.clock,
+   origin:r.config.origin,digestKey:r.config.lookupKey.toString('hex')
+  },process.env)};
  const founder=process.env.LS_ACADEMY_FREE_REGISTRATION_ENABLED==='true'?new AcademyFounderStore(r.store,r.config.workspaceId,r.config.keyring,r.config.lookupKey.toString('hex'),r.clock,null,null,loadSignupPopulation(process.env,r.clock.now()),process.env.LS_ACADEMY_OWNER_NOTIFICATION_ENABLED==='true'):undefined;return {enabled:publicGroupApplicationEnabled(request),environment:process.env,
   challengeKey:r.config.rateLimitKey,now:()=>r.clock.now().getTime(),limits:r.services.limits,
   store:new PublicGroupApplicationStore(r.store,r.config.workspaceId,r.config.keyring,r.config.lookupKey.toString("hex"),r.clock,inquiryEmailQueueEnabled(process.env),founder),

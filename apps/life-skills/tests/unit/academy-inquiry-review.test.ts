@@ -6,11 +6,12 @@ import {InquiryReviewList} from "../../src/features/group-application/inquiry-re
 import {AcademyInquiryFilters} from "../../src/features/group-application/academy-inquiry-filters.tsx";
 import {emptyAcademyInquiryFilters} from "../../src/features/group-application/academy-inquiry-filters.ts";
 import {practitionerContext,breadcrumbItems} from "../../src/ui/workspace/navigation-model.ts";
-import {TRIP390_INTEREST_VERSION,TRIP390_NOTICE_VERSION,TRIP390_OFFER,type Trip390Interest} from "../../src/features/group-application/academy-trip390-contract.ts";
+import type {Trip390Interest} from "../../src/features/group-application/academy-trip390-contract.ts";
+import {TRIP390_V1_INTEREST_VERSION,TRIP390_V1_NOTICE_VERSION,TRIP390_V1_OFFER} from "../../src/features/group-application/academy-trip390-v1.ts";
 import type {GroupApplicationRecord} from "../../src/features/group-application/contract.ts";
 vi.mock("server-only",()=>({}));
 const ref="11111111-1111-4111-8111-111111111111";
-const fields:Trip390Interest={version:TRIP390_INTEREST_VERSION,offerVersion:TRIP390_OFFER.version,guardianName:"Synthetic <Parent>",email:"synthetic@example.invalid",city:"Synthetic District",postalCode:"01234-5678",messageLanguage:"he" as const,instructionLanguage:"either" as const,children:[{id:"22222222-2222-4222-8222-222222222222",name:"Older synthetic",ageYears:12,experience:"some" as const},{id:"33333333-3333-4333-8333-333333333333",name:"Younger synthetic",ageYears:9,experience:"new" as const}],acknowledgment:{version:TRIP390_NOTICE_VERSION,language:"en" as const,conductExplained:true as const,interestPrivacySafety:true as const,whatsapp:false}};
+const fields:Trip390Interest={version:TRIP390_V1_INTEREST_VERSION,offerVersion:TRIP390_V1_OFFER.version,guardianName:"Synthetic <Parent>",email:"synthetic@example.invalid",city:"Synthetic District",postalCode:"01234-5678",messageLanguage:"he" as const,instructionLanguage:"either" as const,children:[{id:"22222222-2222-4222-8222-222222222222",name:"Older synthetic",ageYears:12,experience:"some" as const},{id:"33333333-3333-4333-8333-333333333333",name:"Younger synthetic",ageYears:9,experience:"new" as const}],acknowledgment:{version:TRIP390_V1_NOTICE_VERSION,language:"en" as const,conductExplained:true as const,interestPrivacySafety:true as const,whatsapp:false}};
 const item:GroupApplicationRecord={id:ref,source:"public_group_application",state:"owner_review",receivedAt:"2026-11-04T12:00:00.000Z",fields};
 const body={ok:true,data:{items:[item],nextCursor:null,emailSetup:null}};
 afterEach(()=>vi.unstubAllGlobals());

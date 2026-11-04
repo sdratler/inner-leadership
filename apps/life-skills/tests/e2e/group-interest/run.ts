@@ -19,7 +19,7 @@ import {privateDigest} from "../../../src/features/contact-ops/server/digests.ts
 import {floridaGroupApplicationNotice} from "../../../src/features/group-application/contract.ts";
 import {FOUNDER_DECISION} from "../../../src/features/group-application/academy-founder-contract.ts";
 import {founderTransitionSchema} from "../../../src/features/group-application/academy-founder-transition-contract.ts";
-import {trip390InterestSchema,TRIP390_NOTICE_VERSION,TRIP390_OFFER} from "../../../src/features/group-application/academy-trip390-contract.ts";
+import {trip390CurrentInterestSchema,TRIP390_NOTICE_VERSION,TRIP390_OFFER,TRIP390_DRIVING_VERSION} from "../../../src/features/group-application/academy-trip390-contract.ts";
 import {syntheticChildFailure} from "./synthetic-child-output.ts";
 
 const projects={desktop:3105,tablet768:3108,mobile390:3106,mobile340:3107} as const;
@@ -179,14 +179,14 @@ async function verifyTrip390Effects(publicApplicationId:string,keyring:Keyring,d
  const locales=new Set<string>(),learners=new Set<string>();
  for(const row of rows){
   const payload=JSON.parse(unseal(row.payload_ciphertext,`ls_service_interest/public_application/v1/${workspace}/${row.id}`,keyring));
-  const result=trip390InterestSchema.safeParse(payload);
+  const result=trip390CurrentInterestSchema.safeParse(payload);
   if(!result.success)throw Error('TRIP390_STORED_SCHEMA');
   const fields=result.data,locale=fields.acknowledgment.language;
   const requestDigest=privateDigest({domain:'public-group-application/v1',workspace,fields},digestKey);
   const contactDigest=privateDigest({domain:'public-group-application-contact/v1',workspace,contact:fields.email},digestKey);
   if(requestDigest!==row.request_digest||requestDigest!==row.operation_digest||contactDigest!==row.contact_digest)throw Error('TRIP390_STORED_DIGEST_BINDING');
   if(row.notice_language!==locale||row.notice_version!==TRIP390_NOTICE_VERSION||fields.offerVersion!==TRIP390_OFFER.version||fields.messageLanguage!==(locale==='en'?'he':'en')||fields.instructionLanguage!=='either')throw Error('TRIP390_STORED_VERSION_OR_LANGUAGE');
-  if(fields.city!=='Synthetic Unlisted District '+locale||fields.postalCode!=='01234-5678'||fields.phone!==undefined||fields.acknowledgment.whatsapp!==false)throw Error('TRIP390_STORED_LOCATION_OR_PERMISSION');
+  if(fields.city!=='Synthetic Unlisted District '+locale||fields.postalCode!=='01234-5678'||fields.phone!=='+12025550107'||fields.acknowledgment.whatsapp!==false||fields.lessonDayDriving.version!==TRIP390_DRIVING_VERSION||fields.lessonDayDriving.limit!=='up_to_90')throw Error('TRIP390_STORED_LOCATION_OR_PERMISSION');
   const [older,younger]=fields.children;
   if(fields.children.length!==2||!older||!younger||older.name!=='Synthetic older '+locale||older.ageYears!==12||older.experience!=='some'||younger.name!=='Synthetic younger '+locale||younger.ageYears!==9||younger.experience!=='new')throw Error('TRIP390_STORED_SIBLING_TUPLE');
   locales.add(locale);learners.add(older.id);learners.add(younger.id);
@@ -378,6 +378,8 @@ try{
  // app process. An ambient selector must never change other browser modes.
  delete env.LS_ACADEMY_PUBLIC_OFFER;
  if(trip390Only)Object.assign(env,{LS_ACADEMY_PUBLIC_OFFER:TRIP390_OFFER.version,LS_PROVIDER_INDEX_OWNER_ACCOUNT_ID:f.practitioner.actor.id,
+  LS_ACADEMY_TRIP390_RESERVATION_ENABLED:'true',LS_ACADEMY_TRIP390_RESERVATION_NOTICE_VERSION:TRIP390_NOTICE_VERSION,
+  LS_ACADEMY_TRIP390_ACK_QUEUE_ENABLED:'false',LS_ACADEMY_TRIP390_ACK_ENABLED:'false',LS_ACADEMY_TRIP390_ACK_ADMISSION_JSON:'',
   LS_INQUIRY_EMAIL_QUEUE_ENABLED:'false',LS_ACADEMY_SIGNUP_WORKER_ENABLED:'false',LS_ACADEMY_SIGNUP_CONTROLLED_SEND_ENABLED:'false',
   LS_ACADEMY_SIGNUP_WORKER_ADMISSION_JSON:'',LS_ACADEMY_OWNER_NOTIFICATION_ENABLED:'false'});
  if(communityTransport)Object.assign(env,{LS_COMMUNITY_SCOUT_BRIDGE_SECRET:communityTransport.secret,LS_COMMUNITY_FIXTURE_ORIGIN:communityTransport.controlOrigin,

@@ -12,10 +12,16 @@ import type {Actor,IdentityClock} from "../identity/types.ts";
 import {one,type IdentityStore,type SqlSession} from "../identity/store.ts";
 import type {AuthEmailTransport} from "../../providers/email/transport.ts";
 import {GmailAuthTransport,parseGmailAuthConfig} from "../../providers/email/gmail.ts";
-import {groupApplicationFieldsSchema,isFloridaGroupApplication,isSchoolInquiry,type GroupApplicationFields} from "./contract.ts";
+import {groupApplicationFieldsSchema,isFloridaGroupApplication,isSchoolInquiry,isTrip390Interest,type GroupApplicationFields} from "./contract.ts";
 import {INQUIRY_EMAIL_FROM,INQUIRY_EMAIL_PURPOSE,inquiryEmailContent} from "./inquiry-email-copy.ts";
 
-const payloadSchema=z.object({purpose:z.literal(INQUIRY_EMAIL_PURPOSE),reference:z.string().uuid(),recipient:z.email().max(254),locale:z.enum(["en","he"])}).strict();
+import {decodeStoredGroupApplication,type StoredGroupApplicationRow} from './group-application-record.ts';
+import {isCurrentTrip390Interest} from './academy-trip390-contract.ts';
+import {trip390EmailContent,TRIP390_EMAIL_VERSION} from './academy-trip390-email.ts';
+import {assertTrip390AckAdmission,loadTrip390AckAdmission,trip390AckRequestAllowed,type Trip390AckAdmission,type Trip390AckFacts} from './academy-trip390-ack-admission.ts';
+const legacyPayloadSchema=z.object({purpose:z.literal(INQUIRY_EMAIL_PURPOSE),reference:z.string().uuid(),recipient:z.email().max(254),locale:z.enum(["en","he"])}).strict();
+const tripPayloadSchema=z.object({version:z.literal(2),purpose:z.literal(INQUIRY_EMAIL_PURPOSE),reference:z.string().uuid(),recipient:z.email().max(254),locale:z.enum(['en','he']),copyVersion:z.literal(TRIP390_EMAIL_VERSION),contentSha256:z.string().regex(/^[a-f0-9]{64}$/),subject:z.string().min(1).max(300),text:z.string().min(1).max(12000),html:z.string().min(1).max(24000)}).strict();
+const payloadSchema=z.union([legacyPayloadSchema,tripPayloadSchema]);
 const aad=(workspace:string,id:string)=>`ls_service_interest/inquiry_email/v1/${workspace}/${id}`;
 export function inquiryEmailQueueEnabled(env:Record<string,string|undefined>){return env.LS_INQUIRY_EMAIL_QUEUE_ENABLED==="true";}
 export function createInquiryEmailTransport(env:Record<string,string|undefined>,sendFetch:typeof fetch=fetch,signup?:{policy:SignupWorkerAdmission;now:()=>Date}){
@@ -46,6 +52,12 @@ export function createInquiryEmailTransport(env:Record<string,string|undefined>,
  return {transport,from:config.from};
 }
 function intendedPayload(reference:string,fields:GroupApplicationFields){
+ if(isTrip390Interest(fields)){
+  // Historical V1 rows cannot acquire new transactional intents by retry.
+  if(!isCurrentTrip390Interest(fields))return null;
+  const content=trip390EmailContent({version:TRIP390_EMAIL_VERSION,kind:'ack',reference,parentName:fields.guardianName,children:fields.children.map(({id,name})=>({id,name})),messageLanguage:fields.messageLanguage});
+  return tripPayloadSchema.parse({version:2,purpose:INQUIRY_EMAIL_PURPOSE,reference,recipient:fields.email,locale:fields.messageLanguage,copyVersion:content.version,contentSha256:content.contentSha256,subject:content.subject,text:content.text,html:content.html});
+ }
  if(!isFloridaGroupApplication(fields)||fields.programId!=="sunday_fishing_academy")return null;
  // Only a supplied, validated confirmation address may override an email
  // contact. Phone-only remains valid; never infer an address from a number.
@@ -63,9 +75,97 @@ export async function queueInquiryEmail(tx:SqlSession,workspace:WorkspaceId,refe
  return "queued" as const;
 }
 type Row={id:string;applicationId:string;purpose:string;ciphertext:string;state:"queued"|"unknown"|"sent"|"canceled"};
+export type Trip390AckCursor={createdAt:string;id:string};
+type TripRow=Row&{createdAt:Date;reservedAt:Date|null;founderId:string|null};
 /** Private worker capability. Caller supplies the separately permitted transport; never called by public HTTP. */
 export class InquiryEmailOutbox{
- constructor(private readonly db:IdentityStore,private readonly workspace:WorkspaceId,private readonly ring:Keyring,private readonly clock:IdentityClock){}
+ constructor(private readonly db:IdentityStore,private readonly workspace:WorkspaceId,private readonly ring:Keyring,private readonly clock:IdentityClock,private readonly digestKey?:string){}
+ private freshTripPolicy(policy:Trip390AckAdmission,env:Readonly<Record<string,string|undefined>>){
+  if(!this.digestKey||this.digestKey.length<32)throw new AppError('UNAVAILABLE');
+  assertTrip390AckAdmission(policy,this.workspace,this.clock.now());
+  const current=loadTrip390AckAdmission(env,this.clock.now());
+  if(!current||JSON.stringify(current)!==JSON.stringify(policy))throw new SignupEmailNotAttemptedError();
+ }
+ private async tripTarget(tx:SqlSession,id:string,policy:Trip390AckAdmission){
+  const row=await one<TripRow>(tx,`SELECT id,application_id AS "applicationId",purpose,payload_ciphertext AS ciphertext,state,
+   created_at AS "createdAt",reserved_at AS "reservedAt",founder_id AS "founderId" FROM ls_service_interest.inquiry_email_outbox WHERE workspace_id=$1 AND id=$2 FOR UPDATE`,[this.workspace,id]);
+  if(!row||row.founderId!==null||row.purpose!==INQUIRY_EMAIL_PURPOSE)return null;
+  const payload=tripPayloadSchema.safeParse(JSON.parse(unseal(row.ciphertext,aad(this.workspace,id),this.ring)));
+  if(!payload.success)return null;
+  const application=await one<StoredGroupApplicationRow>(tx,`SELECT id,request_digest AS "requestDigest",payload_ciphertext AS "payloadCiphertext",received_at AS "receivedAt" FROM ls_service_interest.public_applications WHERE workspace_id=$1 AND id=$2`,[this.workspace,row.applicationId]);
+  if(!application||application.id!==row.applicationId||!this.digestKey)return null;
+  // Same canonical AEAD + keyed request integrity as the ordinary owner read.
+  // Invalid stored data is held, never converted to provider authority.
+  const decoded=decodeStoredGroupApplication(this.workspace,application,this.ring,this.digestKey);
+  const fields=decoded.fields;
+  if(!isTrip390Interest(fields)||!isCurrentTrip390Interest(fields))return null;
+  const expected=intendedPayload(row.applicationId,fields);
+  if(!expected||JSON.stringify(payload.data)!==JSON.stringify(expected))return null;
+  const operations=await tx.query<{operationId:string;requestDigest:string}>('SELECT operation_id AS "operationId",request_digest AS "requestDigest" FROM ls_service_interest.public_application_operations WHERE workspace_id=$1 AND application_id=$2 ORDER BY operation_id LIMIT 101',[this.workspace,row.applicationId]);
+  if(operations.length>100||operations.some(operation=>operation.requestDigest!==application.requestDigest))return null;
+  const facts:Trip390AckFacts={reference:row.applicationId,outboxId:id,operationIds:operations.map(r=>r.operationId),savedAt:application.receivedAt.toISOString(),queuedAt:row.createdAt.toISOString(),version:fields.version,noticeVersion:fields.acknowledgment.version,privacy:fields.acknowledgment.interestPrivacySafety,conduct:fields.acknowledgment.conductExplained,recipient:fields.email,messageLanguage:fields.messageLanguage,childIds:fields.children.map(c=>c.id),contentSha256:payload.data.contentSha256};
+  if(!trip390AckRequestAllowed(policy,facts,this.clock.now()))return null;
+  return {row,payload:payload.data};
+ }
+ /** Source policy and exact immutable payload are rechecked under lock before
+  * reservation and AFTER OAuth. UNKNOWN never becomes an automatic retry. */
+ async dispatchTrip390One(id:string,policy:Trip390AckAdmission,env:Readonly<Record<string,string|undefined>>,sendFetch:typeof fetch=fetch){
+  if(!z.string().uuid().safeParse(id).success)throw new AppError('INVALID_REQUEST');
+  this.freshTripPolicy(policy,env);const config=parseGmailAuthConfig(env);
+  const prepared=await this.db.transaction(async tx=>{
+   await lockWorkspace(tx,this.workspace);this.freshTripPolicy(policy,env);
+   const target=await this.tripTarget(tx,id,policy);if(!target||target.row.state!=='queued')return null;
+   this.freshTripPolicy(policy,env);const reservedAt=this.clock.now();
+   const changed=await tx.query("UPDATE ls_service_interest.inquiry_email_outbox SET state='unknown',reserved_at=$3 WHERE workspace_id=$1 AND id=$2 AND state='queued' RETURNING id",[this.workspace,id,reservedAt]);
+   if(changed.length!==1)return null;
+   return {payload:target.payload,reservedAt};
+  });
+  if(!prepared)return 'idle' as const;
+  try{
+   // This callback is handed directly to Gmail: OAuth completes first, then
+   // scope/readback and expiry, then Gmail starts messages/send with no wait.
+   const beforeSend=async(message:Parameters<AuthEmailTransport['send']>[0])=>{
+    this.freshTripPolicy(policy,env);
+    const okay=await this.db.transaction(async tx=>{
+     await lockWorkspace(tx,this.workspace);const target=await this.tripTarget(tx,id,policy);
+     return !!target&&target.row.state==='unknown'&&target.row.reservedAt?.valueOf()===prepared.reservedAt.valueOf()&&JSON.stringify(target.payload)===JSON.stringify(prepared.payload);
+    }).catch(()=>false); // This callback runs before message HTTP; validation failure is known not attempted.
+    if(!okay||message.from!==policy.sender||message.to!==prepared.payload.recipient||message.subject!==prepared.payload.subject||message.text!==prepared.payload.text||message.html!==prepared.payload.html||message.idempotencyKey!==`ls-auth-${id}`)throw new SignupEmailNotAttemptedError();
+    this.freshTripPolicy(policy,env);
+   };
+   this.freshTripPolicy(policy,env);
+   const transport=new GmailAuthTransport(config,sendFetch,'JLFA Office',beforeSend);
+   const receipt=await transport.send({from:policy.sender,to:prepared.payload.recipient,subject:prepared.payload.subject,text:prepared.payload.text,html:prepared.payload.html,idempotencyKey:`ls-auth-${id}`});
+   if(!/^[A-Za-z0-9_-]{1,256}$/.test(receipt.providerId))return 'unknown' as const;
+   // Real late provider receipts are retained even if admission just expired.
+   const saved=await this.db.transaction(async tx=>{await lockWorkspace(tx,this.workspace);return tx.query("UPDATE ls_service_interest.inquiry_email_outbox SET state='sent',provider_id=$3,completed_at=$4 WHERE workspace_id=$1 AND id=$2 AND state='unknown' AND reserved_at=$5 RETURNING id",[this.workspace,id,receipt.providerId,this.clock.now(),prepared.reservedAt]);});
+   return saved.length===1?'sent' as const:'unknown' as const;
+  }catch(error){
+   if(error instanceof SignupEmailNotAttemptedError){
+    const restored=await this.db.transaction(async tx=>{await lockWorkspace(tx,this.workspace);return tx.query("UPDATE ls_service_interest.inquiry_email_outbox SET state='queued',reserved_at=NULL WHERE workspace_id=$1 AND id=$2 AND state='unknown' AND reserved_at=$3 AND completed_at IS NULL AND provider_id IS NULL RETURNING id",[this.workspace,id,prepared.reservedAt]);});
+    return restored.length===1?'queued' as const:'unknown' as const;
+   }
+   return 'unknown' as const;
+  }
+ }
+ async dispatchTrip390ForApplication(reference:string,policy:Trip390AckAdmission,env:Readonly<Record<string,string|undefined>>){
+  this.freshTripPolicy(policy,env);if(!z.string().uuid().safeParse(reference).success)throw new AppError('INVALID_REQUEST');
+  const row=await this.db.transaction(tx=>one<{id:string;state:Row['state']}>(tx,'SELECT id,state FROM ls_service_interest.inquiry_email_outbox WHERE workspace_id=$1 AND application_id=$2 AND purpose=$3 AND founder_id IS NULL',[this.workspace,reference,INQUIRY_EMAIL_PURPOSE]));
+  if(!row)return 'not_requested' as const;if(row.state!=='queued')return row.state;
+  const result=await this.dispatchTrip390One(row.id,policy,env);return result==='idle'?'queued' as const:result;
+ }
+ async dispatchTrip390Page(policy:Trip390AckAdmission,env:Readonly<Record<string,string|undefined>>,cursor?:Trip390AckCursor){
+  this.freshTripPolicy(policy,env);
+  if(cursor&&!z.object({createdAt:z.string().min(1).max(80),id:z.string().uuid()}).strict().safeParse(cursor).success)throw new AppError('INVALID_REQUEST');
+  const refs=policy.population.mode==='controlled_test'?policy.population.requests.map(r=>r.reference):null;
+  const rows=await this.db.transaction(tx=>tx.query<{id:string;createdAt:string}>(`SELECT o.id,o.created_at::text AS "createdAt" FROM ls_service_interest.inquiry_email_outbox o
+   JOIN ls_service_interest.public_applications a ON a.workspace_id=o.workspace_id AND a.id=o.application_id
+   WHERE o.workspace_id=$1 AND o.purpose=$2 AND o.founder_id IS NULL AND o.state='queued' AND a.notice_version=$3 AND a.received_at>=$4
+   AND ($5::uuid[] IS NULL OR a.id=ANY($5::uuid[])) AND ($6::timestamptz IS NULL OR (o.created_at,o.id)>($6::timestamptz,$7::uuid))
+   ORDER BY o.created_at,o.id LIMIT 50`,[this.workspace,INQUIRY_EMAIL_PURPOSE,policy.noticeVersion,policy.notBefore,refs,cursor?.createdAt??null,cursor?.id??null]));
+  let processed=0;for(const row of rows){this.freshTripPolicy(policy,env);try{const result=await this.dispatchTrip390One(row.id,policy,env);if(result!=='idle'&&result!=='queued')processed++;}catch{this.freshTripPolicy(policy,env);/* A malformed/held row cannot starve later eligible intents; never mutate it. */}}
+  const last=rows.at(-1);return {processed,inspected:rows.length,scanComplete:rows.length<50,continuation:rows.length===50&&last?{createdAt:last.createdAt,id:last.id}:undefined};
+ }
  async dispatchForApplication(reference:string,transport:AuthEmailTransport,from:string){
   if(!z.string().uuid().safeParse(reference).success)throw new AppError("INVALID_REQUEST");
   const lookup=()=>this.db.transaction(tx=>one<{id:string;state:Row["state"]}>(tx,"SELECT id,state FROM ls_service_interest.inquiry_email_outbox WHERE workspace_id=$1 AND application_id=$2 AND purpose=$3",[this.workspace,reference,INQUIRY_EMAIL_PURPOSE]));
@@ -84,11 +184,13 @@ export class InquiryEmailOutbox{
    const application=await one<{ciphertext:string}>(tx,`SELECT payload_ciphertext AS ciphertext FROM ls_service_interest.public_applications WHERE workspace_id=$1 AND id=$2`,[this.workspace,row.applicationId]);
    if(!application)throw new AppError("UNAVAILABLE");
    const fields=groupApplicationFieldsSchema.parse(JSON.parse(unseal(application.ciphertext,`ls_service_interest/public_application/v1/${this.workspace}/${row.applicationId}`,this.ring)));
+   // Generic SEND never grants authority for current or historical Trip mail.
+   if(isTrip390Interest(fields))throw new AppError("UNAVAILABLE");
    const expected=intendedPayload(row.applicationId,fields);
    if(!expected||row.purpose!==INQUIRY_EMAIL_PURPOSE||JSON.stringify(payload)!==JSON.stringify(expected))throw new AppError("UNAVAILABLE");
    // Commit UNKNOWN before network. A crash or ambiguous provider result cannot be retried automatically.
    await tx.query("UPDATE ls_service_interest.inquiry_email_outbox SET state='unknown',reserved_at=$3 WHERE workspace_id=$1 AND id=$2",[this.workspace,id,this.clock.now()]);
-   return {...inquiryEmailContent(payload.reference,payload.locale),to:payload.recipient};
+   return {...('version' in payload?{subject:payload.subject,text:payload.text,html:payload.html}:inquiryEmailContent(payload.reference,payload.locale)),to:payload.recipient};
   });
   if(!prepared)return "idle" as const;
   try{
@@ -114,4 +216,11 @@ export class InquiryEmailOutbox{
    return outcome.state;
   });
  }
+}
+
+/** Mount only after the NEW durable Trip save. Missing/expired admission is
+ * inert; the saved lead and queued intent survive callback/transport failures. */
+export async function dispatchAdmittedTrip390Acknowledgment(reference:string,runtime:{store:IdentityStore;workspaceId:WorkspaceId;keyring:Keyring;clock:IdentityClock;origin:string;digestKey:string},env:Readonly<Record<string,string|undefined>>){
+ const policy=loadTrip390AckAdmission(env,runtime.clock.now());if(!policy||policy.workspaceId!==runtime.workspaceId||policy.origin!==runtime.origin)return undefined;
+ return new InquiryEmailOutbox(runtime.store,runtime.workspaceId,runtime.keyring,runtime.clock,runtime.digestKey).dispatchTrip390ForApplication(reference,policy,env);
 }

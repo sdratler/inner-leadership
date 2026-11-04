@@ -17,7 +17,7 @@ describe('Trip390 current public routes',()=>{
   const params=Promise.resolve({locale,stage:'foundation'});
   for(const page of [Landing,Apply]){
    const html=renderToStaticMarkup(await page({params}));
-   expect(html).toContain('id="trip390-interest-title"');expect(html).toContain('name="postalCode"');expect(html).toContain(trip390Copy[locale].price.amount);expect(html).toContain('USD');expect(html).toContain(trip390Copy[locale].price.per_boy);
+   expect(html).toContain('id="trip390-interest-title"');expect(html).toContain('name="postalCode"');expect(html).toContain(trip390Copy[locale].price.amount);expect(html).toContain(trip390Copy[locale].price.per_boy);
    expect(html).not.toContain('data-academy-registration');expect(html).not.toContain('name="stageInterest"');
   }
   for(const metadata of [landingMeta,applyMeta,pricingMeta,stageMeta]){

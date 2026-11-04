@@ -1,0 +1,37 @@
+import {describe,it,expect,vi} from 'vitest';
+vi.mock('server-only',()=>({}));
+import {createTrip390AckAdmission,assertTrip390AckAdmission,trip390AckRequestAllowed,trip390AckDigest,trip390AckQueueEnabled,trip390AckSourceFiles,type Trip390AckContext,type Trip390AckFacts} from '../../src/features/group-application/academy-trip390-ack-admission.ts';
+const id=(n:number)=>'70000000-0000-4000-8000-'+String(n).padStart(12,'0'),now=new Date('2035-01-01T12:00:00.000Z');
+const hashes=Object.fromEntries(Object.keys(trip390AckSourceFiles).map(k=>[k,'b'.repeat(64)])) as Trip390AckContext['sourceHashes'];
+const context=():Trip390AckContext=>({enabled:true,queueEnabled:true,genericSendOff:true,founderSendOff:true,authGmail:true,sourceCommit:'a'.repeat(40),releaseCommit:'a'.repeat(40),workspaceId:id(1),projectId:id(2),environmentId:id(3),serviceId:id(4),origin:'https://life-skills.bneineviimacademy.org',sourceHashes:hashes});
+const facts=():Trip390AckFacts=>({reference:id(5),outboxId:id(6),operationIds:[id(7)],savedAt:'2035-01-01T11:59:00.000Z',queuedAt:'2035-01-01T11:59:00.000Z',version:'JLFA-TRIP390-INTEREST-v3',noticeVersion:'JLFA-TRIP390-INTEREST-NOTICE-20261104-07-v1',privacy:true,conduct:true,recipient:'synthetic@example.invalid',messageLanguage:'he',childIds:[id(8),id(9)],contentSha256:'c'.repeat(64)});
+const input=()=>({version:'JLFA-TRIP390-ACK-ADMISSION-v2',approvalReceiptSha256:'d'.repeat(64),sourceCommit:'a'.repeat(40),workspaceId:id(1),projectId:id(2),environmentId:id(3),serviceId:id(4),origin:context().origin,sender:'office@bneineviimacademy.org',replyTo:'office@bneineviimacademy.org',requestVersion:'JLFA-TRIP390-INTEREST-v3',noticeVersion:'JLFA-TRIP390-INTEREST-NOTICE-20261104-07-v1',payloadVersion:2,payloadKind:'trip390_reservation_acknowledgment',templateVersion:'JLFA-TRIP390-TRANSACTIONAL-20261104-02-v1',sourceHashes:hashes,notBefore:'2035-01-01T11:59:00.000Z',admittedAt:now.toISOString(),expiresAt:'2035-01-01T14:00:00.000Z',population:{mode:'controlled_test',requests:[{reference:id(5),outboxId:id(6),operationId:id(7),recipientSha256:trip390AckDigest(facts().recipient),messageLanguage:'he',childIds:[id(8),id(9)],contentSha256:'c'.repeat(64)}]}});
+describe('issued Trip acknowledgment authority only',()=>{
+ it('admits exact cutoff-bound current request, chosen language and both children',()=>{const p=createTrip390AckAdmission(input(),context(),now)!;expect(p).not.toBeNull();expect(trip390AckRequestAllowed(p,facts(),now)).toBe(true);expect(Object.isFrozen(p)).toBe(true);expect(Object.isFrozen(p.population)).toBe(true);expect(()=>assertTrip390AckAdmission({...p},id(1),now)).toThrow();});
+ it.each(['enabled','queueEnabled','genericSendOff','founderSendOff','authGmail'] as const)('denies missing %s gate',key=>expect(createTrip390AckAdmission(input(),{...context(),[key]:false},now)).toBeNull());
+ it.each(['sourceCommit','releaseCommit','workspaceId','projectId','environmentId','serviceId','origin'] as const)('denies mismatched runtime %s',key=>expect(createTrip390AckAdmission(input(),{...context(),[key]:'mismatch'},now)).toBeNull());
+ it.each(Object.keys(trip390AckSourceFiles) as (keyof typeof trip390AckSourceFiles)[])('pins actual %s bytes',key=>expect(createTrip390AckAdmission(input(),{...context(),sourceHashes:{...hashes,[key]:'e'.repeat(64)}},now)).toBeNull());
+ it.each(['recipient','messageLanguage','childIds','contentSha256','reference','outboxId','operationIds','version','noticeVersion','privacy','conduct','savedAt','queuedAt'] as const)('holds changed %s without granting historical mail',key=>{const p=createTrip390AckAdmission(input(),context(),now)!;const delta={recipient:'other@example.invalid',messageLanguage:'en',childIds:[id(8),id(10)],contentSha256:'e'.repeat(64),reference:id(10),outboxId:id(10),operationIds:[id(10)],version:'JLFA-TRIP390-INTEREST-v2',noticeVersion:'JLFA-TRIP390-INTEREST-NOTICE-20261104-06-v1',privacy:false,conduct:false,savedAt:'2035-01-01T11:58:59.999Z',queuedAt:'2035-01-01T11:58:59.999Z'};expect(trip390AckRequestAllowed(p,{...facts(),[key]:delta[key]},now)).toBe(false);});
+ it('does not equate intake UI language with saved parent-message language',()=>{const p=createTrip390AckAdmission(input(),context(),now)!;expect(trip390AckRequestAllowed(p,{...facts(),messageLanguage:'he'},now)).toBe(true);expect(trip390AckRequestAllowed(p,{...facts(),messageLanguage:'en'},now)).toBe(false);});
+ it('prospective policy still refuses old forms, pre-cutoff saves and missing assent',()=>{const p=createTrip390AckAdmission({...input(),expiresAt:null,population:{mode:'future_requests'}},context(),now)!;expect(trip390AckRequestAllowed(p,facts(),now)).toBe(true);for(const delta of [{version:'JLFA-TRIP390-INTEREST-v1'},{version:'JLFA-TRIP390-INTEREST-v2'},{savedAt:'2035-01-01T11:58:59.999Z'},{privacy:false},{conduct:false}])expect(trip390AckRequestAllowed(p,{...facts(),...delta},now)).toBe(false);});
+ it('expiry, future admission and excessive finite windows fail closed',()=>{expect(createTrip390AckAdmission(input(),context(),new Date(input().expiresAt))).toBeNull();expect(createTrip390AckAdmission({...input(),admittedAt:'2035-01-01T12:00:00.001Z'},context(),now)).toBeNull();expect(createTrip390AckAdmission({...input(),expiresAt:'2035-01-01T14:00:00.001Z'},context(),now)).toBeNull();expect(createTrip390AckAdmission({...input(),population:{mode:'future_requests'},expiresAt:'2035-01-02T12:00:00.001Z'},context(),now)).toBeNull();});
+ it.each(['sender','replyTo','payloadKind','requestVersion','templateVersion'] as const)('cannot widen %s',key=>expect(createTrip390AckAdmission({...input(),[key]:'unapproved'},context(),now)).toBeNull());
+ it('duplicate controlled scopes/children cannot increase allowed effects',()=>{const p=input();p.population.requests.push({...p.population.requests[0]!});expect(createTrip390AckAdmission(p,context(),now)).toBeNull();const q=input();q.population.requests[0]!.childIds=[id(8),id(8)];expect(createTrip390AckAdmission(q,context(),now)).toBeNull();});
+});
+
+it('ongoing prospective authority survives days without renewing source/cutoff or enabling historical mail',()=>{
+ const later=new Date('2035-03-01T12:00:00.000Z'),raw={...input(),expiresAt:null,population:{mode:'future_requests'}};
+ const p=createTrip390AckAdmission(raw,context(),later)!;expect(p).not.toBeNull();
+ expect(trip390AckRequestAllowed(p,{...facts(),savedAt:later.toISOString(),queuedAt:later.toISOString()},later)).toBe(true);
+ expect(trip390AckRequestAllowed(p,{...facts(),savedAt:'2035-01-01T11:58:59.999Z'},later)).toBe(false);
+ expect(createTrip390AckAdmission(raw,{...context(),enabled:false},later)).toBeNull();
+ expect(createTrip390AckAdmission(raw,{...context(),releaseCommit:'f'.repeat(40)},later)).toBeNull();
+ expect(createTrip390AckAdmission({...raw,version:'JLFA-TRIP390-ACK-ADMISSION-v1'},context(),later)).toBeNull();
+ expect(createTrip390AckAdmission({...input(),expiresAt:null},context(),now)).toBeNull();
+});
+it('Trip queue intent gate does not turn on generic purposes or grant send authority',()=>{
+ expect(trip390AckQueueEnabled({LS_INQUIRY_EMAIL_QUEUE_ENABLED:'true'})).toBe(false);
+ const env={LS_ACADEMY_TRIP390_ACK_QUEUE_ENABLED:'true',LS_INQUIRY_EMAIL_QUEUE_ENABLED:'false'};
+ expect(trip390AckQueueEnabled(env)).toBe(true);expect(env.LS_INQUIRY_EMAIL_QUEUE_ENABLED).toBe('false');
+ expect(trip390AckQueueEnabled({...env,LS_ACADEMY_TRIP390_ACK_QUEUE_ENABLED:'false'})).toBe(false);
+});

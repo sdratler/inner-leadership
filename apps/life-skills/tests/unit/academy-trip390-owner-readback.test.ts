@@ -4,7 +4,8 @@ import {afterEach,describe,expect,it,vi} from "vitest";
 import type {Actor} from "../../src/features/identity/types.ts";
 import {AppError} from "../../src/lib/errors.ts";
 import {floridaGroupApplicationNotice,type GroupApplicationRecord} from "../../src/features/group-application/contract.ts";
-import {TRIP390_INTEREST_VERSION,TRIP390_NOTICE_VERSION,TRIP390_OFFER,type Trip390Interest} from "../../src/features/group-application/academy-trip390-contract.ts";
+import type {Trip390Interest} from "../../src/features/group-application/academy-trip390-contract.ts";
+import {TRIP390_V1_INTEREST_VERSION,TRIP390_V1_NOTICE_VERSION,TRIP390_V1_OFFER} from "../../src/features/group-application/academy-trip390-v1.ts";
 import {AcademyTrip390Readback} from "../../src/features/group-application/academy-trip390-readback.tsx";
 import {emptyAcademyInquiryFilters,matchesAcademyInquiryFilters} from "../../src/features/group-application/academy-inquiry-filters.ts";
 import {groupApplicationReviewHttp} from "../../src/features/group-application/review-http.ts";
@@ -13,7 +14,7 @@ vi.mock("server-only",()=>({}));
 
 const origin="https://synthetic.example.invalid",path="/api/private/group-applications",ref="11111111-1111-4111-8111-111111111111";
 const firstChild="22222222-2222-4222-8222-222222222222",secondChild="33333333-3333-4333-8333-333333333333";
-const fields:Trip390Interest={version:TRIP390_INTEREST_VERSION,offerVersion:TRIP390_OFFER.version,guardianName:"Synthetic Guardian",email:"synthetic@example.invalid",city:"Custom <area>",postalCode:"01234-5678",messageLanguage:"he",instructionLanguage:"en",children:[{id:firstChild,name:"Synthetic Older",ageYears:14,experience:"some"},{id:secondChild,name:"Synthetic Younger",ageYears:9,experience:"new"}],notes:"<test note>",acknowledgment:{version:TRIP390_NOTICE_VERSION,language:"en",conductExplained:true,interestPrivacySafety:true,whatsapp:false}};
+const fields:Trip390Interest={version:TRIP390_V1_INTEREST_VERSION,offerVersion:TRIP390_V1_OFFER.version,guardianName:"Synthetic Guardian",email:"synthetic@example.invalid",city:"Custom <area>",postalCode:"01234-5678",messageLanguage:"he",instructionLanguage:"en",children:[{id:firstChild,name:"Synthetic Older",ageYears:14,experience:"some"},{id:secondChild,name:"Synthetic Younger",ageYears:9,experience:"new"}],notes:"<test note>",acknowledgment:{version:TRIP390_V1_NOTICE_VERSION,language:"en",conductExplained:true,interestPrivacySafety:true,whatsapp:false}};
 const item:GroupApplicationRecord={id:ref,source:"public_group_application",state:"owner_review",receivedAt:"2026-11-02T12:00:00Z",fields};
 const actor={role:"practitioner",workspaceId:"44444444-4444-4444-8444-444444444444"} as Actor;
 const request=(query:string,signedIn=true)=>new Request(origin+path+query,{headers:{host:"synthetic.example.invalid","x-forwarded-host":"synthetic.example.invalid","x-forwarded-proto":"https",...(signedIn?{cookie:"__Host-ls-session="+"s".repeat(43)}:{})}});

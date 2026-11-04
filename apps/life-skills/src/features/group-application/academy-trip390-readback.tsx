@@ -22,9 +22,10 @@ export function AcademyTrip390Readback({fields,reference,receivedAt,locale}:{fie
    <dt>{t("Parent message language","שפת ההודעות להורה")}</dt><dd>{language[fields.messageLanguage]}</dd>
    <dt>{t("Preferred instruction language","שפת הדרכה מועדפת")}</dt><dd>{fields.instructionLanguage?language[fields.instructionLanguage]:t("Not specified","לא צוינה")}</dd>
   </dl>
+  {'lessonDayDriving' in fields&&<><h3>{t("Total Sunday driving time", "זמן הנסיעה הכולל ביום ראשון")}</h3><p>{({up_to_30:t('Up to 30 minutes total','עד 30 דקות בסך הכול'),up_to_60:t('Up to 60 minutes total','עד 60 דקות בסך הכול'),up_to_90:t('Up to 90 minutes total','עד 90 דקות בסך הכול'),up_to_120:t('Up to 120 minutes total','עד 120 דקות בסך הכול'),flexible:t('Flexible','גמיש')})[fields.lessonDayDriving.limit]}</p></>}
   <h3>{t("Children in this inquiry","הילדים בפנייה")}</h3>
   <ul className={styles.children}>{fields.children.map(child=><li key={child.id}><strong><bdi>{child.name}</bdi></strong> · {t("Age","גיל")} {child.ageYears} · {experience[child.experience]}<br/>{t("Child ID","מזהה ילד")} <bdi dir="ltr">{child.id}</bdi></li>)}</ul>
-  {fields.notes&&<><h3>{t("Parent notes","הערות ההורה")}</h3><p className={styles.notes}><bdi>{fields.notes}</bdi></p></>}
+  {'notes' in fields&&fields.notes&&<><h3>{t("Parent notes","הערות ההורה")}</h3><p className={styles.notes}><bdi>{fields.notes}</bdi></p></>}
   <details><summary>{t("Saved acknowledgments and versions","אישורי ההורה והגרסאות שנשמרו")}</summary>
   <dl className={styles.facts}>
    <dt>{t("Conduct rules explained","כללי ההתנהגות הוסברו")}</dt><dd>{yesNo(notice.conductExplained)}</dd>
@@ -34,6 +35,11 @@ export function AcademyTrip390Readback({fields,reference,receivedAt,locale}:{fie
    <dt>{t("Notice version","גרסת ההודעה")}</dt><dd><bdi dir="ltr">{notice.version}</bdi></dd>
    <dt>{t("Interest form version","גרסת טופס ההתעניינות")}</dt><dd><bdi dir="ltr">{fields.version}</bdi></dd>
    <dt>{t("Offer version","גרסת ההצעה")}</dt><dd><bdi dir="ltr">{fields.offerVersion}</bdi></dd>
-  </dl></details>
+  </dl>
+  {'programTerms' in notice&&<><h3>{t('Saved Program Terms and privacy acceptance','תנאי התוכנית ואישור הפרטיות שנשמרו')}</h3><p><bdi dir="ltr">{notice.programTerms.version} · {notice.programTerms.textDigest}</bdi></p><pre className={styles.notes}>{notice.programTerms.text}</pre></>}
+  {'reservationNotice' in notice&&<><h3>{t('Saved nonbinding reservation and privacy acknowledgment','אישור בקשת המקום והפרטיות שנשמר')}</h3><p><bdi dir="ltr">{notice.reservationNotice.version} · {notice.reservationNotice.textDigest}</bdi></p><pre className={styles.notes}>{notice.reservationNotice.text}</pre></>}
+  {'studentConduct' in notice&&<><h3>{t('Saved parent read-to-child attestation','הצהרת ההורה על קריאה לילדים שנשמרה')}</h3><p>{t('Parent attestation only. No child signature, financial acceptance or participation waiver was collected.','הצהרת הורה בלבד. לא נאספו חתימת ילד, הסכמה כספית או כתב ויתור להשתתפות.')}</p><p><bdi dir="ltr">{notice.studentConduct.version} · {notice.studentConduct.textDigest}</bdi></p><pre className={styles.notes}>{notice.studentConduct.text}</pre></>}
+  {'studentAgreement' in notice&&<><h3>{t('Saved guardian attestation','הצהרת ההורה שנשמרה')}</h3><p><bdi>{notice.studentAgreement.guardianTypedName}</bdi></p><p>{t('Guardian attestation, not a child signature. Recorded at the received time above.','הצהרת ההורה, לא חתימת הילד. נרשמה במועד קבלת הפנייה המופיע למעלה.')}</p><p><bdi dir="ltr">{notice.studentAgreement.version} · {notice.studentAgreement.textDigest}</bdi></p><pre className={styles.notes}>{notice.studentAgreement.text}</pre></>}
+  </details>
  </article>;
 }

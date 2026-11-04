@@ -11,12 +11,17 @@ import {freshActor,lockWorkspace} from "../identity/data.ts";
 import type {IdentityClock,Actor} from "../identity/types.ts";
 import {systemClock} from "../identity/types.ts";
 import type {IdentityStore,SqlSession} from "../identity/store.ts";
-import {groupApplicationCommandSchema,groupApplicationReplaySchema,groupApplicationFieldsSchema,isFloridaGroupApplication,isTrip390Interest,floridaProgramIdSchema,type FloridaProgramId,type GroupApplicationCommand,type GroupApplicationFields,type GroupApplicationRecord} from "./contract.ts";
+import {groupApplicationCommandSchema,groupApplicationReplaySchema,isFloridaGroupApplication,isTrip390Interest,floridaProgramIdSchema,type FloridaProgramId,type GroupApplicationFields,type GroupApplicationRecord} from "./contract.ts";
+import {INQUIRY_EMAIL_PURPOSE} from './inquiry-email-copy.ts';
+import {isCurrentTrip390Interest} from './academy-trip390-contract.ts';
 import {queueInquiryEmail} from "./inquiry-email.ts";
+import {decodeStoredGroupApplication,groupApplicationRequestDigest,groupApplicationPayloadAad} from './group-application-record.ts';
 import {isFreeFounderRegistration,type AcademyFounderStore} from './academy-founder-store.ts';
 
+import type {FounderPublicResult} from './academy-founder-contract.ts';
+export type GroupApplicationSubmitResult={saved:true;replayed:boolean;duplicate:boolean;item:GroupApplicationRecord;founder?:FounderPublicResult|undefined;acknowledgment?:'queued'|'not_requested'|'unknown'|'sent'|'canceled'};
 type Row={id:string;requestDigest:string;payloadCiphertext:string;receivedAt:Date};
-const aad=(workspace:string,id:string)=>`ls_service_interest/public_application/v1/${workspace}/${id}`;
+const aad=groupApplicationPayloadAad;
 const select=`SELECT id,request_digest AS "requestDigest",payload_ciphertext AS "payloadCiphertext",received_at AS "receivedAt"
  FROM ls_service_interest.public_applications`;
 export const reviewCursorSchema=z.string().min(64).max(2048).regex(/^[A-Za-z0-9_-]+$/);
@@ -41,17 +46,17 @@ export class PublicGroupApplicationStore{
   }catch{throw new AppError("INVALID_REQUEST");}
  }
  private nextCursor(actor:Actor,id:string,search:string){return Buffer.from(seal(JSON.stringify({id,searchDigest:this.searchDigest(search)}),this.cursorAad(actor),this.ring)).toString("base64url");}
- private requestDigest(fields:GroupApplicationFields){return privateDigest({domain:"public-group-application/v1",workspace:this.workspaceId,fields},this.digestKey);}
+ private requestDigest(fields:GroupApplicationFields){return groupApplicationRequestDigest(this.workspaceId,fields,this.digestKey);}
  private contactDigest(fields:GroupApplicationFields){return isTrip390Interest(fields)?
   privateDigest({domain:"public-group-application-contact/v1",workspace:this.workspaceId,contact:fields.email},this.digestKey):isFloridaGroupApplication(fields)?
   privateDigest({domain:"public-group-application-contact/v1",workspace:this.workspaceId,contact:fields.contact},this.digestKey):
   privateDigest({domain:"public-group-application-contact/v1",workspace:this.workspaceId,phone:fields.parentPhone},this.digestKey);}
- private decode(row:Row):GroupApplicationRecord{
-  try{
-   const fields=groupApplicationFieldsSchema.parse(JSON.parse(unseal(row.payloadCiphertext,aad(this.workspaceId,row.id),this.ring)));
-   if(this.requestDigest(fields)!==row.requestDigest)throw new Error();
-   return {id:row.id,source:"public_group_application",state:"owner_review",receivedAt:row.receivedAt.toISOString(),fields};
-  }catch{throw new AppError("UNAVAILABLE");}
+ private decode(row:Row):GroupApplicationRecord{return decodeStoredGroupApplication(this.workspaceId,row,this.ring,this.digestKey);}
+ private async savedAcknowledgment(tx:SqlSession,item:GroupApplicationRecord){
+  if(!isTrip390Interest(item.fields)||!isCurrentTrip390Interest(item.fields))return {};
+  const rows=await tx.query<{state:string}>('SELECT state FROM ls_service_interest.inquiry_email_outbox WHERE workspace_id=$1 AND application_id=$2 AND purpose=$3',[this.workspaceId,item.id,INQUIRY_EMAIL_PURPOSE]);
+  if(rows.length>1)throw new AppError('UNAVAILABLE');if(!rows.length)return {};
+  return {acknowledgment:z.enum(['queued','unknown','sent','canceled']).parse(rows[0]!.state)};
  }
  private async read(tx:SqlSession,id:string){const rows=await tx.query<Row>(select+" WHERE workspace_id=$1 AND id=$2",[this.workspaceId,id]);if(rows.length!==1)throw new AppError("UNAVAILABLE");return this.decode(rows[0]!);}
  async replaySaved(input:{operationId:string;fields:GroupApplicationFields},attribution:CampaignAttribution|null=null){
@@ -65,10 +70,10 @@ export class PublicGroupApplicationStore{
     FROM ls_service_interest.public_application_operations WHERE workspace_id=$1 AND operation_id=$2`,[this.workspaceId,command.operationId]);
    if(rows.length===0)return null;if(rows.length!==1)throw new AppError("UNAVAILABLE");
    if(rows[0]!.requestDigest!==digest)throw new AppError("CONFLICT");if(this.founder&&!isTrip390Interest(command.fields))await this.founder.checkAttribution(tx,command.operationId,attribution);
-   return {saved:true as const,replayed:true,duplicate:true,item:await this.read(tx,rows[0]!.applicationId),...(this.founder&&!isTrip390Interest(command.fields)?{founder:await this.founder.publicResult(tx,rows[0]!.applicationId)}:{})};
+   const item=await this.read(tx,rows[0]!.applicationId);return {saved:true as const,replayed:true,duplicate:true,item,...await this.savedAcknowledgment(tx,item),...(this.founder&&!isTrip390Interest(command.fields)?{founder:await this.founder.publicResult(tx,rows[0]!.applicationId)}:{})};
   });
  }
- async submit(input:GroupApplicationCommand,continuation?:string,attribution:CampaignAttribution|null=null){
+ async submit(input:{operationId:string;fields:GroupApplicationFields},continuation?:string,attribution:CampaignAttribution|null=null):Promise<GroupApplicationSubmitResult>{
   if(attribution!==null)campaignAttributionSchema.parse(attribution);
   const parsed=groupApplicationCommandSchema.safeParse(input);
   if(!parsed.success){const prior=await this.replaySaved(input,attribution);if(prior)return prior;throw new AppError("INVALID_REQUEST");}
@@ -81,7 +86,7 @@ export class PublicGroupApplicationStore{
    await lockWorkspace(tx,this.workspaceId);
    const prior=await tx.query<{applicationId:string;requestDigest:string}>(`SELECT application_id AS "applicationId",request_digest AS "requestDigest"
     FROM ls_service_interest.public_application_operations WHERE workspace_id=$1 AND operation_id=$2`,[this.workspaceId,command.operationId]);
-   if(prior.length){if(prior.length!==1||prior[0]!.requestDigest!==requestDigest)throw new AppError("CONFLICT");if(this.founder&&!trip390)await this.founder.checkAttribution(tx,command.operationId,attribution);return {saved:true as const,replayed:true,duplicate:true,item:await this.read(tx,prior[0]!.applicationId),...(this.founder&&!trip390?{founder:await this.founder.publicResult(tx,prior[0]!.applicationId)}:{})};}
+   if(prior.length){if(prior.length!==1||prior[0]!.requestDigest!==requestDigest)throw new AppError("CONFLICT");if(this.founder&&!trip390)await this.founder.checkAttribution(tx,command.operationId,attribution);const item=await this.read(tx,prior[0]!.applicationId);return {saved:true as const,replayed:true,duplicate:true,item,...await this.savedAcknowledgment(tx,item),...(this.founder&&!trip390?{founder:await this.founder.publicResult(tx,prior[0]!.applicationId)}:{})};}
    const existing=await tx.query<{id:string}>(`SELECT id FROM ls_service_interest.public_applications WHERE workspace_id=$1 AND request_digest=$2`,[this.workspaceId,requestDigest]);
    if(existing.length>1)throw new AppError("UNAVAILABLE");
    if(existing.length===1){
@@ -92,7 +97,7 @@ export class PublicGroupApplicationStore{
     // that key could later submit different content and escape replay conflict.
     await tx.query("INSERT INTO ls_service_interest.public_application_operations(workspace_id,operation_id,request_digest,application_id) VALUES($1,$2,$3,$4)",
      [this.workspaceId,command.operationId,requestDigest,applicationId]);
-    if(this.founder&&!trip390)await this.founder.bindAttribution(tx,command.operationId,applicationId,attribution);return {saved:true as const,replayed:false,duplicate:true,item:await this.read(tx,applicationId),...(this.founder&&!trip390?{founder:await this.founder.publicResult(tx,applicationId)}:{})};
+    if(this.founder&&!trip390)await this.founder.bindAttribution(tx,command.operationId,applicationId,attribution);const item=await this.read(tx,applicationId);return {saved:true as const,replayed:false,duplicate:true,item,...await this.savedAcknowledgment(tx,item),...(this.founder&&!trip390?{founder:await this.founder.publicResult(tx,applicationId)}:{})};
    }
    const now=this.clock.now(),id=randomUUID();
    {
@@ -110,7 +115,7 @@ export class PublicGroupApplicationStore{
     VALUES($1,$2,$3,$4)`,[this.workspaceId,command.operationId,requestDigest,id]);
    const founder=free?await this.founder!.accept(tx,id,command.fields,continuation!):undefined;
    if(this.founder&&!trip390)await this.founder.bindAttribution(tx,command.operationId,id,attribution);
-   const acknowledgment=!trip390&&!free&&this.emailQueueEnabled?await queueInquiryEmail(tx,this.workspaceId,id,command.fields,this.ring,now):undefined;
+   const acknowledgment=!free&&this.emailQueueEnabled?await queueInquiryEmail(tx,this.workspaceId,id,command.fields,this.ring,now):undefined;
    return {saved:true as const,replayed:false,duplicate:false,item:await this.read(tx,id),...(founder?{founder}:{}),...(acknowledgment?{acknowledgment}:{})};
   });
  }
