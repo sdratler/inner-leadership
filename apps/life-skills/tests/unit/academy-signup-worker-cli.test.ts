@@ -1,7 +1,7 @@
 import {createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {afterEach,beforeEach,it,expect,vi} from 'vitest';
-const m=vi.hoisted(()=>({imports:0,identity:vi.fn(),transport:vi.fn(),ownerTransport:vi.fn(),ownerDispatch:vi.fn(),close:vi.fn(),construct:vi.fn(),tick:vi.fn(),drain:vi.fn(),single:vi.fn(),legacy:vi.fn(),legacyCallback:vi.fn(),signupCallback:vi.fn(),http:vi.fn(),query:vi.fn(),supervise:vi.fn()}));
+const m=vi.hoisted(()=>({imports:0,identity:vi.fn(),transport:vi.fn(),ownerTransport:vi.fn(),ownerDispatch:vi.fn(),close:vi.fn(),construct:vi.fn(),publicConstruct:vi.fn(),tripDispatch:vi.fn(),tick:vi.fn(),drain:vi.fn(),single:vi.fn(),legacy:vi.fn(),legacyCallback:vi.fn(),signupCallback:vi.fn(),http:vi.fn(),query:vi.fn(),supervise:vi.fn()}));
 vi.mock('server-only',()=>({}));
 vi.mock('../../src/features/identity/runtime.ts',()=>{m.imports++;return {identityRuntime:m.identity};});
 vi.mock('../../src/db/client.ts',()=>({closeDatabase:m.close}));
@@ -17,8 +17,10 @@ vi.mock('@/features/group-application/academy-signup-population-runtime.ts',()=>
 vi.mock('@/features/identity/runtime.ts',()=>({identityRuntime:m.identity}));
 vi.mock('@/features/group-application/candidate.ts',()=>({publicGroupApplicationEnabled:()=>true}));
 vi.mock('@/features/group-application/http.ts',()=>({publicGroupApplicationHttp:m.http}));
-vi.mock('@/features/group-application/store.ts',()=>({PublicGroupApplicationStore:class{}}));
-vi.mock('@/features/group-application/inquiry-email.ts',()=>({createInquiryEmailTransport:m.transport,inquiryEmailQueueEnabled:(env:Record<string,string|undefined>)=>env.LS_INQUIRY_EMAIL_QUEUE_ENABLED==='true',InquiryEmailOutbox:class{dispatchOne=m.legacy;dispatchForApplication=m.legacyCallback;}}));
+vi.mock('@/features/group-application/store.ts',()=>({PublicGroupApplicationStore:class{constructor(...args:unknown[]){m.publicConstruct(...args);}}}));
+vi.mock('@/features/group-application/academy-trip390-reservation-admission.ts',()=>import('../../src/features/group-application/academy-trip390-reservation-admission.ts'));
+vi.mock('@/features/group-application/academy-trip390-ack-admission.ts',()=>import('../../src/features/group-application/academy-trip390-ack-admission.ts'));
+vi.mock('@/features/group-application/inquiry-email.ts',()=>({createInquiryEmailTransport:m.transport,dispatchAdmittedTrip390Acknowledgment:m.tripDispatch,inquiryEmailQueueEnabled:(env:Record<string,string|undefined>)=>env.LS_INQUIRY_EMAIL_QUEUE_ENABLED==='true',InquiryEmailOutbox:class{dispatchOne=m.legacy;dispatchForApplication=m.legacyCallback;}}));
 vi.mock('@/features/group-application/academy-founder-store.ts',()=>({AcademyFounderStore:class{constructor(...args:unknown[]){m.construct(...args);}tick=m.tick;dispatchQueued=m.drain;dispatchOne=m.single;dispatchForApplication=m.signupCallback;}}));
 vi.mock('@/features/group-application/academy-owner-notification.ts',()=>({createAcademyOwnerNotificationTransport:m.ownerTransport,AcademyOwnerNotificationOutbox:class{dispatchForApplication=m.ownerDispatch;}}));
 const workspace='11111111-1111-4111-8111-111111111111',origin='https://bneineviimacademy.org',sha=(p:string)=>createHash('sha256').update(readFileSync(p)).digest('hex');
@@ -107,6 +109,20 @@ it('public afterCommit dispatches the durable owner notice only when its dedicat
 it('the unchanged generic HTTP dispatcher selects only its existing inquiry purpose',()=>{
  const source=readFileSync('src/features/group-application/inquiry-email.ts','utf8'),start=source.indexOf(' async dispatchForApplication('),end=source.indexOf(' async dispatchOne(',start),method=source.slice(start,end);
  expect(method).toContain('application_id=$2 AND purpose=$3');expect(method).toContain('[this.workspace,reference,INQUIRY_EMAIL_PURPOSE]');expect(method).not.toContain('academy_founder_');
+});
+
+it.each([{dedicated:'true',generic:'false'},{dedicated:'false',generic:'true'}])('Trip route queue $dedicated is independent of generic queue $generic and legacy callbacks',async({dedicated,generic})=>{
+ const {TRIP390_NOTICE_VERSION}=await import('../../src/features/group-application/academy-trip390-contract.ts');
+ vi.stubEnv('LS_ACADEMY_TRIP390_RESERVATION_ENABLED','true');vi.stubEnv('LS_ACADEMY_TRIP390_RESERVATION_NOTICE_VERSION',TRIP390_NOTICE_VERSION);
+ vi.stubEnv('LS_ACADEMY_TRIP390_ACK_QUEUE_ENABLED',dedicated);vi.stubEnv('LS_INQUIRY_EMAIL_QUEUE_ENABLED',generic);
+ vi.stubEnv('LS_ACADEMY_OWNER_NOTIFICATION_ENABLED','true');
+ m.http.mockImplementation(async(_request:Request,load:(trip:boolean)=>Promise<{trip390ReservationAdmitted:boolean;afterCommit:(reference:string)=>Promise<unknown>}>)=>{
+  const deps=await load(true);expect(deps.trip390ReservationAdmitted).toBe(true);await deps.afterCommit('55555555-5555-4555-8555-555555555555');return new Response('synthetic');
+ });
+ const route=await import('../../src/app/api/public/group-applications/route.ts');await route.POST(new Request(origin+'/api/public/group-applications',{method:'POST'}));
+ expect(m.publicConstruct).toHaveBeenCalledTimes(1);expect(m.publicConstruct.mock.calls[0]?.[5]).toBe(dedicated==='true');expect(m.publicConstruct.mock.calls[0]).toHaveLength(6);
+ expect(m.tripDispatch).toHaveBeenCalledTimes(1);expect(m.tripDispatch).toHaveBeenCalledWith('55555555-5555-4555-8555-555555555555',expect.objectContaining({workspaceId:workspace,origin,digestKey:Buffer.alloc(32,1).toString('hex')}),process.env);
+ expect(m.construct).not.toHaveBeenCalled();expect(m.signupCallback).not.toHaveBeenCalled();expect(m.legacyCallback).not.toHaveBeenCalled();expect(m.transport).not.toHaveBeenCalled();expect(m.ownerTransport).not.toHaveBeenCalled();expect(m.ownerDispatch).not.toHaveBeenCalled();
 });
 
 function controlledPolicy(){return {...policy,expiresAt:'2026-10-25T13:00:00.000Z',allowedTemplateIds:['R00','R03'],r00Exception:{version:'JLFA-OWNER-PAYMENT-CLOCK-CORRECTION-20261027-01',approvalReceiptSha256:'caeab55524e61c98273b01c9884f15b707e502bc6e145360ebf4575ba55bde3a'},population:{mode:'controlled_test',reference:'55555555-5555-4555-8555-555555555555',generation:2,revision:4,admittedAt:'2026-10-25T12:00:00.000Z',recipientSha256:'9'.repeat(64),learnerIds:['66666666-6666-4666-8666-666666666666','77777777-7777-4777-8777-777777777777']}};}
