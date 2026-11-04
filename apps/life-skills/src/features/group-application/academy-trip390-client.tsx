@@ -8,10 +8,11 @@ export function AcademyTrip390Client({locale,openForm=false}:{locale:Locale;open
  const [submitInterest]=useState(()=>createTrip390Transport());
  useEffect(()=>{
   const url=new URL(window.location.href);
-  if(openForm&&url.hash==='#academy-form'){
-   url.hash='interest';
-   window.history.replaceState(window.history.state,'',url.pathname+url.search+url.hash);
-   document.getElementById('interest')?.scrollIntoView();
+  if(openForm||url.hash==='#interest'||url.hash==='#academy-form'){
+   if(url.hash!=='#interest'){
+    url.hash='interest';
+    window.history.replaceState(window.history.state,'',url.pathname+url.search+url.hash);
+   }
    return;
   }
   if(url.hash)return;
@@ -20,7 +21,7 @@ export function AcademyTrip390Client({locale,openForm=false}:{locale:Locale;open
    url.searchParams.delete('section');url.hash=section;
    window.history.replaceState(window.history.state,'',url.pathname+url.search+url.hash);
    document.getElementById(section)?.scrollIntoView();
-  }else if(openForm)document.getElementById('interest')?.scrollIntoView();
+  }
  },[openForm]);
- return <AcademyTrip390Page initialLocale={locale} submitInterest={submitInterest}/>;
+ return <AcademyTrip390Page initialLocale={locale} initialOpen={openForm} submitInterest={submitInterest}/>;
 }

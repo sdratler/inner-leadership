@@ -377,7 +377,7 @@ try{
  // Only the dedicated journey selects the prospective offer in the isolated
  // app process. An ambient selector must never change other browser modes.
  delete env.LS_ACADEMY_PUBLIC_OFFER;
- if(trip390Only)Object.assign(env,{LS_ACADEMY_PUBLIC_OFFER:TRIP390_OFFER.version,
+ if(trip390Only)Object.assign(env,{LS_ACADEMY_PUBLIC_OFFER:TRIP390_OFFER.version,LS_PROVIDER_INDEX_OWNER_ACCOUNT_ID:f.practitioner.actor.id,
   LS_INQUIRY_EMAIL_QUEUE_ENABLED:'false',LS_ACADEMY_SIGNUP_WORKER_ENABLED:'false',LS_ACADEMY_SIGNUP_CONTROLLED_SEND_ENABLED:'false',
   LS_ACADEMY_SIGNUP_WORKER_ADMISSION_JSON:'',LS_ACADEMY_OWNER_NOTIFICATION_ENABLED:'false'});
  if(communityTransport)Object.assign(env,{LS_COMMUNITY_SCOUT_BRIDGE_SECRET:communityTransport.secret,LS_COMMUNITY_FIXTURE_ORIGIN:communityTransport.controlOrigin,

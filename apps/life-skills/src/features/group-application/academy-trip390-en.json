@@ -9,10 +9,10 @@
     "includes": "One Keys fishing trip + two included preparation sessions.",
     "included_trip": "Keys transportation, three kosher meals, water, snacks and bait included.",
     "equipment_note": "Personal fishing equipment is purchased separately. We teach boys how to choose, organize and care for it.",
-    "interest_cta": "Get trip updates",
+    "interest_cta": "Reserve Your Spot Now",
     "booking_cta": "Choose a trip",
     "calendar_cta": "See upcoming dates",
-    "interest_note": "Dates and pickup points are being arranged. No payment or seat reservation at this stage."
+    "interest_note": "No payment now. We’ll contact you to confirm dates and availability."
   },
   "nav": {
     "how": "How it works",
@@ -68,8 +68,8 @@
     }
   ],
   "price": {
-    "title": "One straightforward package",
-    "amount": "$390 per boy",
+    "title": "One clear package",
+    "amount": "$390",
     "unit": "One Keys trip and two preparation sessions. The same package price for new and returning boys.",
     "included": [
       "Two preparation sessions",
@@ -83,7 +83,8 @@
       "Travel to the preparation sessions",
       "A fishing license when applicable, unless an exemption applies"
     ],
-    "renewal": "No monthly subscription or automatic renewal. Each future trip is booked separately."
+    "renewal": "No monthly subscription or automatic renewal. Each future trip is booked separately.",
+    "per_boy": "per boy"
   },
   "returning": {
     "title": "Come fishing again",
@@ -207,8 +208,8 @@
     }
   ],
   "form": {
-    "title": "Get Fishing Academy trip updates",
-    "intro": "Tell us about your family and where you are coming from. No payment or seat reservation at this stage.",
+    "title": "Request a Spot",
+    "intro": "No payment now. We’ll contact you to confirm dates and availability.",
     "guardian_name": "Parent or guardian’s full name",
     "email": "Email address",
     "phone": "Phone number (optional at this stage)",
@@ -237,13 +238,18 @@
     "conduct": "I have read and explained the Fishing Academy conduct rules to each child listed.",
     "interest_ack": "I have read the interest-registration information, safety summary and privacy notice. I understand that this form is not payment, a reserved seat or the final participation agreement.",
     "whatsapp": "Optional: Send me Fishing Academy trip updates and reminders by WhatsApp.",
-    "submit": "Send my interest",
+    "submit": "Send My Request",
     "sending": "Saving…",
-    "saved": "Your interest is saved. No payment has been taken and no seat is reserved.",
-    "email_pending": "Your interest is saved. The confirmation email has not yet been delivered.",
+    "saved": "Your request has been saved.",
+    "email_pending": "We’ll contact you to confirm dates and availability. No place is confirmed yet.",
     "save_unknown": "We could not confirm the result. Please use the same submission to check again; do not submit a duplicate.",
     "saved_reference": "Your reference",
-    "privacy_short": "Your family’s details are private. We use them to plan groups and contact you about the program."
+    "privacy_short": "Your family’s details are private. We use them to plan groups and contact you about the program.",
+    "child_heading": "Boy {number}",
+    "place_not_confirmed": "Sending this request does not confirm a place.",
+    "validation_summary": "Please check the highlighted fields.",
+    "required_field": "Please complete this field.",
+    "invalid_field": "Please check this value."
   },
   "conduct": {
     "title": "Safety, respect and responsibility",
@@ -254,5 +260,8 @@
     "description": "Hands-on fishing for boys 9+: two preparation sessions and one Florida Keys trip for $390. Keys transport, three kosher meals and bait included.",
     "social_description": "Fishing skills, responsibility and collaboration in a Torah environment. $390 for one Keys trip with two preparation sessions."
   },
-  "whatsapp_inquiry": "Hi, I am interested in the Fishing Academy’s $390 Keys trip package. Please tell me about upcoming trip and preparation dates."
+  "whatsapp_inquiry": "Hi, I am interested in the Fishing Academy’s $390 Keys trip package. Please tell me about upcoming trip and preparation dates.",
+  "footer": {
+    "affiliation": "A program of Bnei Neviim Academy, a New Jersey nonprofit."
+  }
 }

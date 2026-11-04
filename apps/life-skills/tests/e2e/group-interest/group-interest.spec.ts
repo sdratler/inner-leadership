@@ -515,12 +515,12 @@ if(!runtimePath){
   const record=page.locator("article").filter({hasText:data.publicApplicantName});await expect(record).toHaveCount(1);await expect(record.getByRole("heading",{name:new RegExp(data.publicApplicantName)})).toBeVisible();
   const contact=record.locator(":scope > p > bdi").filter({hasText:"synthetic@example.invalid"});await expect(contact).toHaveCount(1);await expect(contact).toHaveText("synthetic@example.invalid");await expect(contact).toHaveAttribute("dir","ltr");
   const details=record.locator("details").filter({has:page.getByText(locale==="he"?"הערה על זמנים":"Scheduling note",{exact:true})});await expect(details).not.toHaveAttribute("open","");await details.locator("summary").click();await expect(details).toHaveAttribute("open","");await expect(details).toContainText("Synthetic scheduling details only.");
-  const views=page.getByRole("navigation",{name:locale==="he"?"תצוגות הדף הנוכחי":"Current page views"});await expect(views.getByRole("link",{name:locale==="he"?"בקשות לקבוצה":"Group applications",exact:true})).toHaveAttribute("aria-current","page");
+  const views=page.getByRole("navigation",{name:locale==="he"?"תצוגות הדף הנוכחי":"Current page views"});await expect(views.getByRole("link",{name:locale==="he"?"פניות לדיג":"Fishing inquiries",exact:true})).toHaveAttribute("aria-current","page");
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
   await page.goto(`/${locale}/app/clients`);await expect(page).toHaveURL(new RegExp(`/${locale}/app/clients$`));
   await expect(page.getByRole("heading",{name:locale==="he"?"אנשים":"People",level:1,exact:true})).toBeVisible();
   await expect(views.getByRole("link",{name:locale==="he"?"הכול":"All",exact:true})).toHaveAttribute("aria-current","page");
-  const applicationsLink=views.getByRole("link",{name:locale==="he"?"בקשות לקבוצה":"Group applications",exact:true});
+  const applicationsLink=views.getByRole("link",{name:locale==="he"?"פניות לדיג":"Fishing inquiries",exact:true});
   await expect(applicationsLink).toHaveAttribute("href",`/${locale}/app/group-applications`);await expect(applicationsLink).toBeVisible();
   await applicationsLink.click();await expect(page).toHaveURL(new RegExp(`/${locale}/app/group-applications$`));await page.goBack();await expect(page).toHaveURL(new RegExp(`/${locale}/app/clients$`));
  });
@@ -529,7 +529,7 @@ if(!runtimePath){
   for(const locale of ["en","he"]){const denied=await page.goto(`/${locale}/app/group-interest`);expect([200,404]).toContain(denied?.status());await expect(page.getByRole("heading",{name:locale==="he"?"העמוד אינו זמין":"Page unavailable",exact:true})).toBeVisible();await expect(page.getByRole("heading",{name:/Group and tutoring interest|התעניינות בקבוצה ובתגבור/})).toHaveCount(0);await expect(page.locator('form')).toHaveCount(0);expect(await page.locator("body").innerText()).not.toContain(`Synthetic ${info.project.name}-${locale} Parent`);}
   const api=await page.request.get(`${data.origin}/api/private/group-interest`);expect(api.status()).toBe(403);expect(await api.text()).not.toContain("Synthetic");
   const placementApi=await page.request.get(`${data.origin}/api/private/group-placement`);expect(placementApi.status()).toBe(403);expect(await placementApi.text()).not.toContain("Synthetic");
-  const applicationsPage=await page.goto("/en/app/group-applications");expect([200,404]).toContain(applicationsPage?.status());await expect(page.getByRole("heading",{name:"Group applications",exact:true})).toHaveCount(0);expect(await page.locator("body").innerText()).not.toContain(data.publicApplicantName);
+  const applicationsPage=await page.goto("/en/app/group-applications");expect([200,404]).toContain(applicationsPage?.status());await expect(page.getByRole("heading",{name:"Fishing Academy inquiries",exact:true})).toHaveCount(0);expect(await page.locator("body").innerText()).not.toContain(data.publicApplicantName);
   const applicationsApi=await page.request.get(`${data.origin}/api/private/group-applications`);expect(applicationsApi.status()).toBe(403);expect(await applicationsApi.text()).not.toContain(data.publicApplicantName);
  });
  test("adult, child, revoked and other-workspace sessions cannot open or read owner planning",async({page,context})=>{
