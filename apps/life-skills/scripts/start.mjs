@@ -22,7 +22,8 @@ export function startApplication({host=process,spawn=nativeSpawn,schedule=setTim
   try{const p=JSON.parse(tripPolicyBytes),at=now();
    const dates=Number.isFinite(at)&&Number.isFinite(Date.parse(p.admittedAt))&&Date.parse(p.admittedAt)<=at&&Number.isFinite(Date.parse(p.notBefore))&&Date.parse(p.notBefore)<=Date.parse(p.admittedAt);
    const purpose=p.population?.mode==='future_requests'?p.expiresAt===null:p.population?.mode==='controlled_test'&&Number.isFinite(Date.parse(p.expiresAt))&&Date.parse(p.expiresAt)>at&&Date.parse(p.expiresAt)-Date.parse(p.admittedAt)<=7_200_000;
-   return dates&&purpose&&p.version==='JLFA-TRIP390-ACK-ADMISSION-v2'&&env.LS_INQUIRY_EMAIL_SEND_ENABLED==='false'&&env.LS_ACADEMY_TRIP390_ACK_QUEUE_ENABLED==='true'&&env.LS_ACADEMY_SIGNUP_WORKER_ENABLED!=='true'&&env.LS_ACADEMY_SIGNUP_CONTROLLED_SEND_ENABLED!=='true'&&env.LS_ACADEMY_FOUNDER_EMAIL_APPROVED!=='true'&&env.LS_AUTH_EMAIL_ENABLED==='true'&&env.LS_AUTH_EMAIL_PROVIDER==='gmail'&&env.LS_AUTH_EMAIL_FROM==='office@bneineviimacademy.org';
+   const supportedVersion=p.version==='JLFA-TRIP390-ACK-ADMISSION-v2'||p.version==='JLFA-TRIP390-ACK-ADMISSION-v3';
+   return dates&&purpose&&supportedVersion&&env.LS_INQUIRY_EMAIL_SEND_ENABLED==='false'&&env.LS_ACADEMY_TRIP390_ACK_QUEUE_ENABLED==='true'&&env.LS_ACADEMY_SIGNUP_WORKER_ENABLED!=='true'&&env.LS_ACADEMY_SIGNUP_CONTROLLED_SEND_ENABLED!=='true'&&env.LS_ACADEMY_FOUNDER_EMAIL_APPROVED!=='true'&&env.LS_AUTH_EMAIL_ENABLED==='true'&&env.LS_AUTH_EMAIL_PROVIDER==='gmail'&&env.LS_AUTH_EMAIL_FROM==='office@bneineviimacademy.org';
   }catch{return false;}
  };
  const tripAck=tripStillAdmitted();

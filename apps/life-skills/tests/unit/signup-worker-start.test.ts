@@ -10,9 +10,16 @@ function fixture(enabled=false){
  return {host,children,spawn,schedule,cancel};
 }
 
-function tripFixture(){const f=fixture();Object.assign(f.host.env,{LS_ACADEMY_TRIP390_ACK_ENABLED:'true',LS_ACADEMY_TRIP390_ACK_ADMISSION_JSON:JSON.stringify({version:'JLFA-TRIP390-ACK-ADMISSION-v2',population:{mode:'controlled_test'},notBefore:'2035-01-01T11:00:00.000Z',admittedAt:'2035-01-01T12:00:00.000Z',expiresAt:'2035-01-01T14:00:00.000Z'}),LS_ACADEMY_TRIP390_ACK_QUEUE_ENABLED:'true',LS_INQUIRY_EMAIL_QUEUE_ENABLED:'false',LS_INQUIRY_EMAIL_SEND_ENABLED:'false',LS_AUTH_EMAIL_ENABLED:'true',LS_AUTH_EMAIL_PROVIDER:'gmail',LS_AUTH_EMAIL_FROM:'office@bneineviimacademy.org'});return {...f,now:()=>Date.parse('2035-01-01T12:00:00.000Z')};}
-it('Trip ACK uses only its dedicated TS worker, leaving generic and founder modes closed',()=>{const f=tripFixture(),app=startApplication(f);expect(f.spawn).toHaveBeenCalledTimes(2);expect(f.spawn.mock.calls[1]?.[1]).toEqual(['--conditions=react-server','--import','tsx',expect.stringContaining('inquiry-email-worker.ts'),'--hosted-trip390-ack']);app.stop();for(const child of f.children)child.emit('exit',0);});
+function tripFixture(version='JLFA-TRIP390-ACK-ADMISSION-v2'){const f=fixture();Object.assign(f.host.env,{LS_ACADEMY_TRIP390_ACK_ENABLED:'true',LS_ACADEMY_TRIP390_ACK_ADMISSION_JSON:JSON.stringify({version,population:{mode:'controlled_test'},notBefore:'2035-01-01T11:00:00.000Z',admittedAt:'2035-01-01T12:00:00.000Z',expiresAt:'2035-01-01T14:00:00.000Z'}),LS_ACADEMY_TRIP390_ACK_QUEUE_ENABLED:'true',LS_INQUIRY_EMAIL_QUEUE_ENABLED:'false',LS_INQUIRY_EMAIL_SEND_ENABLED:'false',LS_AUTH_EMAIL_ENABLED:'true',LS_AUTH_EMAIL_PROVIDER:'gmail',LS_AUTH_EMAIL_FROM:'office@bneineviimacademy.org'});return {...f,now:()=>Date.parse('2035-01-01T12:00:00.000Z')};}
+it.each(['JLFA-TRIP390-ACK-ADMISSION-v2','JLFA-TRIP390-ACK-ADMISSION-v3'])('Trip ACK %s uses only its dedicated TS worker, leaving generic and founder modes closed',version=>{const f=tripFixture(version),app=startApplication(f);expect(f.spawn).toHaveBeenCalledTimes(2);expect(f.spawn.mock.calls[1]?.[1]).toEqual(['--conditions=react-server','--import','tsx',expect.stringContaining('inquiry-email-worker.ts'),'--hosted-trip390-ack']);app.stop();for(const child of f.children)child.emit('exit',0);});
 it.each(['expired','global-on','missing-policy'] as const)('Trip ACK %s remains closed without taking down the website',mode=>{const f=tripFixture();if(mode==='expired')f.now=()=>Date.parse('2035-01-01T14:00:00.000Z');if(mode==='global-on')f.host.env.LS_INQUIRY_EMAIL_SEND_ENABLED='true';if(mode==='missing-policy')delete f.host.env.LS_ACADEMY_TRIP390_ACK_ADMISSION_JSON;const app=startApplication(f);expect(f.spawn).toHaveBeenCalledTimes(1);app.stop();for(const child of f.children)child.emit('exit',0);});
+it.each(['JLFA-TRIP390-ACK-ADMISSION-v4','JLFA-TRIP390-ACK-ADMISSION-v30'])('unrecognized Trip ACK version %s starts only the web child',version=>{
+ const f=tripFixture(version),app=startApplication(f);
+ expect(f.spawn).toHaveBeenCalledTimes(1);
+ expect(f.spawn.mock.calls[0]?.[1]).toContain('start');
+ expect(f.schedule).not.toHaveBeenCalled();
+ app.stop();f.children[0]!.emit('exit',0);
+});
 it('Trip worker expiry/failure leaves saved inquiries and web available; shutdown still owns all children',()=>{const f=tripFixture(),app=startApplication(f);f.children[1]!.emit('exit',0);expect(f.children[0]!.kill).not.toHaveBeenCalled();expect(f.host.exitCode).toBe(0);app.stop();expect(f.children[0]!.kill).toHaveBeenCalledWith('SIGTERM');f.children[0]!.emit('exit',0);});
 it('disabled default starts only existing Next without worker or timer',()=>{
  const f=fixture();startApplication(f);expect(f.spawn).toHaveBeenCalledTimes(1);expect(f.spawn.mock.calls[0]?.[1]).toEqual(expect.arrayContaining(['start','--port','3010']));expect(f.schedule).not.toHaveBeenCalled();f.children[0]!.emit('exit',0);expect(f.host.listenerCount('SIGTERM')).toBe(0);
@@ -107,8 +114,8 @@ it.each(['closed','flag','queue','global','policy-change','shutdown'] as const)(
  }
  app.stop();f.children[0]!.emit('exit',0);
 });
-it('finite expiry during restart backoff is not renewed',()=>{
- const f=tripFixture();let at=Date.parse('2035-01-01T13:59:59.000Z');const app=startApplication({...f,now:()=>at});
+it.each(['JLFA-TRIP390-ACK-ADMISSION-v2','JLFA-TRIP390-ACK-ADMISSION-v3'])('finite %s expiry during restart backoff is not renewed',version=>{
+ const f=tripFixture(version);let at=Date.parse('2035-01-01T13:59:59.000Z');const app=startApplication({...f,now:()=>at});
  f.children[1]!.emit('exit',1);at=Date.parse('2035-01-01T14:00:00.000Z');f.schedule.mock.calls[0]![0]();expect(f.spawn).toHaveBeenCalledTimes(2);app.stop();f.children[0]!.emit('exit',0);
 });
 it('Trip spawn failure retries once per scheduled attempt and stale source closure stops it',()=>{
