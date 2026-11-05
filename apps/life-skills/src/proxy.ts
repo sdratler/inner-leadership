@@ -7,6 +7,7 @@ import { ownerPreviewConfig } from "./features/forms/pre-enrollment/owner-previe
 import { intakeStaffEntry } from "./features/forms/pre-enrollment/public-origin.ts";
 import { clientReturnPath, parentReturnPath, practitionerDetailReturnPath, practitionerReturnPath } from "./features/identity/login-return.ts";
 import { groupInterestCandidateEnabled } from "./features/group-interest/candidate.ts";
+import { trip390SkillFiles } from "./features/group-application/academy-trip390-learning-assets.ts";
 import { publicGroupApplicationEnvironmentEnabled } from "./features/group-application/candidate.ts";
 import { canonicalForwardedRequest } from "./features/integration/canonical-forwarded-request.ts";
 
@@ -55,7 +56,7 @@ export function groupApplicationReleasePath(pathname:string,input:Record<string,
 }
 export function groupApplicationPublicAsset(pathname:string,method:string,input:Record<string,string|undefined>):boolean{
  if(method!=="GET"&&method!=="HEAD")return false;
- const allowed=pathname==="/groups/academy/prereg-approved-square-20261023.png"||/^\/groups\/academy\/hero-owner03-(?:desktop|mobile)-(?:en|he)\.png$/.test(pathname)||/^\/groups\/academy\/scenes\/(?:foundation|habitat|advanced|advanced-mobile|leadership|locations|form|freshwater|freshwater-mobile|independent|independent-mobile)\.webp$/.test(pathname)||pathname==="/groups/academy/hero-desktop-wide-20261019.png"||pathname==="/groups/academy/hero-desktop-selected-20261018.png"||pathname==="/groups/academy/hero-mobile-selected-20261018.png"||pathname==="/groups/academy/hero-desktop-20261018.png"||pathname==="/groups/academy/hero-mobile-20261018.png"||pathname==="/groups/brand/life-skills-logo.png"||pathname==="/groups/brand/jlfa-logo-locked-v1.png"||/^\/groups\/private\/(?:skill-(?:0[1-9]|1[0-2])\.webp|founder-boy-hero-(?:en|he)-(?:desktop|mobile)\.png|private-hero-text-free-(?:desktop|mobile)\.webp)$/.test(pathname)||pathname==="/groups/people/founder-grass-group.webp"||pathname==="/groups/people/founder-head.jpg"||pathname==="/groups/testimonials/l-bars-2024.png"||pathname==="/groups/sponsor/meir-bunny.png"||
+ const allowed=trip390SkillFiles.some(asset=>asset.filePath===pathname)||pathname==="/groups/academy/prereg-approved-square-20261023.png"||/^\/groups\/academy\/hero-owner03-(?:desktop|mobile)-(?:en|he)\.png$/.test(pathname)||/^\/groups\/academy\/scenes\/(?:foundation|habitat|advanced|advanced-mobile|leadership|locations|form|freshwater|freshwater-mobile|independent|independent-mobile)\.webp$/.test(pathname)||pathname==="/groups/academy/hero-desktop-wide-20261019.png"||pathname==="/groups/academy/hero-desktop-selected-20261018.png"||pathname==="/groups/academy/hero-mobile-selected-20261018.png"||pathname==="/groups/academy/hero-desktop-20261018.png"||pathname==="/groups/academy/hero-mobile-20261018.png"||pathname==="/groups/brand/life-skills-logo.png"||pathname==="/groups/brand/jlfa-logo-locked-v1.png"||/^\/groups\/private\/(?:skill-(?:0[1-9]|1[0-2])\.webp|founder-boy-hero-(?:en|he)-(?:desktop|mobile)\.png|private-hero-text-free-(?:desktop|mobile)\.webp)$/.test(pathname)||pathname==="/groups/people/founder-grass-group.webp"||pathname==="/groups/people/founder-head.jpg"||pathname==="/groups/testimonials/l-bars-2024.png"||pathname==="/groups/sponsor/meir-bunny.png"||
   /^\/groups\/projects\/LS-PROJECT-(?:01-group\.jpg|02-making\.png|03-3d-printer\.png|04-working-together\.png|05-woodwork\.png|06-guided-conversation\.png|07-music\.png|08-electronics\.png|09-wood-art\.png)$/.test(pathname);
  if(!allowed||!publicGroupApplicationEnvironmentEnabled(input))return false;
  try{parseIdentityConfig(input);return true;}catch{return false;}
@@ -177,6 +178,18 @@ export function proxy(request: NextRequest) {
   }
   if (!intakePath && !groupApplicationPath && !ownerPreviewPath && ((privatePath && !privateMode && !identityPreview) || (!privatePath && pathname !== "/" && !health && !robots && env.LS_APP_MODE !== "foundation_preview" && !isolatedPreviewPerimeter))) {
     return decorate(NextResponse.json({ ok:false, error:{code:"UNAVAILABLE"}, requestId:crypto.randomUUID() }, {status:503}),headers);
+  }
+  // The public gateway forwards exact landing/apply requests and their query.
+  // Resolve the two named representations to local files without an image proxy.
+  if (/^\/(en|he)\/florida(?:\/apply)?\/?$/.test(pathname) && request.nextUrl.searchParams.has("academy-image")) {
+    const asset = trip390SkillFiles.find(item => item.src === request.nextUrl.search);
+    if (!asset || !canonicalPrivateOrigin || !groupApplicationPath || (request.method !== "GET" && request.method !== "HEAD")) {
+      return decorate(new NextResponse(null, {status:404}), headers);
+    }
+    const destination = request.nextUrl.clone();
+    destination.pathname = asset.filePath;
+    destination.search = "";
+    return decorate(NextResponse.rewrite(destination), headers);
   }
   if (pathname === "/") return decorate(NextResponse.redirect(new URL(isolatedPreviewPerimeter ? "/he/preview" : privateMode ? "/he/login" : "/he/foundation", request.url)),headers);
   const inbound = new Headers(request.headers);
