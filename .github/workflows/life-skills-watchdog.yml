@@ -1,0 +1,81 @@
+name: Life Skills watchdog
+
+on:
+  schedule:
+    - cron: '43 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: life-skills-watchdog-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  watchdog:
+    if: github.repository == 'sdratler/inner-leadership'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out the scheduled main revision
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Use Node.js 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: tools/life-skills-operator/package-lock.json
+      - name: Install the bounded operator
+        working-directory: tools/life-skills-operator
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Run the zero-model, zero-provider watchdog
+        working-directory: tools/life-skills-operator
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/life-skills-watchdog"
+          node src/cli.mjs watchdog > "$RUNNER_TEMP/life-skills-watchdog/watchdog-report.json"
+      - name: Create the scheduled-run receipt
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          output = Path(os.environ["RUNNER_TEMP"]) / "life-skills-watchdog"
+          report = json.loads((output / "watchdog-report.json").read_text())
+          assert report["schemaVersion"] == 1
+          assert report["ok"] is True
+          assert report["modelCalls"] == 0
+          assert report["providerCalls"] == 0
+          assert report["findings"] == []
+
+          event = os.environ["GITHUB_EVENT_NAME"]
+          receipt = {
+              "schemaVersion": 1,
+              "receiptType": "natural_schedule_candidate" if event == "schedule" else "manual_dispatch_diagnostic",
+              "installationProofEligible": event == "schedule",
+              "event": event,
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "runId": os.environ["GITHUB_RUN_ID"],
+              "runAttempt": os.environ["GITHUB_RUN_ATTEMPT"],
+              "ref": os.environ["GITHUB_REF"],
+              "sourceCommit": os.environ["GITHUB_SHA"],
+              "watchdog": report,
+          }
+          (output / "scheduled-run-receipt.json").write_text(
+              json.dumps(receipt, indent=2, sort_keys=True) + "\n"
+          )
+          print(json.dumps(receipt, indent=2, sort_keys=True))
+          PY
+      - name: Retain watchdog and schedule receipts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: life-skills-watchdog-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/life-skills-watchdog/*.json
+          if-no-files-found: error
+          retention-days: 30
