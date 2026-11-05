@@ -20,7 +20,7 @@ let pool:pg.Pool;
 beforeAll(()=>{pool=new pg.Pool({connectionString:safeTestUrl(),ssl:false,max:5});});
 afterAll(async()=>{await pool?.end();});
 
-test('Trip390 v5 challenge, simultaneous save/replay, encrypted receipts and authenticated exact-reference readback',async()=>{
+test('R2 v6 challenge, simultaneous save/replay, encrypted receipts and authenticated exact-reference readback',async()=>{
  const f=await academyWorkspace(pool),other=await academyWorkspace(pool);
  const command:Trip390Command={operationId:randomUUID(),fields:{...currentTrip390Fields(),
   version:TRIP390_INTEREST_VERSION,offerVersion:TRIP390_OFFER.version,
@@ -50,7 +50,7 @@ test('Trip390 v5 challenge, simultaneous save/replay, encrypted receipts and aut
  expect(setCookie).toContain('HttpOnly; Secure; SameSite=Strict');
  const cookie=setCookie!.split(';')[0]!;
  now+=1600;
- expect(verifyGroupApplicationChallenge(issued.challenge,f.digestKey,now)).toMatchObject({v:5,programId:'sunday_fishing_academy',noticeVersion:TRIP390_NOTICE_VERSION});
+ expect(verifyGroupApplicationChallenge(issued.challenge,f.digestKey,now)).toMatchObject({v:6,programId:'sunday_fishing_academy',noticeVersion:TRIP390_NOTICE_VERSION});
  const body={...command,website:'',challenge:issued.challenge};
  const post=(payload:typeof body,continuation=cookie)=>publicGroupApplicationHttp(new Request(url,{method:'POST',headers:{...headers,origin:f.origin,'sec-fetch-site':'same-origin','content-type':'application/json',cookie:continuation},body:JSON.stringify(payload)}),deps);
  expect((await post(body,'ls_academy_registration='+opaqueToken())).status).toBe(403);
