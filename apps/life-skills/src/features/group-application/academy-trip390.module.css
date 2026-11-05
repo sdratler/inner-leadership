@@ -195,6 +195,10 @@
  .skills{gap:20px}.logisticsPair{grid-template-columns:1fr}
  .torah{padding:24px 20px}
  .packageInner{grid-template-columns:1fr;gap:32px;padding-block:48px}.packageIntro .action{inline-size:100%}
+ /* At enlarged text, give each value's words a full line and leave the contact dock clear. */
+ .page[data-text-reflow=true] .valuesGrid article{grid-template-columns:minmax(0,1fr)}
+ .page[data-text-reflow=true] .hero[data-reflow=true] .heroText{padding-block:4px 0}
+ .page[data-text-reflow=true] .hero[data-reflow=true] .heroAction{padding-block-start:4px}
  .page[data-text-reflow=true] .torah{padding-inline:0;background:transparent}
  .founder{grid-template-columns:1fr;gap:24px;text-align:center}.founder>img{inline-size:180px;block-size:180px;margin-inline:auto}.founder p{margin-inline:auto}
  .faqLayout{grid-template-columns:1fr;gap:0}.page .faqs summary{padding:32px 0}
