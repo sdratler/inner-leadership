@@ -1,20 +1,22 @@
 import {z} from 'zod';
 import {
- TRIP390_INTEREST_VERSION,TRIP390_NOTICE_VERSION,TRIP390_OFFER,trip390Copy,trip390Metadata,
+ TRIP390_INTEREST_VERSION,TRIP390_NOTICE_VERSION,TRIP390_OFFER,trip390Metadata,
  type Trip390Command,
 } from './academy-trip390-contract.ts';
 import type {Trip390SaveResult} from './academy-trip390-page.tsx';
 import {academyPath,type AcademyRouteMode} from './academy-routing.ts';
 import type {Locale} from '../../lib/locale.ts';
+import {academyR2Copy as trip390Copy} from './academy-r2-copy.ts';
 import {trip390ReservationNotice} from './academy-trip390-reservation-notice.ts';
 
 export const TRIP390_V1_MEDIA_TYPE='application/vnd.jlfa.trip390-interest-v1+json';
 export const TRIP390_V2_MEDIA_TYPE='application/vnd.jlfa.trip390-interest-v2+json';
-export const TRIP390_MEDIA_TYPE='application/vnd.jlfa.trip390-interest-v3+json';
+export const TRIP390_V3_MEDIA_TYPE='application/vnd.jlfa.trip390-interest-v3+json';
+export const TRIP390_MEDIA_TYPE='application/vnd.jlfa.trip390-interest-v4+json';
 export function academyPublicOffer(environment:Record<string,string|undefined>){
  const selected=environment.LS_ACADEMY_PUBLIC_OFFER;
  if(!selected)return 'legacy';
- return selected===TRIP390_OFFER.version||selected==='JLFA-KEYS390-v1'?'trip390':'unavailable';
+ return selected===TRIP390_OFFER.version||selected==='JLFA-KEYS390-v2'||selected==='JLFA-KEYS390-v1'?'trip390':'unavailable';
 }
 const endpoint='/api/public/group-applications?program=sunday_fishing_academy';
 function noticeFor(locale:Locale){
@@ -98,5 +100,6 @@ export function trip390RouteMetadata(locale:Locale,path:''|'/apply',mode:Academy
  * their query. Carry the two registered anchors through that existing mapping. */
 export function trip390AliasLocation(locale:Locale,anchor:'included'|'learn',mode:AcademyRouteMode){
  const base=academyPath(locale,'','legacy');
- return mode==='bna'?`${base}?section=${anchor}#${anchor}`:`${base}#${anchor}`;
+ const target=anchor==='included'?'cost':anchor;
+ return mode==='bna'?`${base}?section=${target}#${target}`:`${base}#${target}`;
 }

@@ -1,3 +1,5 @@
+import {trip390Copy} from '../../src/features/group-application/academy-trip390-contract.ts';
+import {academyR2Copy} from '../../src/features/group-application/academy-r2-copy.ts';
 import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {describe,it,expect,vi} from 'vitest';
@@ -9,7 +11,7 @@ function dialog(locale:'en'|'he',enabled?:boolean){
  const submit=vi.fn();const html=renderToStaticMarkup(createElement(AcademyTrip390Page,{initialLocale:locale,submitInterest:submit,...(enabled===undefined?{}:{reservationCollectionEnabled:enabled})}));
  expect(submit).not.toHaveBeenCalled();return html.match(/<dialog\b[\s\S]*?<\/dialog>/)?.[0]??'';
 }
-describe('nonbinding v3 reservation presentation',()=>{
+describe('R2 nonbinding reservation with unchanged -07 consent documents',()=>{
  for(const locale of ['en','he'] as const){
   it(`defaults to no collection and requires its distinct reservation admission (${locale})`,()=>{
    const closed=dialog(locale),enabled=dialog(locale,true);
@@ -23,6 +25,8 @@ describe('nonbinding v3 reservation presentation',()=>{
    expect(controls).toHaveLength(3);expect(controls.map(x=>x.match(/name="([^"]+)"/)?.[1])).toEqual(['interest','conduct','whatsapp']);
    expect(controls.map(x=>/\brequired=""/.test(x))).toEqual([true,true,false]);
    expect(controls.every(x=>!x.includes('checked=""'))).toBe(true);
+   const labels=Array.from(html.matchAll(/<label\b[^>]*><input\b[^>]*type="checkbox"[^>]*><span lang="(?:en|he)">([^<]*)<\/span><\/label>/g),match=>match[1]);
+   expect(labels).toEqual([trip390ReservationNotice(locale).acknowledgment,trip390StudentConduct(locale).acknowledgment,trip390Copy[locale].form.whatsapp].map(escaped));
   });
   it(`shows the full notice and child conduct, never an extra financial or signature acceptance (${locale})`,()=>{
    const html=dialog(locale,true),notice=trip390ReservationNotice(locale),conduct=trip390StudentConduct(locale);
@@ -41,7 +45,8 @@ describe('nonbinding v3 reservation presentation',()=>{
    expect(html.match(/<div\b[^>]*tabindex="0"[^>]*role="region"/g)).toHaveLength(2);
    expect(html).not.toMatch(/<details\b[^>]*open=""/);
    for(const name of ['guardianName','email','phoneE164','postalCode'])expect(html.match(new RegExp('<input\\b(?=[^>]*name="'+name+'")[^>]*>'))?.[0]).toContain('required=""');
-   expect(html).toContain('name="lessonDayDriving"');expect(html).toContain('name="messageLanguage"');expect(html).toContain('name="instructionLanguage"');
+   const select=html.match(/<select\b[^>]*name="lessonDayDriving"[^>]*>[\s\S]*?<\/select>/)?.[0]??'';expect(select).toContain('required=""');
+   const options=Array.from(select.matchAll(/<option value="([^"]+)"[^>]*>([^<]*)<\/option>/g),m=>[m[1],m[2]]);expect(options).toEqual(['up_to_30','up_to_60','up_to_90','up_to_120','flexible'].map((value,index)=>[value,escaped(academyR2Copy[locale].exact.form.driveOptions[index]!) ]));expect(html).toContain('name="messageLanguage"');expect(html).toContain('name="instructionLanguage"');
    expect(html).toContain('trip390-child-first-name');expect(html).toContain('trip390-child-first-ageYears');
   });
  }

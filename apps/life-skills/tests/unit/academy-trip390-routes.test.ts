@@ -1,6 +1,7 @@
+import {academyR2Copy} from '../../src/features/group-application/academy-r2-copy.ts';
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import {renderToStaticMarkup} from 'react-dom/server';
-import {TRIP390_OFFER,trip390Copy} from '../../src/features/group-application/academy-trip390-contract.ts';
+import {TRIP390_OFFER} from '../../src/features/group-application/academy-trip390-contract.ts';
 const route=vi.hoisted(()=>({mode:'legacy' as 'legacy'|'bna',campaign:vi.fn(async()=>null)}));
 vi.mock('server-only',()=>({}));
 vi.mock('../../src/features/group-application/academy-campaign-server.ts',()=>({academyCampaignSnapshot:route.campaign}));
@@ -17,13 +18,13 @@ describe('Trip390 current public routes',()=>{
   const params=Promise.resolve({locale,stage:'foundation'});
   for(const page of [Landing,Apply]){
    const html=renderToStaticMarkup(await page({params}));
-   expect(html).toContain('id="trip390-interest-title"');expect(html).toContain('name="postalCode"');expect(html).toContain(trip390Copy[locale].price.amount);expect(html).toContain(trip390Copy[locale].price.per_boy);
+   expect(html).toContain('id="trip390-interest-title"');expect(html).toContain('name="postalCode"');expect(html).toContain(academyR2Copy[locale].faqs.find(item=>item.id==='cost')!.a);expect(html).toContain('id="cost"');expect(html).toContain('id="learn"');
    expect(html).not.toContain('data-academy-registration');expect(html).not.toContain('name="stageInterest"');
   }
   for(const metadata of [landingMeta,applyMeta,pricingMeta,stageMeta]){
-   expect((await metadata({params})).description).toBe(trip390Copy[locale].metadata.description);
+   expect(await metadata({params})).toMatchObject({title:academyR2Copy[locale].exact.pageTitle,description:academyR2Copy[locale].exact.metaDescription});
   }
-  for(const [page,anchor] of [[Pricing,'included'],[Stage,'learn']] as const){
+  for(const [page,anchor] of [[Pricing,'cost'],[Stage,'learn']] as const){
    await expect(page({params})).rejects.toMatchObject({digest:`NEXT_REDIRECT;replace;/${locale}/florida${mode==='bna'?'?section='+anchor:''}#${anchor};307;`});
   }
   expect(route.campaign).not.toHaveBeenCalled();

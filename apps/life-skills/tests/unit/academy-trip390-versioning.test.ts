@@ -9,7 +9,7 @@ import {trip390V2InterestSchema} from '../../src/features/group-application/acad
 import {trip390ReservationNotice} from '../../src/features/group-application/academy-trip390-reservation-notice.ts';
 import {trip390StudentConduct} from '../../src/features/group-application/academy-trip390-student-conduct.ts';
 import {trip390ReservationCollectionEnabled} from '../../src/features/group-application/academy-trip390-reservation-admission.ts';
-import {trip390CurrentInterestSchema,trip390InterestSchema,TRIP390_NOTICE_VERSION} from '../../src/features/group-application/academy-trip390-contract.ts';
+import {trip390CurrentInterestSchema,trip390InterestSchema,TRIP390_NOTICE_VERSION,TRIP390_OFFER} from '../../src/features/group-application/academy-trip390-contract.ts';
 import {trip390ProgramTerms} from '../../src/features/group-application/academy-trip390-program-terms.ts';
 import {AcademyTrip390Page} from '../../src/features/group-application/academy-trip390-page.tsx';
 import {trip390StudentAgreement} from '../../src/features/group-application/academy-trip390-student-agreement.ts';
@@ -64,7 +64,7 @@ it.each([TRIP390_MEDIA_TYPE,TRIP390_V1_MEDIA_TYPE,TRIP390_V2_MEDIA_TYPE])('can r
  const prior=media===TRIP390_V1_MEDIA_TYPE?{...historicalBase,version:TRIP390_V1_INTEREST_VERSION,offerVersion:TRIP390_V1_OFFER.version,acknowledgment:{version:TRIP390_V1_NOTICE_VERSION,language:'en',conductExplained:true,interestPrivacySafety:true,whatsapp:false}}:media===TRIP390_V2_MEDIA_TYPE?historicalTrip390V2Fields():fields;
  const command={operationId:randomUUID(),fields:prior},reference=randomUUID();
  const submit=vi.fn(),replaySaved=vi.fn().mockResolvedValue({saved:true,replayed:true,duplicate:true,item:{id:reference}});
- const deps={enabled:true,environment:{NODE_ENV:'test',LS_APP_ORIGIN:origin,LS_ACADEMY_PUBLIC_OFFER:'JLFA-KEYS390-v2'},challengeKey:key,now:()=>now,limits:{consume:vi.fn(async()=>({count:1,retryAfterMs:1000}))},store:{submit,replaySaved}};
+ const deps={enabled:true,environment:{NODE_ENV:'test',LS_APP_ORIGIN:origin,LS_ACADEMY_PUBLIC_OFFER:TRIP390_OFFER.version},challengeKey:key,now:()=>now,limits:{consume:vi.fn(async()=>({count:1,retryAfterMs:1000}))},store:{submit,replaySaved}};
  const url=origin+'/api/public/group-applications?program=sunday_fishing_academy',headers={host:'unit.example.invalid',accept:media};
  const get=await publicGroupApplicationHttp(new Request(url,{headers}),async()=>deps);expect(get.status).toBe(200);
  const issued=(await get.json()).data,cookie=get.headers.get('set-cookie')!.split(';')[0]!;now+=1600;

@@ -64,3 +64,6 @@ Read the exact current settings block directly from the [Operating Protocol](htt
 Follow [docs/PROJECT-WORKFLOW.md](docs/PROJECT-WORKFLOW.md) for the repository's intake, clarification, canonical-update, task and evidence workflow. It is a derived execution protocol; it does not replace current business contracts, confer provider access or declare an inactive automation installed.
 
 Apply the owner's explicit current instruction to the scoped task, preserve already granted authorization, and reconcile affected canonical sources. Record any remaining source or capability conflict precisely and continue independent work. Do not weaken security, claim ownership, source integrity or evidence checks to obtain a green result.
+
+
+The current R2 acquisition successor is routed by `JLFA-ACADEMY-REFUND-ICONS-PACKET-20261105-02` in the existing owning sources and Continuation. Read those current clauses and `apps/life-skills/docs/academy-public-current.md`; preserve historical offers, consent snapshots, message payloads and held financial scope. This is a routing pointer, not a copied offer/copy master or new effect authority.

@@ -1,13 +1,16 @@
+import {academyR2Copy as trip390Copy} from '../../../src/features/group-application/academy-r2-copy.ts';
 import {createHash,randomUUID} from 'node:crypto';
 import {readFileSync,writeFileSync} from 'node:fs';
 import {expect,test} from '@playwright/test';
-import {trip390CommandSchema,trip390Copy,TRIP390_NOTICE_VERSION,TRIP390_INTEREST_VERSION,TRIP390_OFFER,TRIP390_DRIVING_VERSION,type Trip390Command} from '../../../src/features/group-application/academy-trip390-contract.ts';
+import {trip390CommandSchema,TRIP390_NOTICE_VERSION,TRIP390_INTEREST_VERSION,TRIP390_OFFER,TRIP390_DRIVING_VERSION,type Trip390Command} from '../../../src/features/group-application/academy-trip390-contract.ts';
 import {trip390ReservationNotice} from '../../../src/features/group-application/academy-trip390-reservation-notice.ts';
 import {trip390StudentConduct} from '../../../src/features/group-application/academy-trip390-student-conduct.ts';
 import {trip390LearningAssets} from '../../../src/features/group-application/academy-trip390-learning-assets.ts';
 import {TRIP390_MEDIA_TYPE} from '../../../src/features/group-application/academy-trip390-transport.ts';
 import {inspectLanding,inspectDialog,inspectFaqContact,inspectBodyHeadings,inspectBodyContact} from './academy-trip390.visual-checks.ts';
 import scenes from '../../../src/features/group-application/academy-scenes.json' with {type:'json'};
+
+import iconManifest from '../../../public/groups/academy/icons/r2/manifest.json' with {type:'json'};
 
 const fixture=process.env.LS_GROUP_INTEREST_FIXTURE_PATH;
 if(!fixture||process.env.LS_ACADEMY_TRIP390_UI_ONLY!=='true')throw Error('TRIP390_DISPOSABLE_FIXTURE_REQUIRED');
@@ -20,6 +23,10 @@ test.beforeAll(()=>{
   const bytes=readFileSync('public'+asset.publicPath);
   expect(bytes.length).toBe(asset.bytes);expect(createHash('sha256').update(bytes).digest('hex')).toBe(asset.sha256);
  }
+ for(const asset of iconManifest){
+  const bytes=readFileSync('public/groups/academy/icons/r2/'+asset.name+'.svg');
+  expect(createHash('sha256').update(bytes).digest('hex')).toBe(asset.sha256);
+ }
 });
 
 for(const locale of ['en','he'] as const)test(`${locale}: real two-child save, response loss, exact retry and authenticated owner readback`,async({page})=>{
@@ -29,9 +36,13 @@ for(const locale of ['en','he'] as const)test(`${locale}: real two-child save, r
  const children=[{name:'Synthetic older '+locale,ageYears:12,experience:'some'},{name:'Synthetic younger '+locale,ageYears:9,experience:'new'}];
  await page.goto('/'+locale+'/florida');
  await expect(page.locator('#trip390-title')).toBeVisible();
- await expect(page).toHaveTitle(copy.metadata.title);
- await expect(page.locator('#main')).toContainText(copy.price.amount);
- await expect(page.locator('#main')).toContainText(copy.price.per_boy);
+ await expect(page).toHaveTitle(copy.exact.pageTitle);
+ await expect(page.locator('meta[name=description]')).toHaveAttribute('content',copy.exact.metaDescription);
+ const cost=copy.faqs.find(item=>item.id==='cost')!,costDetails=page.locator('#faq #cost');
+ await expect(costDetails.locator('summary')).toContainText(cost.q);
+ await costDetails.locator('summary').click();
+ await expect(costDetails.locator('p')).toBeVisible();await expect(costDetails.locator('p')).toHaveText(cost.a);
+ await costDetails.locator('summary').click();await page.evaluate(()=>window.scrollTo(0,0));
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1)).toBe(true);
  await page.screenshot({path:test.info().outputPath(locale+'-trip390-landing.png'),fullPage:true});
  await page.goto('/'+locale+'/florida/apply#academy-form');
@@ -61,7 +72,7 @@ for(const locale of ['en','he'] as const)test(`${locale}: real two-child save, r
  await form.locator('[name=conduct]').check();await form.locator('[name=interest]').check();
  // Closing is presentation only: preserve the one mounted form and sibling IDs.
  const siblingInputs=await form.locator('input[name^="child-"][name$="-name"]').evaluateAll(nodes=>nodes.map(node=>node.getAttribute('name')));
- await dialog.getByRole('button',{name:locale==='en'?'Close interest form':'סגירת טופס ההתעניינות',exact:true}).click();
+ await dialog.getByRole('button',{name:copy.exact.form.close,exact:true}).click();
  await expect(dialog).not.toBeVisible();
  await page.locator('[data-hero-action] a').click();
  await expect(dialog).toBeVisible();
@@ -166,7 +177,7 @@ test('landing matrix, native dialog interactions and independent holdout regress
     const card=cards.nth(index);await expect(card).toHaveAttribute('data-trip390-skill',String(index+1));
     await expect(card.locator('h3')).toHaveText(trip390Copy[locale].skills[index]!.title);await expect(card.locator('p')).toHaveText(trip390Copy[locale].skills[index]!.body);
     await card.scrollIntoViewIfNeeded();
-    const image=card.locator('img');await expect(image).toHaveAttribute('src',asset.src);await expect(image).toHaveAttribute('alt',asset.alt[locale]);
+    const image=card.locator('img');await expect(image).toHaveAttribute('src',asset.src);await expect(image).toHaveAttribute('alt',trip390Copy[locale].skills[index]!.alt);
     await expect.poll(()=>image.evaluate(node=>(node as HTMLImageElement).complete&&(node as HTMLImageElement).naturalWidth>0)).toBe(true);
     const response=await page.request.get(new URL(asset.src,page.url()).href);expect(response.status()).toBe(200);
     const sourceFile='filePath' in asset?asset.filePath:asset.src;
@@ -174,19 +185,27 @@ test('landing matrix, native dialog interactions and independent holdout regress
     const frame=card.locator('img,[data-trip390-image-unavailable]');const ratio=await frame.evaluate(node=>{const b=node.getBoundingClientRect();return b.width/b.height;});expect(Math.abs(ratio-16/9)).toBeLessThan(.005);
    }
    await expect(page.locator('[data-trip390-image-unavailable]')).toHaveCount(0);
-   await expect(page.locator('[data-trip390-scene]')).toHaveCount(2);
-   for(const slot of ['foundation','form']){
-    const figure=page.locator(`[data-trip390-scene="${slot}"]`),image=figure.locator('img');
-    await image.scrollIntoViewIfNeeded();
-    await expect.poll(()=>image.evaluate(node=>(node as HTMLImageElement).complete&&(node as HTMLImageElement).naturalWidth>0)).toBe(true);
-    const selected=slot;
-    const asset=scenes.assets.find(item=>item.slot===selected)!;
-    const dimensions=await image.evaluate(node=>{const image=node as HTMLImageElement,b=image.getBoundingClientRect();return{source:new URL(image.currentSrc).pathname,width:image.naturalWidth,height:image.naturalHeight,ratio:b.width/b.height};});
-    expect(dimensions).toMatchObject({source:asset.publicPath,width:asset.width,height:asset.height});
-    expect(Math.abs(dimensions.ratio-asset.width/asset.height)).toBeLessThan(.005);
+   await expect(page.locator('[data-trip390-scene]')).toHaveCount(0);
+   const values=page.locator('#values article');
+   await expect(values).toHaveCount(4);
+   for(const [index,item] of trip390Copy[locale].exact.values.items.entries()){
+    const card=values.nth(index),icon=card.locator('svg');
+    await expect(card.locator('h3')).toHaveText(item.title);await expect(card.locator('p')).toHaveText(item.body);
+    await card.scrollIntoViewIfNeeded();await expect(icon).toBeVisible();
+    await expect(icon).toHaveAttribute('aria-hidden','true');await expect(icon).toHaveAttribute('focusable','false');
+    await expect(icon).toHaveAttribute('viewBox','0 0 24 24');await expect(icon).toHaveAttribute('stroke','currentColor');
+    const record=iconManifest[index]!;expect([record.name,record.role]).toEqual([item.icon,item.id]);
+    const artwork=readFileSync('public/groups/academy/icons/r2/'+record.name+'.svg','utf8');
+    const geometry=await icon.evaluate((svg,source)=>{
+     const original=new DOMParser().parseFromString(source,'image/svg+xml').documentElement;
+     const shapes=(node:Element)=>Array.from(node.children,child=>[child.localName,...Array.from(child.attributes,a=>a.name+'='+a.value).sort()]);
+     const bounds=svg.getBoundingClientRect();
+     return {actual:shapes(svg),expected:shapes(original),width:bounds.width,height:bounds.height};
+    },artwork);
+    expect(geometry.actual).toEqual(geometry.expected);expect(geometry.width).toBeGreaterThan(0);expect(Math.abs(geometry.width/geometry.height-1)).toBeLessThan(.005);
     if(width===1440||width===390){
      await expect.poll(async()=>(await inspectBodyContact(page)).findings).toEqual([]);
-     await page.screenshot({path:info.outputPath(`${locale}-${width}x${height}-${slot}-placement.png`)});
+     await page.screenshot({path:info.outputPath(`${locale}-${width}x${height}-${item.id}-placement.png`)});
     }
    }
    const portrait=page.locator('img[src="/groups/people/founder-head.jpg"]');
@@ -219,11 +238,13 @@ test('landing matrix, native dialog interactions and independent holdout regress
   await page.setViewportSize({width:1440,height:900});
   await page.goto('/'+locale+'/florida#faq');
   const details=page.locator('[data-trip390-faq]');
-  expect(await details.evaluateAll(nodes=>nodes.map(x=>x.id))).toEqual(trip390Copy[locale].faqs.map(x=>x.id));
+  const publicFaqs=trip390Copy[locale].faqs.filter(item=>item.id!=='cancellation'&&item.id!=='conduct');
+  await expect(details).toHaveCount(12);
+  expect(await details.evaluateAll(nodes=>nodes.map(x=>x.id))).toEqual(publicFaqs.map(x=>x.id));
   await details.nth(0).locator('summary').click();await expect(details.nth(0)).toHaveAttribute('open','');
   await details.nth(1).locator('summary').click();await expect(page.locator('[data-trip390-faq][open]')).toHaveCount(1);
   await expect(details.nth(0)).not.toHaveAttribute('open','');
-  const longest=trip390Copy[locale].faqs.reduce((best,item,index,array)=>item.a.length>array[best]!.a.length?index:best,0);
+  const longest=publicFaqs.reduce((best,item,index,array)=>item.a.length>array[best]!.a.length?index:best,0);
   await details.nth(longest).locator('summary').click();
   await page.locator('#trip390-faq-title').scrollIntoViewIfNeeded();
   await page.screenshot({path:info.outputPath(`${locale}-faq-viewport.png`)});
@@ -234,9 +255,9 @@ test('landing matrix, native dialog interactions and independent holdout regress
   await page.screenshot({path:info.outputPath(`${locale}-mobile-menu.png`)});
   await page.keyboard.press('Escape');await expect(menu).toBeFocused();await expect(page.locator('#trip390-menu')).not.toBeVisible();
   await page.locator('header button[lang="en"]').click();await expect(page.locator('header button[lang="he"]')).toBeVisible();
-  await menu.click();await page.locator('#trip390-menu a[href="#included"]').click();
+  await menu.click();await page.locator('#trip390-menu a[href="#values"]').click();
   await expect(page.locator('#trip390-menu')).not.toBeVisible();
-  const anchor=await page.locator('#included').boundingBox(),header=await page.locator('header').boundingBox();
+  const anchor=await page.locator('#values').boundingBox(),header=await page.locator('header').boundingBox();
   expect(anchor!.y).toBeGreaterThanOrEqual(header!.height);
   await page.locator('header button[lang="'+locale+'"]').click();
   await expect(page.locator('header button[lang="'+locale+'"]')).toHaveAttribute('aria-pressed','true');
@@ -251,7 +272,7 @@ test('landing matrix, native dialog interactions and independent holdout regress
   await expect.poll(async()=>(await inspectFaqContact(page)).findings).toEqual([]);
   await page.screenshot({path:info.outputPath(`${locale}-mobile-faq-viewport.png`)});
   const faqPositions=[];
-  for(const index of [0,Math.floor((trip390Copy[locale].faqs.length-1)/3),Math.floor(2*(trip390Copy[locale].faqs.length-1)/3),trip390Copy[locale].faqs.length-1]){
+  for(const index of [0,Math.floor((publicFaqs.length-1)/3),Math.floor(2*(publicFaqs.length-1)/3),publicFaqs.length-1]){
    await details.nth(index).locator('summary').scrollIntoViewIfNeeded();
    await expect.poll(async()=>(await inspectFaqContact(page)).findings).toEqual([]);
    faqPositions.push({index,...await inspectFaqContact(page)});
@@ -269,9 +290,9 @@ test('landing matrix, native dialog interactions and independent holdout regress
   await expect.poll(()=>enlargedPortrait.evaluate(image=>(image as HTMLImageElement).complete&&(image as HTMLImageElement).naturalWidth>0)).toBe(true);
   await expect.poll(()=>inspectBodyHeadings(page)).toEqual([]);
   diagnostics.push({locale,enlargedBodyHeadingFindings:await inspectBodyHeadings(page)});
-  await page.locator('#trip390-how-title').scrollIntoViewIfNeeded();
+  await page.locator('#values h2').scrollIntoViewIfNeeded();
   await expect.poll(async()=>(await inspectBodyContact(page)).findings).toEqual([]);
-  await page.screenshot({path:info.outputPath(`${locale}-200percent-dates-viewport.png`)});
+  await page.screenshot({path:info.outputPath(`${locale}-200percent-values-viewport.png`)});
   await page.evaluate(()=>window.scrollTo(0,0));
   await expect.poll(async()=>(await inspectLanding(page)).findings).toEqual([]);
   const enlarged=await inspectLanding(page);diagnostics.push({locale,textEmulation:'200% computed font sizes',enlarged});
@@ -318,7 +339,7 @@ test('landing matrix, native dialog interactions and independent holdout regress
  await expect(form.locator('[name=postalCode]')).toHaveValue('01234');
  await page.unroute('**/api/public/group-applications?program=sunday_fishing_academy');
  await page.route('**/api/public/group-applications?program=sunday_fishing_academy',route=>route.fulfill({status:503,body:'unavailable'}));
- await form.locator('button[type=submit]').click();await expect(form.getByRole('alert')).toContainText('השמירה אינה זמינה');
+ await form.locator('button[type=submit]').click();await expect(form.getByRole('alert')).toHaveText(trip390Copy.he.exact.form.unavailable);
  await expect(form.locator('[name=postalCode]')).toHaveValue('01234');
  await page.screenshot({path:info.outputPath('holdout-unavailable.png')});
  const metricsPath=info.outputPath('measured-visual-and-negative-case-evidence.json');

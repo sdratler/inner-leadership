@@ -4,9 +4,11 @@ import {describe,expect,it,vi} from 'vitest';
 vi.mock('server-only',()=>({}));
 import {publicGroupApplicationHttp} from '../../src/features/group-application/http.ts';
 import {TRIP390_MEDIA_TYPE,createTrip390Transport,trip390RouteMetadata} from '../../src/features/group-application/academy-trip390-transport.ts';
-import {TRIP390_INTEREST_VERSION,TRIP390_NOTICE_VERSION,TRIP390_OFFER,trip390CommandSchema,trip390Copy} from '../../src/features/group-application/academy-trip390-contract.ts';
+import {TRIP390_INTEREST_VERSION,TRIP390_NOTICE_VERSION,TRIP390_OFFER,trip390CommandSchema} from '../../src/features/group-application/academy-trip390-contract.ts';
 import {verifyGroupApplicationChallenge} from '../../src/features/group-application/challenge.ts';
 import {floridaGroupApplicationNotice} from '../../src/features/group-application/contract.ts';
+import r2En from '../../src/features/group-application/academy-r2-en.json';
+import r2He from '../../src/features/group-application/academy-r2-he.json';
 import {trip390ReservationNotice} from '../../src/features/group-application/academy-trip390-reservation-notice.ts';
 const origin='https://synthetic.example.invalid',host='synthetic.example.invalid',key='synthetic-trip390-unit-only-key-material';
 const endpoint='/api/public/group-applications?program=sunday_fishing_academy';
@@ -33,7 +35,7 @@ describe('Trip390 guest wire and recovery',()=>{
   const body={...command,challenge,website:''};
   expect((await h.post(body,cookie)).status).toBe(403);
   h.advance(1600);
-  expect(verifyGroupApplicationChallenge(challenge,key,h.now())).toMatchObject({v:5,programId:'sunday_fishing_academy',offerVersion:TRIP390_OFFER.version,version:TRIP390_INTEREST_VERSION,noticeVersion:TRIP390_NOTICE_VERSION});
+  expect(verifyGroupApplicationChallenge(challenge,key,h.now())).toMatchObject({v:6,programId:'sunday_fishing_academy',offerVersion:TRIP390_OFFER.version,version:TRIP390_INTEREST_VERSION,noticeVersion:TRIP390_NOTICE_VERSION});
   const saved=await h.post(body,cookie);expect(saved.status).toBe(201);
   expect((await saved.json()).data).toEqual({operationId:command.operationId,reference:h.ref,replayed:false,acknowledgment:'not_queued'});
   expect(h.submit).toHaveBeenCalledExactlyOnceWith(command);expect(h.consume).toHaveBeenCalledTimes(1);
@@ -116,7 +118,7 @@ describe('Trip390 guest wire and recovery',()=>{
   for(const mode of ['bna','legacy'] as const)for(const path of ['','/apply'] as const){
    const meta=trip390RouteMetadata(locale,path,mode);
    expect(meta.alternates.canonical).toBe((mode==='legacy'?'https://life-skills.bneineviimacademy.org/'+locale+'/florida':'https://bneineviimacademy.org'+(locale==='he'?'/he':'')+'/fishing-academy')+path);
-   expect(meta.openGraph.url).toBe(meta.alternates.canonical);expect(meta.description).toBe(trip390Copy[locale].metadata.description);expect(meta.twitter.description).toBe(trip390Copy[locale].metadata.social_description);
+   expect(meta.openGraph.url).toBe(meta.alternates.canonical);expect(meta.description).toBe((locale==='he'?r2He:r2En).metaDescription);expect(meta.twitter.description).toBe((locale==='he'?r2He:r2En).metaDescription);
    expect(meta.openGraph.images[0]!.url).toContain('/groups/brand/jlfa-logo-locked-v1.png');expect(meta.robots).toEqual({index:false,follow:false});
   }
  });
