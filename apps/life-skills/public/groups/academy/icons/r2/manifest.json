@@ -1,0 +1,46 @@
+[
+  {
+    "name": "clipboard-check",
+    "role": "responsibility",
+    "path": "assets/icons/clipboard-check.svg",
+    "source": "https://github.com/lucide-icons/lucide/blob/ee8e10d746a10907205366cfd984922f0c58939a/icons/clipboard-check.svg",
+    "upstreamCommit": "ee8e10d746a10907205366cfd984922f0c58939a",
+    "gitBlobSha": "83ab3518d99d6820dd1e3b0c0f28cd890f9443ae",
+    "sha256": "e2bac86a6b24caa0d7d0dcc2719ec6b7870ec5eef2d21afae498d8cb5eefda96",
+    "status": "retrieved_and_byte_verified",
+    "license": "ISC"
+  },
+  {
+    "name": "messages-square",
+    "role": "collaboration",
+    "path": "assets/icons/messages-square.svg",
+    "source": "https://github.com/lucide-icons/lucide/blob/ee8e10d746a10907205366cfd984922f0c58939a/icons/messages-square.svg",
+    "upstreamCommit": "ee8e10d746a10907205366cfd984922f0c58939a",
+    "gitBlobSha": "b204725cfa69cd569db17f754ed974d35436bccc",
+    "sha256": "97733c58b74f8beddd569927f8453c86bca4afa394e6aad606db1acff4bd8355",
+    "status": "retrieved_and_byte_verified",
+    "license": "ISC"
+  },
+  {
+    "name": "route",
+    "role": "problemSolving",
+    "path": "assets/icons/route.svg",
+    "source": "https://github.com/lucide-icons/lucide/blob/ee8e10d746a10907205366cfd984922f0c58939a/icons/route.svg",
+    "upstreamCommit": "ee8e10d746a10907205366cfd984922f0c58939a",
+    "gitBlobSha": "12f7088149e34e9fd9e6dc0504eff800b9aa1235",
+    "sha256": "fc169fd38a9963b016ad6d60fd72baa2b0ea8e0cec085bbc53287297c3d8121a",
+    "status": "retrieved_and_byte_verified",
+    "license": "ISC"
+  },
+  {
+    "name": "rotate-cw",
+    "role": "perseverance",
+    "path": "assets/icons/rotate-cw.svg",
+    "source": "https://github.com/lucide-icons/lucide/blob/ee8e10d746a10907205366cfd984922f0c58939a/icons/rotate-cw.svg",
+    "upstreamCommit": "ee8e10d746a10907205366cfd984922f0c58939a",
+    "gitBlobSha": "6795f15767d8ae1b56f669aa7a3fe2e99adae6f1",
+    "sha256": "ddcfe6d87240475946935e77411cd4d15a06f3d28a9b921bafed224ebe953668",
+    "status": "retrieved_and_byte_verified",
+    "license": "ISC"
+  }
+]

@@ -8,8 +8,9 @@ import {issueFloridaGroupApplicationChallenge,issueTrip390Challenge,trip390Conti
 import {groupApplicationProgramFromRequest,requestsTrip390Interest,verifyGroupApplicationRequest} from "./public-origin.ts";
 import {TRIP390_INTEREST_VERSION,TRIP390_NOTICE_VERSION,TRIP390_OFFER,trip390ReadableCommandSchema,isCurrentTrip390Interest} from './academy-trip390-contract.ts';
 import {TRIP390_V1_INTEREST_VERSION,TRIP390_V1_NOTICE_VERSION,TRIP390_V1_OFFER,trip390V1Notice} from './academy-trip390-v1.ts';
-import {academyPublicOffer,trip390Notice,TRIP390_V1_MEDIA_TYPE,TRIP390_V2_MEDIA_TYPE} from './academy-trip390-transport.ts';
+import {academyPublicOffer,trip390Notice,TRIP390_V1_MEDIA_TYPE,TRIP390_V2_MEDIA_TYPE,TRIP390_V3_MEDIA_TYPE} from './academy-trip390-transport.ts';
 import {TRIP390_V2_INTEREST_VERSION,TRIP390_V2_NOTICE_VERSION,TRIP390_V2_OFFER,trip390V2Notice} from './academy-trip390-v2.ts';
+import {TRIP390_V3_INTEREST_VERSION,TRIP390_V3_NOTICE_VERSION,TRIP390_V3_OFFER,trip390V3Notice} from './academy-trip390-v3.ts';
 import {z} from 'zod';
 import type {PublicGroupApplicationStore} from "./store.ts";
 import {academyRegistrationNotice} from './academy-registration-notice.ts';
@@ -45,15 +46,16 @@ export async function publicGroupApplicationHttp(request:Request,load:(trip390:b
   if(cookie.length>1)throw new AppError('INVALID_REQUEST');
   const existing=cookie[0]?.slice('ls_academy_registration='.length);if(existing&&!TOKEN_PATTERN.test(existing))throw new AppError('INVALID_REQUEST');
   const continuation=existing??opaqueToken();if(!existing&&request.method==='GET'&&programId==='sunday_fishing_academy')newContinuation=continuation;
-  const historicalVersion=request.headers.get('accept')===TRIP390_V1_MEDIA_TYPE?3:request.headers.get('accept')===TRIP390_V2_MEDIA_TYPE?4:null;
-  const historicalTrip=trip390&&historicalVersion!==null,challengeVersion=historicalVersion??5;
+  const historicalVersion=request.headers.get('accept')===TRIP390_V1_MEDIA_TYPE?3:request.headers.get('accept')===TRIP390_V2_MEDIA_TYPE?4:request.headers.get('accept')===TRIP390_V3_MEDIA_TYPE?5:null;
+  const historicalTrip=trip390&&historicalVersion!==null,challengeVersion=historicalVersion??6;
+  if(trip390&&!historicalTrip&&dependencies.environment.LS_ACADEMY_PUBLIC_OFFER!==TRIP390_OFFER.version)throw new AppError('UNAVAILABLE');
   if(trip390&&request.method==='GET'){
-   response=successResponse({version:historicalVersion===3?TRIP390_V1_INTEREST_VERSION:historicalVersion===4?TRIP390_V2_INTEREST_VERSION:TRIP390_INTEREST_VERSION,offerVersion:historicalVersion===3?TRIP390_V1_OFFER.version:historicalVersion===4?TRIP390_V2_OFFER.version:TRIP390_OFFER.version,noticeVersion:historicalVersion===3?TRIP390_V1_NOTICE_VERSION:historicalVersion===4?TRIP390_V2_NOTICE_VERSION:TRIP390_NOTICE_VERSION,
-    notice:historicalVersion===3?trip390V1Notice:historicalVersion===4?trip390V2Notice:trip390Notice,challenge:issueTrip390Challenge(dependencies.challengeKey,continuation,dependencies.now(),undefined,challengeVersion)},requestId);
+   response=successResponse({version:historicalVersion===3?TRIP390_V1_INTEREST_VERSION:historicalVersion===4?TRIP390_V2_INTEREST_VERSION:historicalVersion===5?TRIP390_V3_INTEREST_VERSION:TRIP390_INTEREST_VERSION,offerVersion:historicalVersion===3?TRIP390_V1_OFFER.version:historicalVersion===4?TRIP390_V2_OFFER.version:historicalVersion===5?TRIP390_V3_OFFER.version:TRIP390_OFFER.version,noticeVersion:historicalVersion===3?TRIP390_V1_NOTICE_VERSION:historicalVersion===4?TRIP390_V2_NOTICE_VERSION:historicalVersion===5?TRIP390_V3_NOTICE_VERSION:TRIP390_NOTICE_VERSION,
+    notice:historicalVersion===3?trip390V1Notice:historicalVersion===4?trip390V2Notice:historicalVersion===5?trip390V3Notice:trip390Notice,challenge:issueTrip390Challenge(dependencies.challengeKey,continuation,dependencies.now(),undefined,challengeVersion)},requestId);
   }else if(trip390){
    const body=await readJson(request,trip390SubmissionSchema);
    const challenge=verifyGroupApplicationChallenge(body.challenge,dependencies.challengeKey,dependencies.now());
-   if((challenge.v!==3&&challenge.v!==4&&challenge.v!==5)||challenge.v!==challengeVersion||!existing||challenge.programId!==programId||
+   if((challenge.v!==3&&challenge.v!==4&&challenge.v!==5&&challenge.v!==6)||challenge.v!==challengeVersion||!existing||challenge.programId!==programId||
     challenge.version!==body.fields.version||challenge.offerVersion!==body.fields.offerVersion||
     challenge.noticeVersion!==body.fields.acknowledgment.version||
     challenge.continuationDigest!==trip390ContinuationDigest(dependencies.challengeKey,existing))throw new AppError('FORBIDDEN');

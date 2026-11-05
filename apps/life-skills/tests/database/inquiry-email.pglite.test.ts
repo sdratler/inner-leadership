@@ -1,10 +1,10 @@
 import {requirePgliteMemoryEnvironment} from '../fixtures/pglite-memory-environment.ts';
-import {loadTrip390AckAdmission,trip390AckSourceFiles,TRIP390_ACK_VERSION,TRIP390_ACK_PURPOSE,TRIP390_ACK_SENDER} from '../../src/features/group-application/academy-trip390-ack-admission.ts';
-import {TRIP390_INTEREST_VERSION,TRIP390_NOTICE_VERSION} from '../../src/features/group-application/academy-trip390-contract.ts';
+import {loadTrip390AckAdmission,academy650AckSourceFiles,ACADEMY650_ACK_POLICY_VERSION,TRIP390_ACK_PURPOSE,TRIP390_ACK_SENDER} from '../../src/features/group-application/academy-trip390-ack-admission.ts';
+import {TRIP390_INTEREST_VERSION,TRIP390_NOTICE_VERSION,TRIP390_OFFER} from '../../src/features/group-application/academy-trip390-contract.ts';
 import {currentTrip390Fields} from '../fixtures/trip390-current.ts';
 import {trip390V1InterestSchema} from '../../src/features/group-application/academy-trip390-v1.ts';
 import {privateDigest} from '../../src/features/contact-ops/server/digests.ts';
-import {trip390EmailContent,TRIP390_EMAIL_VERSION} from '../../src/features/group-application/academy-trip390-email.ts';
+import {academy650AckContent,ACADEMY650_ACK_COPY_VERSION} from '../../src/features/group-application/academy650-r2-ack.ts';
 import {createHash,randomUUID} from "node:crypto";
 import {readFile} from "node:fs/promises";
 import {afterAll,afterEach,beforeAll,expect,it,vi} from "vitest";
@@ -32,8 +32,8 @@ const sha=(value:string)=>createHash('sha256').update(value).digest('hex');
 beforeAll(async()=>{
  requirePgliteMemoryEnvironment(process.env);
  vi.stubGlobal('fetch',vi.fn(async()=>{throw Error('REAL_NETWORK_NOT_ADMITTED');}));
- sourceHashes=Object.fromEntries(await Promise.all(Object.entries(trip390AckSourceFiles).map(async([k,p])=>[k,sha((await readFile(p,'utf8')).replace(/\r\n/g,'\n'))])));
- expect(Object.keys(sourceHashes)).toHaveLength(16);
+ sourceHashes=Object.fromEntries(await Promise.all(Object.entries(academy650AckSourceFiles).map(async([k,p])=>[k,sha((await readFile(p,'utf8')).replace(/\r\n/g,'\n'))])));
+ expect(Object.keys(sourceHashes)).toHaveLength(22);
  db=new PGlite();
  await db.exec("CREATE SCHEMA ls_control");
  for(const name of ["0001_ls_foundation.sql","0010_ls_identity_cases_20260906.sql","0124_ls_group_interest.sql","0131_ls_public_group_applications.sql","0135_ls_inquiry_email_outbox.sql","0136_ls_academy_founder.sql","0137_ls_academy_owner_notifications.sql"])await db.exec(await readFile("migrations/"+name,"utf8"));
@@ -122,9 +122,9 @@ it("workspace scoping and sender restrictions prevent cross-destination delivery
 
 function tripCommand(){const fields=currentTrip390Fields();fields.email=`trip-${randomUUID()}@example.invalid`;fields.children[0]!.name='SyntheticOlder';fields.children.push({...fields.children[0]!,id:randomUUID(),name:'SyntheticYounger',ageYears:9});return {operationId:randomUUID(),fields};}
 function admittedTrip(input:ReturnType<typeof tripCommand>,reference:string,id:string){
- const fields=input.fields,content=trip390EmailContent({version:TRIP390_EMAIL_VERSION,kind:'ack',reference,parentName:fields.guardianName,children:fields.children.map(({id,name})=>({id,name})),messageLanguage:fields.messageLanguage});
+ const fields=input.fields,content=academy650AckContent({reference,parentFirstName:fields.guardianName.split(" ")[0]!,children:fields.children.map(({id,name})=>({id,name})),messageLanguage:fields.messageLanguage});
  const target={reference,id,operationId:input.operationId,fields,content},initial=now;
-  const policy={version:TRIP390_ACK_VERSION,approvalReceiptSha256:'a'.repeat(64),sourceCommit:'b'.repeat(40),workspaceId:workspace,projectId:randomUUID(),environmentId:randomUUID(),serviceId:randomUUID(),origin:'https://life-skills.bneineviimacademy.org',sender:TRIP390_ACK_SENDER,replyTo:TRIP390_ACK_SENDER,requestVersion:TRIP390_INTEREST_VERSION,noticeVersion:TRIP390_NOTICE_VERSION,payloadVersion:2,payloadKind:TRIP390_ACK_PURPOSE,templateVersion:TRIP390_EMAIL_VERSION,sourceHashes,notBefore:initial.toISOString(),admittedAt:initial.toISOString(),expiresAt:new Date(initial.valueOf()+3600000).toISOString(),population:{mode:'controlled_test',requests:[{reference:target.reference,outboxId:target.id,operationId:target.operationId,recipientSha256:sha(target.fields.email),messageLanguage:target.fields.messageLanguage,childIds:target.fields.children.map(c=>c.id),contentSha256:target.content.contentSha256}]}};
+  const policy={version:ACADEMY650_ACK_POLICY_VERSION,approvalReceiptSha256:'a'.repeat(64),sourceCommit:'b'.repeat(40),workspaceId:workspace,projectId:randomUUID(),environmentId:randomUUID(),serviceId:randomUUID(),origin:'https://life-skills.bneineviimacademy.org',sender:TRIP390_ACK_SENDER,replyTo:TRIP390_ACK_SENDER,requestVersion:TRIP390_INTEREST_VERSION,noticeVersion:TRIP390_NOTICE_VERSION,offerVersion:TRIP390_OFFER.version,payloadVersion:3,payloadKind:TRIP390_ACK_PURPOSE,templateVersion:ACADEMY650_ACK_COPY_VERSION,sourceHashes,notBefore:initial.toISOString(),admittedAt:initial.toISOString(),expiresAt:new Date(initial.valueOf()+3600000).toISOString(),population:{mode:'controlled_test',requests:[{reference:target.reference,outboxId:target.id,operationId:target.operationId,recipientSha256:sha(target.fields.email),messageLanguage:target.fields.messageLanguage,childIds:target.fields.children.map(c=>c.id),contentSha256:target.content.contentSha256}]}};
   const env:Record<string,string|undefined>={LS_ACADEMY_TRIP390_ACK_ENABLED:'true',LS_ACADEMY_TRIP390_ACK_QUEUE_ENABLED:'true',LS_ACADEMY_TRIP390_ACK_ADMISSION_JSON:JSON.stringify(policy),LS_INQUIRY_EMAIL_QUEUE_ENABLED:'false',LS_INQUIRY_EMAIL_SEND_ENABLED:'false',LS_ACADEMY_FOUNDER_EMAIL_APPROVED:'false',LS_ACADEMY_SIGNUP_WORKER_ENABLED:'false',LS_ACADEMY_SIGNUP_CONTROLLED_SEND_ENABLED:'false',LS_AUTH_EMAIL_ENABLED:'true',LS_AUTH_EMAIL_PROVIDER:'gmail',LS_AUTH_EMAIL_FROM:policy.sender,LS_AUTH_GOOGLE_CLIENT_ID:'synthetic-id',LS_AUTH_GOOGLE_CLIENT_SECRET:'synthetic-secret',LS_AUTH_GOOGLE_REFRESH_TOKEN:'synthetic-refresh',RAILWAY_GIT_COMMIT_SHA:policy.sourceCommit,LIFE_SKILLS_RELEASE_COMMIT:policy.sourceCommit,LS_IDENTITY_WORKSPACE_ID:workspace,RAILWAY_PROJECT_ID:policy.projectId,RAILWAY_ENVIRONMENT_ID:policy.environmentId,RAILWAY_SERVICE_ID:policy.serviceId,LS_APP_ORIGIN:policy.origin};
   const issued=loadTrip390AckAdmission(env,now);expect(issued).not.toBeNull();return {env,issued:issued!,policy};
  }
@@ -141,8 +141,8 @@ it('atomically saves current siblings, leading-zero ZIP, total-day driving and o
  const input=tripCommand(),saved=await application.submit(input),mail=await row(saved.item.id);
  expect(saved.acknowledgment).toBe('queued');expect(mail.state).toBe('queued');expect(mail.payload_ciphertext).not.toContain(input.fields.email);
  const payload=JSON.parse(unseal(mail.payload_ciphertext,`ls_service_interest/inquiry_email/v1/${workspace}/${mail.id}`,ring));
- const rendered=trip390EmailContent({version:TRIP390_EMAIL_VERSION,kind:'ack',reference:saved.item.id,parentName:input.fields.guardianName,children:input.fields.children.map(({id,name})=>({id,name})),messageLanguage:'he'});
- expect(payload).toMatchObject({version:2,locale:'he',recipient:input.fields.email,subject:rendered.subject,text:rendered.text,contentSha256:rendered.contentSha256});
+ const rendered=academy650AckContent({reference:saved.item.id,parentFirstName:input.fields.guardianName.split(" ")[0]!,children:input.fields.children.map(({id,name})=>({id,name})),messageLanguage:'he'});
+ expect(payload).toMatchObject({version:3,requestVersion:TRIP390_INTEREST_VERSION,offerVersion:TRIP390_OFFER.version,copyVersion:ACADEMY650_ACK_COPY_VERSION,childIds:input.fields.children.map(child=>child.id),locale:'he',recipient:input.fields.email,subject:rendered.subject,text:rendered.text,html:rendered.html,contentSha256:rendered.contentSha256});
  expect((await new PublicGroupApplicationStore(store,workspace,ring,key,clock,true).readForOwner(actors[0]!,saved.item.id)).fields).toEqual(input.fields);
  expect((await application.submit(input)).item.id).toBe(saved.item.id);expect((await application.submit({...input,operationId:randomUUID()})).item.id).toBe(saved.item.id);
  expect((await db.query<{count:number}>('SELECT count(*)::int AS count FROM ls_service_interest.inquiry_email_outbox WHERE application_id=$1',[saved.item.id])).rows[0]!.count).toBe(1);
@@ -167,7 +167,7 @@ it('keeps an exact frozen v1 saved operation readable beside v2 and never queues
  expect(mixed.items.map(v=>v.id)).toEqual(expect.arrayContaining([reference,current.item.id]));
  expect((await db.query<{count:number}>('SELECT count(*)::int AS count FROM ls_service_interest.inquiry_email_outbox WHERE application_id=$1',[reference])).rows[0]!.count).toBe(0);
 });
-it('sends current V3 once through issued admission and actual Gmail adapter, preserving chosen language and siblings',async()=>{
+it('sends current V4 R2 once through issued admission and actual Gmail adapter, preserving chosen language and siblings',async()=>{
  const input=tripCommand(),saved=await application.submit(input),mail=await row(saved.item.id),a=admittedTrip(input,saved.item.id,mail.id),send=tripTransport();
  expect(await tripOutbox().dispatchTrip390One(mail.id,a.issued,a.env,send as typeof fetch)).toBe('sent');
  expect(await row(saved.item.id)).toMatchObject({state:'sent',provider_id:'synthetic-trip-provider'});
@@ -175,7 +175,7 @@ it('sends current V3 once through issued admission and actual Gmail adapter, pre
  expect(send.mock.calls.filter(([url])=>url===gmail)).toHaveLength(1);
  const mime=Buffer.from(JSON.parse(String(send.mock.calls.find(([url])=>url===gmail)![1]!.body)).raw,'base64url').toString('utf8');
  expect(mime).toContain('To: '+input.fields.email);
- const content=trip390EmailContent({version:TRIP390_EMAIL_VERSION,kind:'ack',reference:saved.item.id,parentName:input.fields.guardianName,children:input.fields.children.map(({id,name})=>({id,name})),messageLanguage:input.fields.messageLanguage});
+ const content=academy650AckContent({reference:saved.item.id,parentFirstName:input.fields.guardianName.split(" ")[0]!,children:input.fields.children.map(({id,name})=>({id,name})),messageLanguage:input.fields.messageLanguage});
  expect(content.messageLanguage).toBe('he');for(const child of input.fields.children)expect(content.text).toContain(child.name);
  const payload=JSON.parse(unseal(mail.payload_ciphertext,`ls_service_interest/inquiry_email/v1/${workspace}/${mail.id}`,ring));
  expect(payload).toMatchObject({locale:'he',subject:content.subject,text:content.text,html:content.html,contentSha256:content.contentSha256});

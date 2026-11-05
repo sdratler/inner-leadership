@@ -1,0 +1,39 @@
+{
+  "version": "JLFA-ACADEMY650-ACQUISITION-20261105-R2",
+  "locales": {
+    "en": {
+      "subject": "We received your Fishing Academy reservation request",
+      "greeting": "Hi {{parentFirstName}},",
+      "greetingFallback": "Hi,",
+      "paragraphs": [
+        "Thanks for requesting a place for {{childrenDisplayNames}} at Jewish Leadership Fishing Academy.",
+        "We’re organizing after-school fishing lessons and full-day outings. As soon as we have an update for your area, we’ll be in touch.",
+        "Once your group’s dates and location are confirmed, we’ll send the enrollment details, required participation forms and payment instructions.",
+        "Your request has been saved. It does not confirm a place or authorize a payment.",
+        "Your request reference is {{requestReference}}."
+      ],
+      "closing": "We look forward to fishing together,",
+      "signature": [
+        "Shlomo Dratler",
+        "Jewish Leadership Fishing Academy"
+      ]
+    },
+    "he": {
+      "subject": "קיבלנו את בקשתכם למקום באקדמיית הדיג",
+      "greeting": "שלום {{parentFirstName}},",
+      "greetingFallback": "שלום,",
+      "paragraphs": [
+        "תודה על בקשת המקום עבור {{childrenDisplayNames}} ב-Jewish Leadership Fishing Academy.",
+        "אנו מארגנים שיעורי דיג אחרי הלימודים וטיולי דיג ליום שלם. ברגע שיהיה עדכון לגבי האזור שלכם, ניצור קשר.",
+        "לאחר אישור מועדי הקבוצה ומיקומה, נשלח את פרטי ההרשמה, את טופסי ההשתתפות הנדרשים ואת הנחיות התשלום.",
+        "בקשתכם נשמרה. היא אינה מאשרת מקום ואינה מאשרת תשלום.",
+        "מספר הבקשה שלכם הוא {{requestReference}}."
+      ],
+      "closing": "מצפים לדוג יחד,",
+      "signature": [
+        "שלמה דרטלר",
+        "Jewish Leadership Fishing Academy"
+      ]
+    }
+  }
+}

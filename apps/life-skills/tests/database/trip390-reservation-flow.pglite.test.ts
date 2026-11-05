@@ -17,10 +17,10 @@ import {publicGroupApplicationHttp} from '../../src/features/group-application/h
 import {groupApplicationReviewHttp} from '../../src/features/group-application/review-http.ts';
 import {verifyGroupApplicationChallenge} from '../../src/features/group-application/challenge.ts';
 import {TRIP390_MEDIA_TYPE} from '../../src/features/group-application/academy-trip390-transport.ts';
-import {TRIP390_INTEREST_VERSION,TRIP390_NOTICE_VERSION,TRIP390_OFFER,type Trip390Command} from '../../src/features/group-application/academy-trip390-contract.ts';
+import {TRIP390_INTEREST_VERSION,TRIP390_NOTICE_VERSION,TRIP390_DRIVING_VERSION,TRIP390_OFFER,type Trip390Command} from '../../src/features/group-application/academy-trip390-contract.ts';
 import {trip390ReservationNotice} from '../../src/features/group-application/academy-trip390-reservation-notice.ts';
 import {trip390StudentConduct} from '../../src/features/group-application/academy-trip390-student-conduct.ts';
-import {TRIP390_EMAIL_VERSION,trip390EmailContent} from '../../src/features/group-application/academy-trip390-email.ts';
+import {academy650AckContent} from '../../src/features/group-application/academy650-r2-ack.ts';
 import {INQUIRY_EMAIL_PURPOSE} from '../../src/features/group-application/inquiry-email-copy.ts';
 import {currentTrip390Fields} from '../fixtures/trip390-current.ts';
 
@@ -66,7 +66,7 @@ async function fixture(){
   const response=await publicGroupApplicationHttp(new Request(url,{headers:{host,accept:TRIP390_MEDIA_TYPE}}),deps);expect(response.status).toBe(200);
   const body=(await response.json()).data;expect(body).toMatchObject({version:TRIP390_INTEREST_VERSION,offerVersion:TRIP390_OFFER.version,noticeVersion:TRIP390_NOTICE_VERSION});
   const cookie=response.headers.get('set-cookie');expect(cookie).toContain('HttpOnly; Secure; SameSite=Strict');tick+=1600;
-  expect(verifyGroupApplicationChallenge(body.challenge,digestKey,tick)).toMatchObject({v:5,version:TRIP390_INTEREST_VERSION,noticeVersion:TRIP390_NOTICE_VERSION});
+  expect(verifyGroupApplicationChallenge(body.challenge,digestKey,tick)).toMatchObject({v:6,version:TRIP390_INTEREST_VERSION,noticeVersion:TRIP390_NOTICE_VERSION});
   return {challenge:body.challenge as string,cookie:cookie!.split(';')[0]!};
  }
  async function post(command:Trip390Command,issued:Awaited<ReturnType<typeof challenge>>,options:{admitted?:boolean;origin?:string;cookie?:string}={}){
@@ -80,11 +80,11 @@ async function fixture(){
 }
 function command(locale:'en'|'he'):Trip390Command{
  const fields=currentTrip390Fields(),notice=trip390ReservationNotice(locale),conduct=trip390StudentConduct(locale);
- return {operationId:randomUUID(),fields:{...fields,guardianName:'Synthetic Reservation Guardian '+randomUUID(),email:'synthetic-reservation-'+randomUUID()+'@example.invalid',phone:'+12025550107',city:locale==='he'?'עיר סינתטית מחוץ לרשימה':'Synthetic city outside suggestions',postalCode:'01234-5678',messageLanguage:locale==='en'?'he':'en',instructionLanguage:'either',lessonDayDriving:{version:'JLFA-SUNDAY-TOTAL-DRIVE-v1',limit:'up_to_90'},children:[{id:randomUUID(),name:'Synthetic Older',ageYears:12,experience:'some'},{id:randomUUID(),name:'Synthetic Younger',ageYears:9,experience:'new'}],acknowledgment:{version:TRIP390_NOTICE_VERSION,language:locale,conductExplained:true,interestPrivacySafety:true,whatsapp:false,reservationNotice:{version:notice.version,language:locale,text:notice.text,textDigest:notice.textDigest},studentConduct:{version:conduct.version,language:locale,text:conduct.text,textDigest:conduct.textDigest}}}};
+ return {operationId:randomUUID(),fields:{...fields,guardianName:'Synthetic Reservation Guardian '+randomUUID(),email:'synthetic-reservation-'+randomUUID()+'@example.invalid',phone:'+12025550107',city:locale==='he'?'עיר סינתטית מחוץ לרשימה':'Synthetic city outside suggestions',postalCode:'01234-5678',messageLanguage:locale==='en'?'he':'en',instructionLanguage:'either',lessonDayDriving:{version:TRIP390_DRIVING_VERSION,limit:'up_to_90'},children:[{id:randomUUID(),name:'Synthetic Older',ageYears:12,experience:'some'},{id:randomUUID(),name:'Synthetic Younger',ageYears:9,experience:'new'}],acknowledgment:{version:TRIP390_NOTICE_VERSION,language:locale,conductExplained:true,interestPrivacySafety:true,whatsapp:false,reservationNotice:{version:notice.version,language:locale,text:notice.text,textDigest:notice.textDigest},studentConduct:{version:conduct.version,language:locale,text:conduct.text,textDigest:conduct.textDigest}}}};
 }
 async function saved(response:Response,status=201){expect(response.status).toBe(status);const value=(await response.json()).data;expect(value).toMatchObject({reference:expect.stringMatching(/^[a-f0-9-]{36}$/),acknowledgment:'queued',replayed:status===200});return value as {reference:string;operationId:string;acknowledgment:string;replayed:boolean};}
 
-it.each(['en','he'] as const)('v3 %s actual HTTP save, lost-reply replay, encrypted ACK intent and new ordinary owner session reload',async locale=>{
+it.each(['en','he'] as const)('v4 R2 %s actual HTTP save, lost-reply replay, encrypted ACK intent and new ordinary owner session reload',async locale=>{
  const f=await fixture(),input=command(locale),issued=await f.challenge();
  // The first successful body is deliberately not used by the caller; exact
  // retry recovers the same durable reference rather than inventing a new lead.
@@ -100,7 +100,7 @@ it.each(['en','he'] as const)('v3 %s actual HTTP save, lost-reply replay, encryp
  const queued=(await engine.query<{id:string;purpose:string;state:string;payload_ciphertext:string;provider_id:string|null}>('SELECT id,purpose,state,payload_ciphertext,provider_id FROM ls_service_interest.inquiry_email_outbox WHERE workspace_id=$1 AND application_id=$2',[f.workspace,replay.reference])).rows;
  expect(queued).toHaveLength(1);expect(queued[0]).toMatchObject({purpose:INQUIRY_EMAIL_PURPOSE,state:'queued',provider_id:null});expect(queued[0]!.payload_ciphertext).not.toContain(input.fields.email);
  const payload=JSON.parse(unseal(queued[0]!.payload_ciphertext,`ls_service_interest/inquiry_email/v1/${f.workspace}/${queued[0]!.id}`,ring));
- const content=trip390EmailContent({version:TRIP390_EMAIL_VERSION,kind:'ack',reference:replay.reference,parentName:input.fields.guardianName,children:input.fields.children.map(({id,name})=>({id,name})),messageLanguage:input.fields.messageLanguage});
+ const content=academy650AckContent({reference:replay.reference,parentFirstName:'Synthetic',children:input.fields.children.map(({id,name})=>({id,name})),messageLanguage:input.fields.messageLanguage});
  expect(payload).toMatchObject({reference:replay.reference,recipient:input.fields.email,locale:input.fields.messageLanguage,copyVersion:content.version,subject:content.subject,text:content.text,html:content.html,contentSha256:content.contentSha256});
  const login1=await f.login(),actor1=await f.sessions().actor(login1.token);expect(actor1.role).toBe('practitioner');
  const search=await f.review(login1.token,'search='+encodeURIComponent(input.fields.guardianName));expect(search.status).toBe(200);expect((await search.json()).data.items).toHaveLength(1);

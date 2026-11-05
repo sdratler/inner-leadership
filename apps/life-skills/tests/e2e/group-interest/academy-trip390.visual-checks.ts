@@ -1,13 +1,13 @@
 import type {Page} from '@playwright/test';
-import {trip390Copy} from '../../../src/features/group-application/academy-trip390-contract.ts';
+import {academyR2Copy as trip390Copy} from '../../../src/features/group-application/academy-r2-copy.ts';
 
 export type HeroContentSnapshot={locale:string|null;blocks:string[];allText:string;headingCount:number;titleCount:number;paragraphCount:number;actionCount:number;linkCount:number};
 
 /** Match the approved locale's complete hero, not an obsolete keyword blacklist. */
 export function matchesCurrentHeroContent(observed:HeroContentSnapshot,copy:typeof trip390Copy=trip390Copy){
  if(observed.locale!=='en'&&observed.locale!=='he')return false;
- const hero=copy[observed.locale].hero;
- const expected=[hero.eyebrow,hero.title,hero.pillars,hero.interest_cta];
+ const hero=copy[observed.locale].exact.hero;
+ const expected=[hero.region,hero.nameLine1+' '+hero.nameLine2,hero.pillars,hero.cta];
  const normalize=(value:string)=>value.replace(/\s+/g,' ').trim();
  return observed.headingCount===1&&observed.titleCount===1&&observed.paragraphCount===2&&observed.actionCount===1&&observed.linkCount===1
   &&observed.blocks.length===expected.length&&observed.blocks.every((value,index)=>normalize(value)===normalize(expected[index]!))
@@ -27,7 +27,7 @@ export async function inspectLanding(page:Page){
   if(Math.abs(hb.left)>1||Math.abs(hb.right-width)>1)findings.push('hero-boxed');
   if(!photo.complete||!photo.naturalWidth)findings.push('hero-image-unloaded');
   const headingBlocks=hero.querySelectorAll('[data-hero-heading]'),actions=hero.querySelectorAll('[data-hero-action]');
-  const paragraphs=hero.querySelectorAll('[data-hero-heading] > p'),links=hero.querySelectorAll('[data-hero-action] a');
+  const paragraphs=hero.querySelectorAll('[data-hero-heading] > p, [data-hero-action] > p[data-jlfa-pillars]'),links=hero.querySelectorAll('[data-hero-action] a');
   const textNodes:string[]=[],walker=document.createTreeWalker(hero,NodeFilter.SHOW_TEXT);
   for(let text=walker.nextNode();text;text=walker.nextNode())if(text.textContent?.trim())textNodes.push(text.textContent);
   const heroContent:HeroContentSnapshot={locale:hero.closest('[lang]')?.getAttribute('lang')??null,
@@ -85,7 +85,7 @@ export async function inspectLanding(page:Page){
    }
   }
   return {findings,heroContent,viewport:{width:innerWidth,height:innerHeight},headerHeight:header.height,hero:{left:hb.left,width:hb.width,height:hb.height,bottom:hb.bottom},image:{src:photo.currentSrc,fit,subject},faqCount:faq.querySelectorAll('[data-trip390-faq]').length};
- },trip390Copy.en.faqs.map(item=>item.id));
+ },trip390Copy.en.faqs.map(item=>item.id).filter(id=>id!=='cancellation'&&id!=='conduct'));
  if(!matchesCurrentHeroContent(observed.heroContent))observed.findings.push('hero-competing-details');
  return observed;
 }
@@ -172,6 +172,10 @@ export async function inspectBodyContact(page:Page){
     const range=document.createRange();range.selectNodeContents(text);
     for(const r of range.getClientRects())if(r.width>0&&r.height>0&&r.left<b.right&&r.right>b.left&&r.top<b.bottom&&r.bottom>b.top)findings.push('body-contact-over-text');
    }
+  }
+  for(const icon of document.querySelectorAll('[data-jlfa-values] article svg')){
+   const r=icon.getBoundingClientRect();
+   if(r.width>0&&r.height>0&&r.left<b.right&&r.right>b.left&&r.top<b.bottom&&r.bottom>b.top)findings.push('body-contact-over-value-icon');
   }
   return {findings,position:{left:b.left,top:b.top,width:b.width,height:b.height}};
  });

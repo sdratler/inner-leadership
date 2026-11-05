@@ -1,3 +1,4 @@
+import {academyR2Copy} from '../../src/features/group-application/academy-r2-copy.ts';
 import {currentTrip390Fields} from '../fixtures/trip390-current.ts';
 import {describe,it,expect} from 'vitest';
 import {createElement} from 'react';
@@ -12,9 +13,9 @@ describe('trip390 versioned interest candidate',()=>{
   const headings=[...html.matchAll(/<h2\b[^>]*id="trip390-intro-title"[^>]*>([\s\S]*?)<\/h2>/g)];
   expect(headings).toHaveLength(1);
   const heading=headings[0]![1]!;
-  const serializedCopy=renderToStaticMarkup(createElement('span',null,trip390Copy[initialLocale].intro.title));
+  const serializedCopy=renderToStaticMarkup(createElement('span',null,academyR2Copy[initialLocale].intro.title));
   expect(heading.replace(/<[^>]*>/g,'')).toBe(serializedCopy.replace(/<[^>]*>/g,''));
-  expect(heading.match(/<wbr\s*\/?\s*>/g)??[]).toHaveLength(initialLocale==='en'?1:0);
+  expect(heading.match(/<wbr\s*\/?\s*>/g)??[]).toHaveLength(0);
  });
  it.each(['en','he'] as const)('keeps the readable documents inside genuinely disabled permission controls (%s)',initialLocale=>{
   const html=renderToStaticMarkup(createElement(AcademyTrip390Page,{initialLocale}));
@@ -27,7 +28,7 @@ describe('trip390 versioned interest candidate',()=>{
   expect(html).toMatch(/<button\b(?=[^>]*type="submit")(?=[^>]*disabled="")[^>]*>/);
  });
 
- it.each(['en','he'] as const)('uses the selected request copy without implying a confirmed place (%s)',locale=>{
+ it.each(['en','he'] as const)('retains the historical $390 request catalog without implying a confirmed place (%s)',locale=>{
   const copy=trip390Copy[locale];
   expect(copy.hero.interest_cta).toBe(locale==='en'?'Reserve Your Spot Now':'שריינו מקום עכשיו');
   expect(copy.form.title).toBe(locale==='en'?'Reserve Your Spot Now':'שריינו מקום עכשיו');
@@ -45,9 +46,9 @@ describe('trip390 versioned interest candidate',()=>{
  it('requires both acknowledgments and current phone with optional WhatsApp',()=>{expect(trip390InterestSchema.safeParse({...fields(),acknowledgment:{...fields().acknowledgment,conductExplained:false}}).success).toBe(false);expect(trip390InterestSchema.safeParse({...fields(),acknowledgment:{...fields().acknowledgment,interestPrivacySafety:false}}).success).toBe(false);const opted={...fields(),acknowledgment:{...fields().acknowledgment,whatsapp:true}};expect(trip390InterestSchema.safeParse({...opted,phone:undefined}).success).toBe(false);expect(trip390InterestSchema.safeParse({...opted,phone:'+12025550101'}).success).toBe(true);});
  it('does not fabricate eligibility or merge sibling IDs',()=>{expect(trip390InterestSchema.safeParse({...fields(),children:[{...fields().children[0],ageYears:22}]}).success).toBe(false);expect(trip390InterestSchema.safeParse({...fields(),children:[fields().children[0],fields().children[0]]}).success).toBe(false);});
  it('rejects client prices, scopes and fabricated legacy selections',()=>{for(const extra of [{priceCents:1},{workspaceId:'other'},{stagePreference:'foundation'},{password:'secret'}])expect(trip390InterestSchema.safeParse({...fields(),...extra}).success).toBe(false);expect(trip390CommandSchema.safeParse({operationId:'not-an-id',fields:fields()}).success).toBe(false);});
- it('quotes per child without a sibling reduction or renewal',()=>{expect(trip390Quote(2)).toMatchObject({totalCents:78000,discountCents:0,automaticRenewal:false});expect(trip390Quote(3).totalCents).toBe(117000);expect(()=>trip390Quote(0)).toThrow();expect(()=>trip390TestOrder(['same','same'])).toThrow();});
- it('pairs exact EN/HE keys and no legacy sales promotion in metadata',()=>{expect(trip390Copy.en.faqs.map(item=>item.id)).toEqual(trip390Copy.he.faqs.map(item=>item.id));for(const locale of ['en','he'] as const){expect(trip390Metadata(locale).robots).toEqual({index:false,follow:false});expect(JSON.stringify(trip390Metadata(locale))).toContain('390');expect(JSON.stringify(trip390Metadata(locale))).not.toMatch(/650|first 30|self-governance/i);}});
- it.each(['en','he'] as const)('renders %s without old sales controls, login or fake save',initialLocale=>{const html=renderToStaticMarkup(createElement(AcademyTrip390Page,{initialLocale}));expect(html).toContain('390');expect(html).toContain('hero-desktop-20261018.png');expect(html).not.toMatch(/first 30|parent_activation|type="password"|65000/);expect(html.match(/type="checkbox"/g)).toHaveLength(3);expect(html.match(/<input(?=[^>]*name="(?:conduct|interest)")(?=[^>]*required)[^>]*>/g)).toHaveLength(2);expect(html).toContain('disabled=""');expect(html).toContain(`dir="${initialLocale==='he'?'rtl':'ltr'}"`);});
+ it('quotes per child without a sibling reduction or renewal',()=>{expect(trip390Quote(2)).toMatchObject({totalCents:130000,discountCents:0,automaticRenewal:false});expect(trip390Quote(3).totalCents).toBe(195000);expect(()=>trip390Quote(0)).toThrow();expect(()=>trip390TestOrder(['same','same'])).toThrow();});
+ it('pairs exact EN/HE keys and no legacy sales promotion in metadata',()=>{expect(trip390Copy.en.faqs.map(item=>item.id)).toEqual(trip390Copy.he.faqs.map(item=>item.id));for(const locale of ['en','he'] as const){expect(trip390Metadata(locale).robots).toEqual({index:false,follow:false});const {pageTitle:title,metaDescription:description}=academyR2Copy[locale].exact;expect(trip390Metadata(locale)).toMatchObject({title,description,openGraph:{title,description}});expect(JSON.stringify(trip390Metadata(locale))).not.toMatch(/\$390|first 30|self-governance/i);expect(JSON.stringify(trip390Copy[locale].metadata)).toContain('390');}});
+ it.each(['en','he'] as const)('renders %s without old sales controls, login or fake save',initialLocale=>{const html=renderToStaticMarkup(createElement(AcademyTrip390Page,{initialLocale}));expect(html).toContain(academyR2Copy[initialLocale].faqs.find(item=>item.id==='cost')!.a);expect(html).not.toContain('$390');expect(html).toContain('hero-desktop-20261018.png');expect(html).not.toMatch(/first 30|parent_activation|type="password"|65000/);expect(html.match(/type="checkbox"/g)).toHaveLength(3);expect(html.match(/<input(?=[^>]*name="(?:conduct|interest)")(?=[^>]*required)[^>]*>/g)).toHaveLength(2);expect(html).toContain('disabled=""');expect(html).toContain(`dir="${initialLocale==='he'?'rtl':'ltr'}"`);});
 });
 describe('trip390 disabled operations candidate',()=>{
  const vehicle={seats:50,staff:5,otherPassengers:0,cargoSeatReduction:0,approvedChildLimit:45,approved:true};

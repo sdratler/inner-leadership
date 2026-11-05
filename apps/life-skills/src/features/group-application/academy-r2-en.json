@@ -1,0 +1,335 @@
+{
+  "locale": "en",
+  "direction": "ltr",
+  "pageTitle": "Jewish Leadership Fishing Academy | South Florida",
+  "metaDescription": "An enrichment program for boys ages 9–15, with weekly after-school fishing lessons and two full-day fishing trips each month. Reserve your spot.",
+  "nav": {
+    "learn": "Fishing skills",
+    "values": "Life skills",
+    "about": "Meet Shlomo",
+    "faq": "FAQ",
+    "en": "English",
+    "he": "עברית"
+  },
+  "hero": {
+    "region": "South Florida",
+    "nameLine1": "Jewish Leadership",
+    "nameLine2": "Fishing Academy",
+    "pillars": "Torah • Responsibility • Fishing",
+    "cta": "Reserve Your Spot Now",
+    "alt": "An adult and a boy preparing fishing equipment by the water."
+  },
+  "intro": {
+    "title": "Weekly skills. Full-day fishing adventures.",
+    "body": "An enrichment program combining hands-on fishing lessons and excursions.",
+    "audience": "Boys ages 9–15",
+    "inclusions": [
+      {
+        "id": "weekly",
+        "title": "Hands-on fishing lessons",
+        "body": "Once a week after school"
+      },
+      {
+        "id": "trips",
+        "title": "Full-day fishing outings",
+        "body": "Twice a month"
+      }
+    ]
+  },
+  "learning": {
+    "title": "Become an independent angler.",
+    "body": "Practical skills your son can use on every fishing trip.",
+    "cards": [
+      {
+        "id": "L1",
+        "title": "Rods and reels",
+        "body": "Choose and use the right setup.",
+        "alt": "Illustration of a fishing rod with a conventional reel beside coastal water."
+      },
+      {
+        "id": "L2",
+        "title": "Knots and rigs",
+        "body": "Tie dependable knots and rig a line.",
+        "alt": "Close-up illustration of fishing line tied to a metal eyelet."
+      },
+      {
+        "id": "L3",
+        "title": "Hooks, bait and lures",
+        "body": "Choose and prepare what goes on the hook.",
+        "alt": "Illustration of hooks, line and fishing tackle arranged beside the water."
+      },
+      {
+        "id": "L4",
+        "title": "Casting",
+        "body": "Cast with control and awareness of others.",
+        "alt": "Illustration of a rod and hanging fishing rig over coastal water."
+      },
+      {
+        "id": "L5",
+        "title": "Reading the water",
+        "body": "Recognize promising spots and adjust to conditions.",
+        "alt": "Illustration of a tarpon feeding near the water’s surface."
+      },
+      {
+        "id": "L6",
+        "title": "Fish and equipment care",
+        "body": "Handle fish carefully and look after your tackle.",
+        "alt": "Illustration of an open fishing backpack with neatly organized tackle."
+      }
+    ]
+  },
+  "values": {
+    "title": "Torah in practice, through nature.",
+    "body": "Fishing gives boys a shared purpose. With guidance, they practise taking responsibility, working through challenges and making thoughtful decisions.",
+    "items": [
+      {
+        "id": "responsibility",
+        "icon": "clipboard-check",
+        "title": "Responsibility and independence",
+        "body": "Prepare equipment, organize belongings and follow through."
+      },
+      {
+        "id": "collaboration",
+        "icon": "messages-square",
+        "title": "Collaboration and communication",
+        "body": "Listen, ask for help and work through disagreements respectfully."
+      },
+      {
+        "id": "problemSolving",
+        "icon": "route",
+        "title": "Problem solving and judgment",
+        "body": "Consider the options, make a choice and adjust when something does not work."
+      },
+      {
+        "id": "perseverance",
+        "icon": "rotate-cw",
+        "title": "Patience and perseverance",
+        "body": "Manage frustration, learn from mistakes and keep working."
+      }
+    ]
+  },
+  "founder": {
+    "title": "Meet Shlomo Dratler",
+    "body": "Shlomo Dratler is a North Miami Beach native who has spent years working in education and therapy. His approach emphasizes intrinsic motivation, self-awareness and practical responsibility. Jewish Leadership Fishing Academy brings that approach into hands-on fishing, meaningful relationships and Torah values.",
+    "alt": "Portrait of Shlomo Dratler."
+  },
+  "faq": {
+    "title": "Frequently asked questions",
+    "items": [
+      {
+        "id": "cost",
+        "q": "How much does the program cost?",
+        "a": "$650 per boy per month, including weekly after-school fishing lessons and two full-day fishing outings."
+      },
+      {
+        "id": "schedule",
+        "q": "When are the lessons and outings?",
+        "a": "Fishing lessons take place once a week after school. Each boy also participates in two full-day Sunday fishing outings each month. We’ll confirm your group’s schedule with you."
+      },
+      {
+        "id": "locations",
+        "q": "Where do the fishing outings take place?",
+        "a": "Each month includes one Florida Keys fishing outing and one outing at a suitable South Florida fishing location. We’ll send the destination and arrangements before each trip."
+      },
+      {
+        "id": "transport",
+        "q": "Is transportation included?",
+        "a": "Transportation is included for both full-day fishing outings. Parents arrange drop-off and pickup for the weekly after-school lessons. Trip pickup points and times are provided in advance."
+      },
+      {
+        "id": "equipment",
+        "q": "What does my son need to bring?",
+        "a": "Each boy needs his own rod, reel and personal tackle. We’ll guide you on suitable equipment. Families provide food and drinking water for the outings."
+      },
+      {
+        "id": "extras",
+        "q": "Will there be other opportunities to get together?",
+        "a": "Yes. We may arrange additional fishing opportunities, tackle-store visits and hands-on demonstrations from time to time. We’ll let families know when these are available and how to join."
+      },
+      {
+        "id": "experience",
+        "q": "Does my son need fishing experience?",
+        "a": "No prior experience is needed. Lessons build from each boy’s current skills, with new challenges as he becomes more capable."
+      },
+      {
+        "id": "next",
+        "q": "What happens after I sign up?",
+        "a": "We’ll contact you to discuss your son, your area and a suitable group. You’ll receive the schedule, enrollment details and required forms before participation is confirmed."
+      },
+      {
+        "id": "payment",
+        "q": "How do we pay?",
+        "a": "Payment is by credit card or cash. We’ll send payment instructions when your group is ready. Submitting the reservation request does not authorize a charge."
+      },
+      {
+        "id": "missed",
+        "q": "What happens if my son misses a lesson or trip?",
+        "a": "Let us know at least 24 hours before the activity begins. Your son will keep credit for that lesson or trip, and we’ll arrange a suitable replacement when a place is available."
+      },
+      {
+        "id": "cancellation",
+        "q": "What if we decide not to continue?",
+        "a": "If you have paid and withdraw at least 24 hours before your son’s first activity, with no attendance, we retain a $100 administrative fee and refund the rest. If he withdraws after the first lesson and before attending a fishing trip, we retain $200 in total and refund the rest. After he has attended both a lesson and a fishing trip, no refund is available. These rules do not create a fee for a free reservation request and do not limit refund rights required by law."
+      },
+      {
+        "id": "weather",
+        "q": "What happens if the weather prevents an activity?",
+        "a": "If dangerous weather requires a postponement, we’ll reschedule and preserve credit for the affected activity. We’ll contact you with the revised arrangements."
+      },
+      {
+        "id": "devices",
+        "q": "Can boys bring phones or tablets?",
+        "a": "No smartphones, tablets or devices that can play or stream videos are allowed at Academy group activities, even if filtered or offline. Dedicated gaming devices are permitted only if they cannot play or stream videos, and only when the instructor allows."
+      },
+      {
+        "id": "conduct",
+        "q": "What are the behavior and safety expectations?",
+        "a": "Boys must speak respectfully, work with the group, follow instructions and stop immediately when told. An ordinary conduct breach receives one clear warning; a further breach leads to removal. Serious unsafe behavior may require immediate removal. Fees already paid for a participant removed for violating the Student Agreement are non-refundable, except where a refund is required by law."
+      }
+    ]
+  },
+  "closing": {
+    "title": "Reserve Your Spot Now",
+    "body": "Tell us about your son and where you’re located. We’ll be in touch with group details and next steps.",
+    "cta": "Reserve Your Spot Now"
+  },
+  "footer": {
+    "name": "Jewish Leadership Fishing Academy",
+    "legal": "A program of Bnei Neviim Academy, a New Jersey nonprofit.",
+    "contact": "Contact",
+    "whatsapp": "WhatsApp",
+    "privacy": "Privacy"
+  },
+  "form": {
+    "title": "Reserve Your Spot Now",
+    "intro": "Tell us about your son and where you’re located. We’ll follow up with your group’s dates, location and next steps.",
+    "parent": "Parent/guardian’s full name",
+    "email": "Email address",
+    "phone": "Phone number",
+    "city": "City or area",
+    "zip": "ZIP code",
+    "childSection": "Your sons",
+    "child": "Boy’s name",
+    "age": "Age",
+    "addChild": "Add another son",
+    "removeChild": "Remove this son",
+    "drive": "How much total driving time are you comfortable with for drop-off and pickup on a lesson day?",
+    "driveHelp": "Count all the driving you expect to do that day. This is for the local after-school lessons, not the full-day fishing trips.",
+    "driveOptions": [
+      "Up to 30 minutes",
+      "Up to 60 minutes",
+      "Up to 90 minutes",
+      "Up to 120 minutes",
+      "Flexible"
+    ],
+    "messageLanguage": "Preferred language for messages",
+    "instructionLanguage": "Preferred language of instruction",
+    "languageOptions": [
+      "English",
+      "Hebrew"
+    ],
+    "agreementTitle": "Student Agreement",
+    "agreementIntro": "We want every boy to enjoy fishing, work together and take responsibility. Please read these expectations with your son before submitting this form.",
+    "agreementSections": [
+      {
+        "title": "Respect and collaboration",
+        "body": "I will speak respectfully, work together with the group, and respect other people, their belongings and our shared equipment. Bullying, threats and deliberately hurting someone are not acceptable."
+      },
+      {
+        "title": "Instructions and safety",
+        "body": "I will follow the instructor’s directions, stop immediately when told, and stay with the supervised group. I will use rods, hooks, tools and fish-handling equipment only as instructed. I will tell an adult when I need help or notice something unsafe."
+      },
+      {
+        "title": "Phones, tablets and other devices",
+        "body": "I will not bring a smartphone, tablet, or device that can play or stream videos to any Academy lesson, trip, group journey or other group activity—even if it is filtered or offline. Games and dedicated gaming devices are permitted only when they cannot play or stream videos, and only when the instructor allows."
+      },
+      {
+        "title": "Consequences",
+        "body": "For an ordinary conduct-rule breach, I will receive one clear warning. If I break the rules again after that warning, I will be removed from the program and may not return. Serious unsafe behavior or refusal to follow an immediate safety instruction may result in removal without a warning."
+      }
+    ],
+    "consents": [
+      {
+        "id": "reservationPrivacy",
+        "required": true,
+        "text": "I understand that this is a nonbinding reservation request, not a confirmed place or a payment obligation, and acknowledge the Privacy Notice.",
+        "defaultChecked": false
+      },
+      {
+        "id": "studentReadThrough",
+        "required": true,
+        "text": "I have read and explained the Student Agreement to each son listed above, including the safety rules, device restrictions and consequences for breaking the rules.",
+        "defaultChecked": false
+      },
+      {
+        "id": "whatsapp",
+        "required": false,
+        "text": "Send me reservation updates and reminders on WhatsApp. I can opt out at any time.",
+        "defaultChecked": false
+      }
+    ],
+    "submit": "Reserve Your Spot Now",
+    "submitting": "Saving your request…",
+    "successTitle": "Thank you—your request has been received.",
+    "successBody": "We’ll follow up with group details and next steps.",
+    "reference": "Request reference",
+    "ackSent": "Your acknowledgment email has been sent.",
+    "ackPending": "Your request is saved. The acknowledgment email is still being sent.",
+    "ackFailed": "Your request is saved, but we couldn’t send the acknowledgment email. You do not need to submit the form again.",
+    "unknown": "We haven’t confirmed whether your request was saved. Retry this request rather than starting a new one.",
+    "notSaved": "Your request was not saved. Please try again.",
+    "retry": "Retry this request",
+    "required": "Please complete this field.",
+    "emailError": "Enter a valid email address.",
+    "phoneError": "Enter a phone number we can use to contact you.",
+    "ageError": "Enter an age from 9 to 15.",
+    "zipError": "Enter a valid US ZIP code.",
+    "consentError": "Please complete the required acknowledgment.",
+    "close": "Close reservation form",
+    "instructionOptions": [
+      "English",
+      "Hebrew",
+      "Either"
+    ],
+    "childNumber": "Boy {number}",
+    "selectOption": "Select an option",
+    "privacyTitle": "Reservation & privacy",
+    "serviceContact": "We’ll use your email address and phone number to follow up about this reservation and your son’s participation.",
+    "placeNotConfirmed": "Your place is confirmed after we contact you and the enrollment steps are complete.",
+    "freeReservation": "This reservation creates no payment authorization or liability release.",
+    "privacySummary": "Your family’s details are private. We use them to plan groups and contact you about the program.",
+    "phoneHelp": "Include your country code.",
+    "unavailable": "New requests are temporarily unavailable. Please use Contact to get in touch.",
+    "ackQueued": "Your request is saved. Your acknowledgment email is waiting to be sent.",
+    "ackUnknown": "Your request is saved. We are checking whether the acknowledgment email was sent.",
+    "ackNotQueued": "Your request is saved. No acknowledgment email has been queued.",
+    "conflict": "This request has already been processed with different details. Contact us before submitting another request."
+  },
+  "ackEmail": {
+    "subject": "We received your Fishing Academy reservation request",
+    "greeting": "Hi {{parentFirstName}},",
+    "greetingFallback": "Hi,",
+    "paragraphs": [
+      "Thanks for requesting a place for {{childrenDisplayNames}} at Jewish Leadership Fishing Academy.",
+      "We’re organizing after-school fishing lessons and full-day outings. As soon as we have an update for your area, we’ll be in touch.",
+      "Once your group’s dates and location are confirmed, we’ll send the enrollment details, required participation forms and payment instructions.",
+      "Your request has been saved. It does not confirm a place or authorize a payment.",
+      "Your request reference is {{requestReference}}."
+    ],
+    "closing": "We look forward to fishing together,",
+    "signature": [
+      "Shlomo Dratler",
+      "Jewish Leadership Fishing Academy"
+    ]
+  },
+  "copyVersion": "JLFA-ACADEMY650-ACQUISITION-20261105-R2",
+  "accessibility": {
+    "skip": "Skip to content",
+    "openMenu": "Open menu",
+    "closeMenu": "Close menu",
+    "navigation": "Academy navigation",
+    "language": "Website language",
+    "whatsapp": "Contact Fishing Academy on WhatsApp"
+  },
+  "whatsappInquiry": "Hi, I’m interested in Jewish Leadership Fishing Academy’s weekly fishing lessons and full-day outings. Please contact me about a suitable group."
+}

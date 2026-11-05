@@ -17,11 +17,17 @@ import {INQUIRY_EMAIL_FROM,INQUIRY_EMAIL_PURPOSE,inquiryEmailContent} from "./in
 
 import {decodeStoredGroupApplication,type StoredGroupApplicationRow} from './group-application-record.ts';
 import {isCurrentTrip390Interest} from './academy-trip390-contract.ts';
+import {academy650AckContent,ACADEMY650_ACK_COPY_VERSION,ACADEMY650_ACK_OFFER_VERSION} from './academy650-r2-ack.ts';
 import {trip390EmailContent,TRIP390_EMAIL_VERSION} from './academy-trip390-email.ts';
-import {assertTrip390AckAdmission,loadTrip390AckAdmission,trip390AckRequestAllowed,type Trip390AckAdmission,type Trip390AckFacts} from './academy-trip390-ack-admission.ts';
+import {ACADEMY650_ACK_FORM,TRIP390_ACK_FORM,assertTrip390AckAdmission,loadTrip390AckAdmission,trip390AckRequestAllowed,type Trip390AckAdmission,type Trip390AckFacts} from './academy-trip390-ack-admission.ts';
 const legacyPayloadSchema=z.object({purpose:z.literal(INQUIRY_EMAIL_PURPOSE),reference:z.string().uuid(),recipient:z.email().max(254),locale:z.enum(["en","he"])}).strict();
 const tripPayloadSchema=z.object({version:z.literal(2),purpose:z.literal(INQUIRY_EMAIL_PURPOSE),reference:z.string().uuid(),recipient:z.email().max(254),locale:z.enum(['en','he']),copyVersion:z.literal(TRIP390_EMAIL_VERSION),contentSha256:z.string().regex(/^[a-f0-9]{64}$/),subject:z.string().min(1).max(300),text:z.string().min(1).max(12000),html:z.string().min(1).max(24000)}).strict();
-const payloadSchema=z.union([legacyPayloadSchema,tripPayloadSchema]);
+const r2PayloadSchema=tripPayloadSchema.extend({
+ version:z.literal(3),requestVersion:z.literal(ACADEMY650_ACK_FORM),offerVersion:z.literal(ACADEMY650_ACK_OFFER_VERSION),
+ copyVersion:z.literal(ACADEMY650_ACK_COPY_VERSION),childIds:z.array(z.string().uuid()).min(1).max(10).refine(ids=>new Set(ids).size===ids.length),
+});
+const scopedPayloadSchema=z.discriminatedUnion('version',[tripPayloadSchema,r2PayloadSchema]);
+const payloadSchema=z.union([legacyPayloadSchema,scopedPayloadSchema]);
 const aad=(workspace:string,id:string)=>`ls_service_interest/inquiry_email/v1/${workspace}/${id}`;
 export function inquiryEmailQueueEnabled(env:Record<string,string|undefined>){return env.LS_INQUIRY_EMAIL_QUEUE_ENABLED==="true";}
 export function createInquiryEmailTransport(env:Record<string,string|undefined>,sendFetch:typeof fetch=fetch,signup?:{policy:SignupWorkerAdmission;now:()=>Date}){
@@ -51,10 +57,24 @@ export function createInquiryEmailTransport(env:Record<string,string|undefined>,
  }}:adapter;
  return {transport,from:config.from};
 }
-function intendedPayload(reference:string,fields:GroupApplicationFields){
+// One display token, never used as identity. An ambiguous salutation uses the packet fallback.
+function receiptGreetingName(display:string):string|null{
+ const parts=display.trim().split(/\s+/u);
+ const first=parts[0];
+ if(!first||!/^\p{L}[\p{L}\p{M}'’\-]*$/u.test(first)||/^(?:mr|mrs|ms|dr|rabbi|family|household|משפחת|הרב|דוקטור)$/iu.test(first))return null;
+ return first;
+}
+function intendedPayload(reference:string,fields:GroupApplicationFields,verifyHistorical=false){
  if(isTrip390Interest(fields)){
-  // Historical V1 rows cannot acquire new transactional intents by retry.
-  if(!isCurrentTrip390Interest(fields))return null;
+  if(isCurrentTrip390Interest(fields)&&fields.version===ACADEMY650_ACK_FORM&&fields.offerVersion===ACADEMY650_ACK_OFFER_VERSION){
+   const content=academy650AckContent({reference,parentFirstName:receiptGreetingName(fields.guardianName),
+    children:fields.children.map(({id,name})=>({id,name})),messageLanguage:fields.messageLanguage});
+   return r2PayloadSchema.parse({version:3,purpose:INQUIRY_EMAIL_PURPOSE,reference,recipient:fields.email,locale:fields.messageLanguage,
+    requestVersion:fields.version,offerVersion:fields.offerVersion,copyVersion:content.version,childIds:fields.children.map(c=>c.id),
+    contentSha256:content.contentSha256,subject:content.subject,text:content.text,html:content.html});
+  }
+  // Verify already sealed V2 bytes only. New saves and all operation replays cannot issue a historical intent.
+  if(!verifyHistorical||fields.version!==TRIP390_ACK_FORM)return null;
   const content=trip390EmailContent({version:TRIP390_EMAIL_VERSION,kind:'ack',reference,parentName:fields.guardianName,children:fields.children.map(({id,name})=>({id,name})),messageLanguage:fields.messageLanguage});
   return tripPayloadSchema.parse({version:2,purpose:INQUIRY_EMAIL_PURPOSE,reference,recipient:fields.email,locale:fields.messageLanguage,copyVersion:content.version,contentSha256:content.contentSha256,subject:content.subject,text:content.text,html:content.html});
  }
@@ -90,7 +110,7 @@ export class InquiryEmailOutbox{
   const row=await one<TripRow>(tx,`SELECT id,application_id AS "applicationId",purpose,payload_ciphertext AS ciphertext,state,
    created_at AS "createdAt",reserved_at AS "reservedAt",founder_id AS "founderId" FROM ls_service_interest.inquiry_email_outbox WHERE workspace_id=$1 AND id=$2 FOR UPDATE`,[this.workspace,id]);
   if(!row||row.founderId!==null||row.purpose!==INQUIRY_EMAIL_PURPOSE)return null;
-  const payload=tripPayloadSchema.safeParse(JSON.parse(unseal(row.ciphertext,aad(this.workspace,id),this.ring)));
+  const payload=scopedPayloadSchema.safeParse(JSON.parse(unseal(row.ciphertext,aad(this.workspace,id),this.ring)));
   if(!payload.success)return null;
   const application=await one<StoredGroupApplicationRow>(tx,`SELECT id,request_digest AS "requestDigest",payload_ciphertext AS "payloadCiphertext",received_at AS "receivedAt" FROM ls_service_interest.public_applications WHERE workspace_id=$1 AND id=$2`,[this.workspace,row.applicationId]);
   if(!application||application.id!==row.applicationId||!this.digestKey)return null;
@@ -98,12 +118,13 @@ export class InquiryEmailOutbox{
   // Invalid stored data is held, never converted to provider authority.
   const decoded=decodeStoredGroupApplication(this.workspace,application,this.ring,this.digestKey);
   const fields=decoded.fields;
-  if(!isTrip390Interest(fields)||!isCurrentTrip390Interest(fields))return null;
-  const expected=intendedPayload(row.applicationId,fields);
+  if(!isTrip390Interest(fields)||(fields.version!==TRIP390_ACK_FORM&&fields.version!==ACADEMY650_ACK_FORM))return null;
+  if(fields.version!==policy.requestVersion||payload.data.version!==policy.payloadVersion||payload.data.copyVersion!==policy.templateVersion)return null;
+  const expected=intendedPayload(row.applicationId,fields,true);
   if(!expected||JSON.stringify(payload.data)!==JSON.stringify(expected))return null;
   const operations=await tx.query<{operationId:string;requestDigest:string}>('SELECT operation_id AS "operationId",request_digest AS "requestDigest" FROM ls_service_interest.public_application_operations WHERE workspace_id=$1 AND application_id=$2 ORDER BY operation_id LIMIT 101',[this.workspace,row.applicationId]);
   if(operations.length>100||operations.some(operation=>operation.requestDigest!==application.requestDigest))return null;
-  const facts:Trip390AckFacts={reference:row.applicationId,outboxId:id,operationIds:operations.map(r=>r.operationId),savedAt:application.receivedAt.toISOString(),queuedAt:row.createdAt.toISOString(),version:fields.version,noticeVersion:fields.acknowledgment.version,privacy:fields.acknowledgment.interestPrivacySafety,conduct:fields.acknowledgment.conductExplained,recipient:fields.email,messageLanguage:fields.messageLanguage,childIds:fields.children.map(c=>c.id),contentSha256:payload.data.contentSha256};
+  const facts:Trip390AckFacts={reference:row.applicationId,outboxId:id,operationIds:operations.map(r=>r.operationId),savedAt:application.receivedAt.toISOString(),queuedAt:row.createdAt.toISOString(),version:fields.version,offerVersion:fields.offerVersion,noticeVersion:fields.acknowledgment.version,privacy:fields.acknowledgment.interestPrivacySafety,conduct:fields.acknowledgment.conductExplained,recipient:fields.email,messageLanguage:fields.messageLanguage,childIds:fields.children.map(c=>c.id),contentSha256:payload.data.contentSha256};
   if(!trip390AckRequestAllowed(policy,facts,this.clock.now()))return null;
   return {row,payload:payload.data};
  }

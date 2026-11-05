@@ -1,11 +1,12 @@
 /* eslint-disable @next/next/no-img-element -- consume protected original asset bytes */
 'use client';
 import React, {useEffect, useRef, useState} from 'react';
-import {trip390Copy, trip390CitySuggestions, trip390CommandSchema, TRIP390_INTEREST_VERSION, TRIP390_NOTICE_VERSION, TRIP390_OFFER, type Trip390Command} from './academy-trip390-contract.ts';
+import {trip390CitySuggestions, trip390CommandSchema, TRIP390_INTEREST_VERSION, TRIP390_NOTICE_VERSION, TRIP390_DRIVING_VERSION, TRIP390_OFFER, type Trip390Command} from './academy-trip390-contract.ts';
 import site from './academy-site.module.css';
 import styles from './academy-trip390.module.css';
 import heroAssets from './academy-hero-assets.json';
-import sceneAssets from './academy-scenes.json';
+import {academyR2Copy as trip390Copy} from './academy-r2-copy.ts';
+import {AcademyValueIcon} from './academy-r2-value-icon.tsx';
 import {trip390ReservationNotice} from './academy-trip390-reservation-notice.ts';
 import {trip390StudentConduct} from './academy-trip390-student-conduct.ts';
 import {trip390LearningAssets} from './academy-trip390-learning-assets.ts';
@@ -19,16 +20,30 @@ export type Trip390SaveResult =
 
 type ChildDraft = {id:string; name:string; age:string; experience:string};
 type ContactObstacle = Pick<DOMRect,'left'|'right'|'top'|'bottom'> & {gap:number; kind:'control'|'photo'|'text'};
-const navigation = ['learn', 'how', 'included', 'faq'] as const;
-// The current Brand map assigns the existing backpack and bridge to matched
-// logistics panels. Catalog provenance does not assert a booked venue.
-function supportingScene(slot:'foundation'|'form') {
- const asset=sceneAssets.assets.find(item=>item.slot===slot);
- if(!asset)throw new Error('TRIP390_SUPPORTING_ASSET_REQUIRED');
- return asset;
+const navigation = ['learn', 'values', 'about', 'faq'] as const;
+
+// Render registered original geometry with the HTML, so the first desktop
+// frame and its hydrated counterpart use the same protected photo bands.
+const desktopMaster = heroAssets.textFree.desktop;
+const desktopRegion = heroAssets.current.en.desktop;
+const [, protectedTop, , protectedBottom] = desktopRegion.protectedRect;
+const desktopGeometry = desktopRegion.sourceSha256 === desktopMaster.sha256
+ && protectedTop !== undefined && protectedBottom !== undefined ? {
+ 'data-master-height': desktopMaster.height / desktopMaster.width,
+ 'data-master-top': protectedTop / desktopMaster.width,
+ 'data-master-bottom': protectedBottom / desktopMaster.width,
+} : {};
+
+function registeredHero(image:HTMLImageElement) {
+ if(!image.naturalWidth||!image.currentSrc)return null;
+ const path=new URL(image.currentSrc,window.location.href).pathname;
+ const role=path===heroAssets.textFree.mobile.publicPath?'mobile':path===heroAssets.textFree.desktop.publicPath?'desktop':null;
+ if(!role)return null;
+ const original=heroAssets.textFree[role],region=heroAssets.current.en[role];
+ if(region.sourceSha256!==original.sha256||image.naturalWidth!==original.width||image.naturalHeight!==original.height)return null;
+ return {role,original,region};
 }
-const preparationScene=supportingScene('foundation');
-const outingScene=supportingScene('form');
+
 
 // A discretionary word break preserves the catalog text and normal whole-word
 // layout, while avoiding a stranded final letter when enlarged beyond its box.
@@ -75,6 +90,9 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, reser
  const contact = useRef<HTMLAnchorElement>(null);
  const dialogReturn = useRef<{element:HTMLElement|null; x:number; y:number; url:string; pushed:boolean}|null>(null);
  const copy = trip390Copy[locale];
+ // Financial cancellation prose stays in the exact R2 catalog for counsel review.
+ // Current owning-source publication hold excludes it from public rendering.
+ const publicFaqs=copy.faqs.filter(item=>item.id!=='cancellation'&&item.id!=='conduct');
  const t = (en:string, he:string) => locale==='he' ? he : en;
  const unresolved = result?.state==='unknown';
  const saved = result?.state==='saved';
@@ -154,7 +172,7 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, reser
     .map(rect=>({left:rect.left,right:rect.right,top:rect.top,bottom:rect.bottom,gap,kind:'control'}));
    // Protect painted text, including body copy, rather than reserving empty
    // full-width rows or a permanent rail beside the reading content.
-   const addTextRect=(rect:DOMRect)=>{
+   const addContentRect=(rect:DOMRect)=>{
     if(rect.width>0&&rect.height>0&&rect.bottom>0&&rect.top<window.innerHeight&&rect.left<box.right+4&&rect.right>box.left-4)
      obstacles.push({left:rect.left,right:rect.right,top:rect.top,bottom:rect.bottom,gap:4,kind:'text'});
    };
@@ -170,27 +188,24 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, reser
     for(let text=walker.nextNode();text;text=walker.nextNode()){
      if(!text.textContent?.trim())continue;
      const range=document.createRange();range.selectNodeContents(text);
-     Array.from(range.getClientRects()).forEach(addTextRect);
+     Array.from(range.getClientRects()).forEach(addContentRect);
     }
    });
+   page.current?.querySelectorAll<SVGSVGElement>('[data-jlfa-values] article svg').forEach(icon=>{
+    addContentRect(icon.getBoundingClientRect());
+   });
    const image=hero.current?.querySelector('img');
-   if(image?.naturalWidth&&image.currentSrc){
-    const path=new URL(image.currentSrc,window.location.href).pathname;
-    const role=path===heroAssets.textFree.mobile.publicPath?'mobile':path===heroAssets.textFree.desktop.publicPath?'desktop':null;
-    if(role){
-     const original=heroAssets.textFree[role],region=heroAssets.current.en[role];
-     // Consume only the registered original-pixel overlay-clearance rectangle.
-     // This does not revive owner03 derivative artwork, copy or approval scope.
-     if(region.sourceSha256===original.sha256&&image.naturalWidth===original.width&&image.naturalHeight===original.height){
-      const rect=image.getBoundingClientRect(),fit=getComputedStyle(image).objectFit;
-      const scale=fit==='contain'?Math.min(rect.width/original.width,rect.height/original.height):Math.max(rect.width/original.width,rect.height/original.height);
-      const x=rect.left+(rect.width-original.width*scale)/2,y=rect.top+(rect.height-original.height*scale)/2;
-      const [left,top,right,bottom]=region.protectedRect;
-      if(left!==undefined&&top!==undefined&&right!==undefined&&bottom!==undefined){
-       const visible={left:Math.max(0,rect.left,x+left*scale),top:Math.max(0,rect.top,y+top*scale),right:Math.min(window.innerWidth,rect.right,x+right*scale),bottom:Math.min(window.innerHeight,rect.bottom,y+bottom*scale)};
-       if(visible.right>visible.left&&visible.bottom>visible.top&&visible.left<box.right+gap&&visible.right>box.left-gap)obstacles.push({...visible,gap,kind:'photo'});
-      }
-     }
+   const asset=image&&registeredHero(image);
+   if(image&&asset){
+    // The source rectangle is defined in original pixels.
+    const {original,region}=asset;
+    const rect=image.getBoundingClientRect(),fit=getComputedStyle(image).objectFit;
+    const scale=fit==='contain'?Math.min(rect.width/original.width,rect.height/original.height):Math.max(rect.width/original.width,rect.height/original.height);
+    const x=rect.left+(rect.width-original.width*scale)/2,y=rect.top+(rect.height-original.height*scale)/2;
+    const [left,top,right,bottom]=region.protectedRect;
+    if(left!==undefined&&top!==undefined&&right!==undefined&&bottom!==undefined){
+     const visible={left:Math.max(0,rect.left,x+left*scale),top:Math.max(0,rect.top,y+top*scale),right:Math.min(window.innerWidth,rect.right,x+right*scale),bottom:Math.min(window.innerHeight,rect.bottom,y+bottom*scale)};
+     if(visible.right>visible.left&&visible.bottom>visible.top&&visible.left<box.right+gap&&visible.right>box.left-gap)obstacles.push({...visible,gap,kind:'photo'});
     }
    }
    const headerFloor=(header.current?.getBoundingClientRect().bottom??0)+gap;
@@ -308,7 +323,36 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, reser
    // A portrait viewport receiving the landscape original uses the existing
    // natural flow: no photo enlargement/crop or tall empty continuation band.
    const portraitLandscape=window.matchMedia('(orientation: portrait)').matches&&image.naturalWidth>image.naturalHeight;
-   setHeroReflow(portraitLandscape||heading.getBoundingClientRect().height>height*.25||action.getBoundingClientRect().height>height*.18);
+   const desktop=window.matchMedia('(min-width:768px) and (orientation:landscape)').matches;
+   const asset=registeredHero(image);
+   const eyebrow=heading.firstElementChild,title=heading.lastElementChild;
+   const pillars=action.firstElementChild,button=action.lastElementChild;
+   if(desktop&&asset?.role==='desktop'&&eyebrow&&title&&pillars&&button){
+    const scale=node.getBoundingClientRect().width/asset.original.width;
+    const photoHeight=scale*asset.original.height;
+    // Compute the prospective overlay independently of the current flow state.
+    // Width-fit aligns the full original at the top; cover centers its tall axis.
+    const imageOffset=Math.min(0,(height-photoHeight)/2);
+    const [,top,,bottom]=asset.region.protectedRect;
+    if(top!==undefined&&bottom!==undefined){
+     const upperBand=imageOffset+top*scale,lowerBand=height-(imageOffset+bottom*scale);
+     const clearance=4;
+     const titleLines=eyebrow.getBoundingClientRect().height+title.getBoundingClientRect().height;
+     const actionHeight=button.getBoundingClientRect().bottom-pillars.getBoundingClientRect().top;
+     const titleGap=parseFloat(getComputedStyle(eyebrow).marginBlockEnd);
+     const titleInset=Math.min(12,upperBand-titleLines-titleGap-clearance);
+     const actionInset=Math.min(height*.08,lowerBand-actionHeight-clearance);
+     // CSS chooses the initial composition. Measurement can protect a larger
+     // foreground by falling back to flow, but never promotes an initial flow.
+     const initialOverlay=getComputedStyle(node).getPropertyValue('--initial-desktop-overlay').trim()==='1';
+     const overlay=initialOverlay&&titleInset>=clearance&&actionInset>=clearance;
+     node.dataset.desktopBands=overlay?'overlay':'flow';
+     setHeroReflow(!overlay);
+     return;
+    }
+   }
+   delete node.dataset.desktopBands;
+   setHeroReflow(desktop||portraitLandscape||heading.getBoundingClientRect().height>height*.25||action.getBoundingClientRect().height>height*.18);
   };
   const observer=typeof ResizeObserver==='undefined' ? null : new ResizeObserver(measure);
   [image,heading,action].forEach(element=>observer?.observe(element));
@@ -344,7 +388,7 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, reser
     guardianName:values.get('guardianName'), email:values.get('email'), phone:phoneE164,
     city, postalCode:values.get('postalCode'), messageLanguage:values.get('messageLanguage'),
     instructionLanguage:values.get('instructionLanguage'),
-    lessonDayDriving:{version:'JLFA-SUNDAY-TOTAL-DRIVE-v1',limit:values.get('lessonDayDriving')},
+    lessonDayDriving:{version:TRIP390_DRIVING_VERSION,limit:values.get('lessonDayDriving')},
     children:children.map(child=>({id:child.id==='first' ? crypto.randomUUID() : child.id,
      name:child.name, ageYears:child.age.trim() ? Number(child.age) : NaN, experience:child.experience})),
     acknowledgment:{version:TRIP390_NOTICE_VERSION, language:locale,
@@ -372,12 +416,12 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, reser
     setResult({state:'unknown'});
    } else if (next?.state==='saved' || next?.state==='unknown' || next?.state==='conflict') {
     setResult(next);
-    if (next.state==='conflict') reportError(t('This submission needs private owner review. Do not create a duplicate.','הפנייה דורשת בדיקה פרטית של הבעלים. אין ליצור פנייה כפולה.'));
+    if (next.state==='conflict') reportError(copy.exact.form.conflict);
    } else if (next?.state==='rejected' && ['invalid','unavailable'].includes(next.reason)) {
     if(operation.current.fields.acknowledgment.language!==locale)resetAcknowledgments();
     setResult(next); operation.current=null;setOperationLocale(null);
     reportError(next.reason==='unavailable'
-     ? t('Saving is currently unavailable. Your information is still here. Please try again later.','השמירה אינה זמינה כעת. הפרטים שהזנתם נשמרו בטופס. נסו שוב מאוחר יותר.')
+     ? copy.exact.form.unavailable
      : t('The server did not accept this submission. Check your information and try again.','המערכת לא קיבלה את הפנייה. בדקו את הפרטים ונסו שוב.'));
    } else setResult({state:'unknown'});
   } catch {setResult({state:'unknown'});}
@@ -408,38 +452,33 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, reser
    <nav id="trip390-menu" className={styles.mobileNav} hidden={!menuOpen} aria-label={t('Mobile Academy navigation','ניווט נייד באקדמיה')}>{navLinks}<a className={styles.action} href="#interest" onClick={openInterest}>{interestLabel}</a></nav>
   </div></header>
   <main id="main" tabIndex={-1}>
-   <section className={styles.hero} ref={hero} data-reflow={heroReflow?'true':undefined} aria-labelledby="trip390-title">
-    <picture><source media="(max-width:767px), (max-width:999px) and (orientation:portrait)" srcSet="/groups/academy/hero-mobile-20261018.png" width="1143" height="2048"/><img src="/groups/academy/hero-desktop-20261018.png" width="2048" height="1143" alt={t('An adult and a boy preparing fishing equipment by the water','מבוגר וילד מכינים ציוד דיג ליד המים')} fetchPriority="high"/></picture>
-    <div className={styles.heroText} data-hero-heading><p className={styles.heroEyebrow}>{copy.hero.eyebrow}</p><h1 id="trip390-title" lang="en" dir="ltr"><span>Jewish Leadership</span><span>Fishing Academy</span></h1><p className={styles.heroPillars}>{copy.hero.pillars}</p></div>
-    <div className={styles.heroAction} data-hero-action><a className={styles.action} href="#interest" onClick={openInterest}>{interestLabel}</a></div>
+   <section className={styles.hero} ref={hero} {...desktopGeometry} data-reflow={heroReflow?'true':undefined} aria-labelledby="trip390-title">
+    <picture><source media="(max-width:767px), (max-width:999px) and (orientation:portrait)" srcSet="/groups/academy/hero-mobile-20261018.png" width="1143" height="2048"/><img src="/groups/academy/hero-desktop-20261018.png" width="2048" height="1143" alt={copy.exact.hero.alt} fetchPriority="high"/></picture>
+    <div className={styles.heroText} data-hero-heading><p className={styles.heroEyebrow}><span aria-hidden="true"/>{copy.hero.eyebrow}<span aria-hidden="true"/></p><h1 id="trip390-title" lang="en" dir="ltr"><span>Jewish Leadership</span><span>Fishing Academy</span></h1></div>
+    <div className={styles.heroAction} data-hero-action data-jlfa-hero-action><p className={styles.heroPillars} data-jlfa-pillars>{copy.hero.pillars}</p><a data-jlfa-reserve className={styles.action} href="#interest" onClick={openInterest}>{interestLabel}</a></div>
    </section>
-   <section className={`${styles.section} ${styles.introduction}`} aria-labelledby="trip390-intro-title">
+   <section data-jlfa-intro className={`${styles.section} ${styles.introduction}`} aria-labelledby="trip390-intro-title">
     <div className={styles.sectionHeading}><h2 id="trip390-intro-title">{introHeading(copy.intro.title)}</h2></div>
-    <p className={styles.lead}>{copy.intro.body}</p><p className={styles.audienceLine}>{copy.intro.audience}</p>
+    <p className={styles.lead}>{copy.intro.body}</p><p data-jlfa-audience className={styles.audienceLine}>{copy.intro.audience}</p><div className={styles.introInclusions}>{copy.intro.inclusions.map(item=><div key={item.id}><h3>{item.title}</h3><p>{item.body}</p></div>)}</div>
    </section>
    <section id="learn" className={`${styles.section} ${styles.skillsSection}`} aria-labelledby="trip390-learn-title">
     <div className={styles.sectionHeading}><h2 id="trip390-learn-title">{copy.learning.title}</h2><p>{copy.learning.subtitle}</p></div>
-    <div className={styles.skills}>{copy.skills.map((skill,index)=>{const asset=trip390LearningAssets[index];return <article key={skill.title} data-trip390-skill={index+1}>
-     {asset?.src?<img className={styles.skillImage} data-academy-scene={asset.assetId} src={asset.src} width="1400" height="788" loading="lazy" alt={asset.alt[locale]}/>:<div className={styles.skillImageUnavailable} data-trip390-image-unavailable={index+1} aria-hidden="true"/>}
+    <div className={styles.skills} data-jlfa-learning>{copy.skills.map((skill,index)=>{const asset=trip390LearningAssets[index];return <article key={skill.title} data-trip390-skill={index+1}>
+     {asset?.src?<img className={styles.skillImage} data-academy-scene={asset.assetId} src={asset.src} width="1400" height="788" loading="lazy" alt={skill.alt}/>:<div className={styles.skillImageUnavailable} data-trip390-image-unavailable={index+1} aria-hidden="true"/>}
      <div className={styles.skillCopy}><h3>{skill.title}</h3><p>{skill.body}</p></div></article>;})}</div>
-    <div className={styles.torah}><h3>{copy.torah.title}</h3><p>{copy.torah.body}</p></div>
    </section>
-   <section id="how" className={styles.section} aria-labelledby="trip390-how-title">
-    <div className={styles.sectionHeading}><h2 id="trip390-how-title">{copy.nav.how}</h2></div>
-    <ul className={styles.logisticsBullets}>{copy.logistics.bullets.map(item=><li key={item}>{item}</li>)}</ul><p>{copy.logistics.details}</p>
-    <div className={styles.logisticsPair}>{[preparationScene,outingScene].map((asset,index)=><figure className={styles.sceneFigure} key={asset.slot} data-trip390-scene={asset.slot}><img className={styles.supportingScene} data-academy-scene={asset.slot} src={asset.publicPath} width={asset.width} height={asset.height} loading="lazy" alt={index===0?t('Fishing tackle backpack and organized equipment.','תיק דיג וציוד מסודר.'):t('Illustration of a fishing bridge over coastal water.','איור של גשר דיג מעל מי חוף.')}/><figcaption>{copy.logistics.captions[index]}</figcaption></figure>)}</div>
-   </section>
-   <section id="included" className={styles.packageSection} aria-labelledby="trip390-package-title"><div className={styles.packageInner}>
-    <div className={styles.packageIntro}><h2 id="trip390-package-title">{copy.price.title}</h2><p className={styles.packagePrice}><bdi>{copy.price.amount}</bdi><span className={styles.priceUnit}>{copy.price.per_boy}</span></p><a className={styles.action} href="#interest" onClick={openInterest}>{interestLabel}</a></div>
-    <div className={styles.packageDetails}><ul className={styles.included}>{copy.price.included.map(item=><li key={item}>{item}</li>)}</ul><p className={styles.separate}><strong>{t('Separate:','בנפרד:')}</strong> {copy.price.separate.join(' ')}</p></div>
+   <section id="values" className={styles.valuesSection} data-jlfa-values><div className={styles.section}>
+    <div className={styles.sectionHeading}><h2>{copy.exact.values.title}</h2><p>{copy.exact.values.body}</p></div>
+    <div className={styles.valuesGrid}>{copy.exact.values.items.map((item,index)=><article key={item.id}><AcademyValueIcon name={(['clipboard-check','messages-square','route','rotate-cw'] as const)[index]!}/><div><h3>{item.title}</h3><p>{item.body}</p></div></article>)}</div>
+    <div className={styles.valuesAction}><a className={styles.action} href="#interest" onClick={openInterest}>{interestLabel}</a></div>
    </div></section>
-   <section className={`${styles.section} ${styles.founder}`} aria-labelledby="trip390-founder-title"><img src="/groups/people/founder-head.jpg" width="180" height="180" loading="eager" decoding="async" alt={copy.founder.title}/><div><h2 id="trip390-founder-title">{copy.founder.title}</h2><p>{copy.founder.body}</p></div></section>
-   <section id="faq" className={styles.section} aria-labelledby="trip390-faq-title"><div className={styles.sectionHeading}><h2 id="trip390-faq-title">{copy.nav.faq}</h2></div><div className={styles.faqLayout}>{[copy.faqs.slice(0,Math.ceil(copy.faqs.length/2)),copy.faqs.slice(Math.ceil(copy.faqs.length/2))].map((items,index)=><div key={index} className={styles.faqs}>{items.map(item=><details key={item.id} id={item.id} data-trip390-faq name="trip390-faq" onToggle={event=>{if(event.currentTarget.open)page.current?.querySelectorAll<HTMLDetailsElement>('[data-trip390-faq]').forEach(node=>{if(node!==event.currentTarget)node.open=false;});}}><summary><span className={styles.faqQuestion}>{item.q}</span><span data-faq-glyph aria-hidden="true">+</span></summary><p>{item.a}</p></details>)}</div>)}</div></section>
+   <section id="about" className={`${styles.section} ${styles.founder}`} aria-labelledby="trip390-founder-title"><img src="/groups/people/founder-head.jpg" width="180" height="180" loading="eager" decoding="async" alt={copy.founder.title}/><div><h2 id="trip390-founder-title">{copy.founder.title}</h2><p>{copy.founder.body}</p></div></section>
+   <section id="faq" className={styles.section} aria-labelledby="trip390-faq-title"><div className={styles.sectionHeading}><h2 id="trip390-faq-title">{copy.exact.faq.title}</h2></div><div className={styles.faqLayout}>{[publicFaqs.slice(0,Math.ceil(publicFaqs.length/2)),publicFaqs.slice(Math.ceil(publicFaqs.length/2))].map((items,index)=><div key={index} className={styles.faqs}>{items.map(item=><details key={item.id} id={item.id} data-trip390-faq data-jlfa-faq={item.id} name="trip390-faq" onToggle={event=>{if(event.currentTarget.open)page.current?.querySelectorAll<HTMLDetailsElement>('[data-trip390-faq]').forEach(node=>{if(node!==event.currentTarget)node.open=false;});}}><summary><span className={styles.faqQuestion}>{item.q}</span><span data-faq-glyph aria-hidden="true">+</span></summary><p>{item.a}</p></details>)}</div>)}</div></section>
    <section id="interest" className={styles.finalInterest}><div className={styles.section}><h2>{copy.closing.title}</h2><p>{copy.closing.body}</p><a className={styles.action} href="#interest" onClick={openInterest}>{interestLabel}</a></div></section>
    <dialog className={styles.dialog} ref={dialog} aria-labelledby="trip390-interest-title" onKeyDown={containDialogTab} onCancel={event=>{event.preventDefault();closeInterest();}} onClose={()=>{if(!dialog.current?.open)setDialogOpen(false);}}>
-    <div className={styles.dialogHeader}><h2 id="trip390-interest-title" ref={dialogTitle} tabIndex={-1}>{copy.form.title}</h2><button className={styles.closeDialog} type="button" onClick={closeInterest} aria-label={t('Close interest form','סגירת טופס ההתעניינות')}>×</button><div className={styles.languages} aria-label={t('Form language','שפת הטופס')}>{(['en','he'] as const).map(value=><button key={value} type="button" lang={value} aria-pressed={value===locale} onClick={()=>changeLocale(value)}>{value==='en'?'English':'עברית'}</button>)}</div></div>
+    <div className={styles.dialogHeader}><h2 id="trip390-interest-title" ref={dialogTitle} tabIndex={-1}>{copy.form.title}</h2><button className={styles.closeDialog} type="button" onClick={closeInterest} aria-label={copy.exact.form.close}>×</button><div className={styles.languages} aria-label={t('Form language','שפת הטופס')}>{(['en','he'] as const).map(value=><button key={value} type="button" lang={value} aria-pressed={value===locale} onClick={()=>changeLocale(value)}>{value==='en'?'English':'עברית'}</button>)}</div></div>
     <div className={styles.dialogBody}><div className={styles.formIntro}><p>{copy.form.intro}</p>{(!submitInterest||!reservationCollectionEnabled)&&<p className={styles.unavailableNote}>{t('New registration is currently unavailable.','הרישום החדש אינו זמין כרגע.')}</p>}</div>
-    {saved?<><div className={styles.saved} role="status" ref={savedSummary} tabIndex={-1}><span className={styles.savedMark} aria-hidden="true">✓</span><h3>{copy.form.saved}</h3><p>{copy.form.saved_body}</p><p>{({pending:copy.form.email_pending,queued:t('Your confirmation email is waiting to be sent.','הודעת האישור ממתינה לשליחה.'),sent:t('Your confirmation email has been sent.','הודעת האישור נשלחה.'),unknown:t('We are checking whether the confirmation email was sent.','אנחנו בודקים אם הודעת האישור נשלחה.'),canceled:t('No confirmation email will be sent.','לא תישלח הודעת אישור.'),not_queued:copy.form.email_not_queued})[result.email]}</p><p>{copy.form.saved_reference}: <bdi>{result.reference}</bdi></p></div><div className={styles.permissions}>{privacyPanel}</div></>
+    {saved?<><div className={styles.saved} role="status" ref={savedSummary} tabIndex={-1}><span className={styles.savedMark} aria-hidden="true">✓</span><h3>{copy.form.saved}</h3><p>{copy.form.saved_body}</p><p>{({pending:copy.form.email_pending,queued:copy.exact.form.ackQueued,sent:copy.exact.form.ackSent,unknown:copy.exact.form.ackUnknown,canceled:t('No confirmation email will be sent.','לא תישלח הודעת אישור.'),not_queued:copy.form.email_not_queued})[result.email]}</p><p>{copy.form.saved_reference}: <bdi>{result.reference}</bdi></p></div><div className={styles.permissions}>{privacyPanel}</div></>
     :<form className={styles.form} ref={form} onSubmit={save} noValidate aria-busy={busy}>
      {error&&<p className={styles.error} role="alert" id="trip390-error" ref={errorSummary} tabIndex={-1}>{errorTarget?copy.form.validation_summary:error}{errorTarget&&<a href={'#'+errorTarget} onClick={event=>{event.preventDefault();document.getElementById(errorTarget)?.focus();}}>{t('Go to field','מעבר לשדה')}</a>}</p>}
      {unresolved&&<p className={styles.error} role="alert">{copy.form.save_unknown}</p>}

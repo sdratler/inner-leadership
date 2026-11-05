@@ -1,9 +1,9 @@
 import {describe,it,expect} from 'vitest';
-import {trip390Copy} from '../../src/features/group-application/academy-trip390-contract.ts';
+import {academyR2Copy} from '../../src/features/group-application/academy-r2-copy.ts';
 import {matchesCurrentHeroContent,type HeroContentSnapshot} from '../e2e/group-interest/academy-trip390.visual-checks.ts';
 
 function approved(locale:'en'|'he'):HeroContentSnapshot{
- const hero=trip390Copy[locale].hero,blocks=[hero.eyebrow,hero.title,hero.pillars,hero.interest_cta];
+ const hero=academyR2Copy[locale].exact.hero,blocks=[hero.region,hero.nameLine1+' '+hero.nameLine2,hero.pillars,hero.cta];
  return {locale,blocks,allText:blocks.join(' '),headingCount:1,titleCount:1,paragraphCount:2,actionCount:1,linkCount:1};
 }
 describe('current bilingual hero content boundary',()=>{

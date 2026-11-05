@@ -11,9 +11,11 @@ import {PublicGroupApplicationStore} from '../../src/features/group-application/
 import {InquiryEmailOutbox,queueInquiryEmail} from '../../src/features/group-application/inquiry-email.ts';
 import {groupApplicationRequestDigest} from '../../src/features/group-application/group-application-record.ts';
 import {privateDigest} from '../../src/features/contact-ops/server/digests.ts';
-import {loadTrip390AckAdmission,trip390AckSourceFiles,TRIP390_ACK_VERSION,TRIP390_ACK_PURPOSE,TRIP390_ACK_SENDER} from '../../src/features/group-application/academy-trip390-ack-admission.ts';
-import {TRIP390_INTEREST_VERSION,TRIP390_NOTICE_VERSION,type Trip390Command} from '../../src/features/group-application/academy-trip390-contract.ts';
+import {loadTrip390AckAdmission,academy650AckSourceFiles,ACADEMY650_ACK_POLICY_VERSION,TRIP390_ACK_PURPOSE,TRIP390_ACK_SENDER} from '../../src/features/group-application/academy-trip390-ack-admission.ts';
+import {TRIP390_INTEREST_VERSION,TRIP390_NOTICE_VERSION,TRIP390_OFFER,type Trip390Command} from '../../src/features/group-application/academy-trip390-contract.ts';
 import {trip390V1InterestSchema,TRIP390_V1_INTEREST_VERSION,TRIP390_V1_NOTICE_VERSION,TRIP390_V1_OFFER} from '../../src/features/group-application/academy-trip390-v1.ts';
+import {trip390V3InterestSchema,TRIP390_V3_INTEREST_VERSION,TRIP390_V3_OFFER,TRIP390_DRIVING_VERSION as V3_DRIVING_VERSION} from '../../src/features/group-application/academy-trip390-v3.ts';
+import {academy650AckContent,ACADEMY650_ACK_COPY_VERSION} from '../../src/features/group-application/academy650-r2-ack.ts';
 import {TRIP390_EMAIL_VERSION,trip390EmailContent} from '../../src/features/group-application/academy-trip390-email.ts';
 import {INQUIRY_EMAIL_PURPOSE} from '../../src/features/group-application/inquiry-email-copy.ts';
 import {currentTrip390Fields} from '../fixtures/trip390-current.ts';
@@ -25,13 +27,13 @@ const sha=(s:string)=>createHash('sha256').update(s).digest('hex');
 const ring={activeKeyId:'synthetic',keys:{synthetic:Buffer.alloc(32,61)}};
 const db:IdentityStore={transaction:work=>engine.transaction(tx=>work({query:async<T extends object>(sql:string,values:readonly unknown[]=[])=> (await tx.query<T>(sql,[...values])).rows} as SqlSession))};
 const migrations=['0001_ls_foundation.sql','0010_ls_identity_cases_20260906.sql','0124_ls_group_interest.sql','0131_ls_public_group_applications.sql','0135_ls_inquiry_email_outbox.sql','0136_ls_academy_founder.sql','0137_ls_academy_owner_notifications.sql'];
-const proposalPins={admission:'49cb81174e5fdc9b3220d11cc498bbde2d14c99dd5d13ca05c6ab8a93a2d6ff0',outbox:'e1e38c354381ada6f04d05559a9c7767adb6882c639b9513e8e4111ea3131fde',worker:'17d486e6248cf740bebcb28effd8327c6c73315eeedd3267d9f5585dcd2b7682',start:'8c1eda5817c478efea96b3da07a63ccf7a86a32274527a3c21835a752296c71b',recordDecoder:'4e448342d404d2f8fe5c2c9dbf1bfa82ae25bfdc3e58529e193e14fa5352b06c'};
+const proposalPins={admission:'27ff594a2157deefa7bbf05dbd8886a32e9506fbe6e3d1d332f209ec16b44065',outbox:'c912b8a26ca62f59da816348b8537642dbc14698ac1b96b00d7fd923e2485fc2',worker:'17d486e6248cf740bebcb28effd8327c6c73315eeedd3267d9f5585dcd2b7682',start:'8c1eda5817c478efea96b3da07a63ccf7a86a32274527a3c21835a752296c71b',recordDecoder:'4e448342d404d2f8fe5c2c9dbf1bfa82ae25bfdc3e58529e193e14fa5352b06c',formatterR2:'aaa51b1fadfa1be8f09333cc99efa0986f6e37e4ce251b9ba3508f9140110ea8',catalogR2:'8552254f002a0aff027803772dc7baae75a6beb5a5ce571f16e033b5bb621daa'};
 let sourceHashes:Record<string,string>;
 beforeAll(async()=>{
  requirePgliteMemoryEnvironment(process.env);
  vi.stubGlobal('fetch',vi.fn(async()=>{throw Error('REAL_NETWORK_NOT_ADMITTED');}));
- sourceHashes=Object.fromEntries(await Promise.all(Object.entries(trip390AckSourceFiles).map(async([k,p])=>[k,sha((await readFile(p,'utf8')).replace(/\r\n/g,'\n'))])));
- expect(sourceHashes).toMatchObject(proposalPins);
+ sourceHashes=Object.fromEntries(await Promise.all(Object.entries(academy650AckSourceFiles).map(async([k,p])=>[k,sha((await readFile(p,'utf8')).replace(/\r\n/g,'\n'))])));
+ expect(Object.keys(sourceHashes)).toHaveLength(22);expect(sourceHashes).toMatchObject(proposalPins);
  engine=new PGlite();await engine.exec('CREATE SCHEMA ls_control');
  const manifest=JSON.parse(await readFile('migrations/manifest.json','utf8')) as {name:string;sha256:string}[];
  for(const name of migrations){const sql=await readFile('migrations/'+name,'utf8');expect(sha(sql)).toBe(manifest.find(m=>m.name===name)?.sha256);await engine.exec(sql);}
@@ -47,18 +49,18 @@ async function fixture(){
   const base=currentTrip390Fields(),operationId=randomUUID(),fields:Trip390Command['fields']={...base,email:'synthetic-'+randomUUID()+'@example.invalid',guardianName:'Synthetic ACK Parent',messageLanguage:language,children:base.children.map((c,i)=>({...c,id:randomUUID(),name:i?'Synthetic Younger':'Synthetic Older'}))};
   const result=await store().submit({operationId,fields});expect(result.acknowledgment).toBe('queued');
   const reference=result.item.id,row=(await engine.query<{id:string}>('SELECT id FROM ls_service_interest.inquiry_email_outbox WHERE workspace_id=$1 AND application_id=$2',[workspace,reference])).rows[0]!;
-  const content=trip390EmailContent({version:TRIP390_EMAIL_VERSION,kind:'ack',reference,parentName:fields.guardianName,children:fields.children.map(({id,name})=>({id,name})),messageLanguage:language});
+  const content=academy650AckContent({reference,parentFirstName:fields.guardianName.split(' ')[0]!,children:fields.children.map(({id,name})=>({id,name})),messageLanguage:language});
   return {reference,id:row.id,operationId,fields,content};
  }
  async function row(id:string){return (await engine.query<{id:string;state:string;reserved_at:Date|null;provider_id:string|null;completed_at:Date|null;payload_ciphertext:string}>('SELECT id,state,reserved_at,provider_id,completed_at,payload_ciphertext FROM ls_service_interest.inquiry_email_outbox WHERE workspace_id=$1 AND id=$2',[workspace,id])).rows[0]!;}
  async function lead(reference:string){return (await engine.query<{payload_ciphertext:string}>('SELECT payload_ciphertext FROM ls_service_interest.public_applications WHERE workspace_id=$1 AND id=$2',[workspace,reference])).rows[0]!.payload_ciphertext;}
  function admitted(target:Awaited<ReturnType<typeof save>>){
-  const policy={version:TRIP390_ACK_VERSION,approvalReceiptSha256:'a'.repeat(64),sourceCommit:'b'.repeat(40),workspaceId:workspace,projectId:randomUUID(),environmentId:randomUUID(),serviceId:randomUUID(),origin:'https://life-skills.bneineviimacademy.org',sender:TRIP390_ACK_SENDER,replyTo:TRIP390_ACK_SENDER,requestVersion:TRIP390_INTEREST_VERSION,noticeVersion:TRIP390_NOTICE_VERSION,payloadVersion:2,payloadKind:TRIP390_ACK_PURPOSE,templateVersion:TRIP390_EMAIL_VERSION,sourceHashes,notBefore:initial.toISOString(),admittedAt:initial.toISOString(),expiresAt:new Date(initial.valueOf()+3600000).toISOString(),population:{mode:'controlled_test',requests:[{reference:target.reference,outboxId:target.id,operationId:target.operationId,recipientSha256:sha(target.fields.email),messageLanguage:target.fields.messageLanguage,childIds:target.fields.children.map(c=>c.id),contentSha256:target.content.contentSha256}]}};
+  const policy={version:ACADEMY650_ACK_POLICY_VERSION,approvalReceiptSha256:'a'.repeat(64),sourceCommit:'b'.repeat(40),workspaceId:workspace,projectId:randomUUID(),environmentId:randomUUID(),serviceId:randomUUID(),origin:'https://life-skills.bneineviimacademy.org',sender:TRIP390_ACK_SENDER,replyTo:TRIP390_ACK_SENDER,requestVersion:TRIP390_INTEREST_VERSION,noticeVersion:TRIP390_NOTICE_VERSION,offerVersion:TRIP390_OFFER.version,payloadVersion:3,payloadKind:TRIP390_ACK_PURPOSE,templateVersion:ACADEMY650_ACK_COPY_VERSION,sourceHashes,notBefore:initial.toISOString(),admittedAt:initial.toISOString(),expiresAt:new Date(initial.valueOf()+3600000).toISOString(),population:{mode:'controlled_test',requests:[{reference:target.reference,outboxId:target.id,operationId:target.operationId,recipientSha256:sha(target.fields.email),messageLanguage:target.fields.messageLanguage,childIds:target.fields.children.map(c=>c.id),contentSha256:target.content.contentSha256}]}};
   const env:Record<string,string|undefined>={LS_ACADEMY_TRIP390_ACK_ENABLED:'true',LS_ACADEMY_TRIP390_ACK_QUEUE_ENABLED:'true',LS_ACADEMY_TRIP390_ACK_ADMISSION_JSON:JSON.stringify(policy),LS_INQUIRY_EMAIL_QUEUE_ENABLED:'false',LS_INQUIRY_EMAIL_SEND_ENABLED:'false',LS_ACADEMY_FOUNDER_EMAIL_APPROVED:'false',LS_ACADEMY_SIGNUP_WORKER_ENABLED:'false',LS_ACADEMY_SIGNUP_CONTROLLED_SEND_ENABLED:'false',LS_AUTH_EMAIL_ENABLED:'true',LS_AUTH_EMAIL_PROVIDER:'gmail',LS_AUTH_EMAIL_FROM:policy.sender,LS_AUTH_GOOGLE_CLIENT_ID:'synthetic-id',LS_AUTH_GOOGLE_CLIENT_SECRET:'synthetic-secret',LS_AUTH_GOOGLE_REFRESH_TOKEN:'synthetic-refresh',RAILWAY_GIT_COMMIT_SHA:policy.sourceCommit,LIFE_SKILLS_RELEASE_COMMIT:policy.sourceCommit,LS_IDENTITY_WORKSPACE_ID:workspace,RAILWAY_PROJECT_ID:policy.projectId,RAILWAY_ENVIRONMENT_ID:policy.environmentId,RAILWAY_SERVICE_ID:policy.serviceId,LS_APP_ORIGIN:policy.origin};
   const issued=loadTrip390AckAdmission(env,now);expect(issued).not.toBeNull();return {env,issued:issued!,policy};
  }
  const outbox=()=>new InquiryEmailOutbox(db,workspace,ring,clock,digestKey);
- return {workspace,digestKey,initial,clock,save,row,lead,admitted,outbox,setTime:(value:Date)=>{now=value;}};
+ return {workspace,digestKey,initial,clock,store,save,row,lead,admitted,outbox,setTime:(value:Date)=>{now=value;}};
 }
 const oauth='https://oauth2.googleapis.com/token',gmail='https://gmail.googleapis.com/gmail/v1/users/me/messages/send';
 function decodedAlternative(mime:string){
@@ -83,12 +85,15 @@ function transport(onOauth?:()=>Promise<void>,onSend?:()=>Promise<Response>){ret
  expect(url).toBe(gmail);return onSend?onSend():new Response(JSON.stringify({id:'synthetic-provider-receipt'}));
 });}
 
-it('real queued V3 SQL reaches SENT once through actual Gmail adapter and a fresh outbox never resends',async()=>{
+it('real queued V4 R2 SQL reaches SENT once through actual Gmail adapter and a fresh outbox never resends',async()=>{
  const f=await fixture(),target=await f.save('he'),a=f.admitted(target),before=await f.lead(target.reference),send=transport();
  expect(await f.outbox().dispatchTrip390One(target.id,a.issued,a.env,send as typeof fetch)).toBe('sent');
  expect(await f.row(target.id)).toMatchObject({state:'sent',provider_id:'synthetic-provider-receipt',reserved_at:expect.any(Date),completed_at:expect.any(Date)});
  expect(await f.outbox().dispatchTrip390One(target.id,a.issued,a.env,send as typeof fetch)).toBe('idle');expect(send).toHaveBeenCalledTimes(2);
  const mime=Buffer.from(JSON.parse(String(send.mock.calls.find(([url])=>url===gmail)![1]!.body)).raw,'base64url').toString('utf8');
+ const payload=JSON.parse(unseal((await f.row(target.id)).payload_ciphertext,'ls_service_interest/inquiry_email/v1/'+f.workspace+'/'+target.id,ring));
+ expect(payload).toMatchObject({version:3,copyVersion:ACADEMY650_ACK_COPY_VERSION,reference:target.reference,childIds:target.fields.children.map(c=>c.id),locale:'he',contentSha256:target.content.contentSha256});
+ expect(target.content.text).toContain(target.reference);
  const decoded=decodedAlternative(mime);expect(decoded.headers.filter(line=>line.startsWith('To:'))).toEqual(['To: '+target.fields.email]);expect(decoded.plain).toEqual(Buffer.from(target.content.text,'utf8'));expect(decoded.html).toEqual(Buffer.from(target.content.html,'utf8'));
  expect(await f.lead(target.reference)).toBe(before);expect(JSON.parse(unseal(before,`ls_service_interest/public_application/v1/${f.workspace}/${target.reference}`,ring))).toEqual(target.fields);
  const count=(await engine.query<{n:number}>('SELECT count(*)::int n FROM ls_service_interest.inquiry_email_outbox WHERE workspace_id=$1 AND application_id=$2',[f.workspace,target.reference])).rows[0]!.n;expect(count).toBe(1);expect(fetch).not.toHaveBeenCalled();
@@ -142,7 +147,38 @@ it('stored HMAC corruption holds before reservation, while the real FK rejects a
   expect(await queueInquiryEmail(tx,f.workspace,reference,fields,ring,f.initial)).toBe('queued');
  });
  const id=(await engine.query<{id:string}>('SELECT id FROM ls_service_interest.inquiry_email_outbox WHERE workspace_id=$1 AND application_id=$2',[f.workspace,reference])).rows[0]!.id;
- const content=trip390EmailContent({version:TRIP390_EMAIL_VERSION,kind:'ack',reference,parentName:fields.guardianName,children:fields.children.map(({id,name})=>({id,name})),messageLanguage:fields.messageLanguage}),admission=f.admitted({id,reference,operationId,fields,content}),send=transport(),outboxBefore=await f.row(id);
+ const content=academy650AckContent({reference,parentFirstName:fields.guardianName.split(' ')[0]!,children:fields.children.map(({id,name})=>({id,name})),messageLanguage:fields.messageLanguage}),admission=f.admitted({id,reference,operationId,fields,content}),send=transport(),outboxBefore=await f.row(id);
  await expect(f.outbox().dispatchTrip390One(id,admission.issued,admission.env,send as typeof fetch)).rejects.toMatchObject({code:'UNAVAILABLE'});
  expect(await f.row(id)).toEqual(outboxBefore);expect(await f.lead(reference)).toBe(cipher);expect(await f.lead(valid.reference)).toBe(before);expect(send).not.toHaveBeenCalled();expect(fetch).not.toHaveBeenCalled();
+});
+
+it('fresh-store replay decodes frozen V3, preserves the exact reserved UNKNOWN V2 message and creates no R2 intent',async()=>{
+ const f=await fixture(),current=currentTrip390Fields(),reference=randomUUID(),operationId=randomUUID(),outboxId=randomUUID();
+ const historical=trip390V3InterestSchema.parse({...current,version:TRIP390_V3_INTEREST_VERSION,offerVersion:TRIP390_V3_OFFER.version,
+  lessonDayDriving:{...current.lessonDayDriving,version:V3_DRIVING_VERSION}});
+ const content=trip390EmailContent({version:TRIP390_EMAIL_VERSION,kind:'ack',reference,parentName:historical.guardianName,
+  children:historical.children.map(({id,name})=>({id,name})),messageLanguage:historical.messageLanguage});
+ const original={version:2,purpose:INQUIRY_EMAIL_PURPOSE,reference,recipient:historical.email,locale:historical.messageLanguage,
+  copyVersion:TRIP390_EMAIL_VERSION,contentSha256:content.contentSha256,subject:content.subject,text:content.text,html:content.html};
+ const payload=JSON.stringify(original),aad='ls_service_interest/inquiry_email/v1/'+f.workspace+'/'+outboxId;
+ const cipher=seal(payload,aad,ring),digest=groupApplicationRequestDigest(f.workspace,historical,f.digestKey);
+ const leadCipher=seal(JSON.stringify(historical),'ls_service_interest/public_application/v1/'+f.workspace+'/'+reference,ring);
+ await db.transaction(async tx=>{
+  await tx.query('INSERT INTO ls_service_interest.public_applications(workspace_id,id,contact_digest,request_digest,payload_ciphertext,notice_version,notice_language,received_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',
+   [f.workspace,reference,privateDigest({domain:'public-group-application-contact/v1',workspace:f.workspace,contact:historical.email},f.digestKey),digest,leadCipher,historical.acknowledgment.version,historical.acknowledgment.language,f.initial]);
+  await tx.query('INSERT INTO ls_service_interest.public_application_operations(workspace_id,operation_id,request_digest,application_id) VALUES($1,$2,$3,$4)',[f.workspace,operationId,digest,reference]);
+  await tx.query("INSERT INTO ls_service_interest.inquiry_email_outbox(workspace_id,id,application_id,purpose,payload_ciphertext,state,created_at,reserved_at) VALUES($1,$2,$3,$4,$5,'unknown',$6,$6)",[f.workspace,outboxId,reference,INQUIRY_EMAIL_PURPOSE,cipher,f.initial]);
+ });
+ const before=await f.row(outboxId);
+ const result=await f.store().submit({operationId,fields:historical});
+ expect(result).toMatchObject({saved:true,replayed:true,duplicate:true,acknowledgment:'unknown',item:{id:reference,fields:historical}});
+ expect(await f.store().replaySaved({operationId,fields:historical})).toMatchObject({acknowledgment:'unknown',item:{id:reference}});
+ await expect(f.store().submit({operationId:randomUUID(),fields:historical})).rejects.toMatchObject({code:'INVALID_REQUEST'});
+ expect(await f.lead(reference)).toBe(leadCipher);
+ const after=await f.row(outboxId);expect(after).toEqual(before);
+ expect(after).toMatchObject({state:'unknown',reserved_at:f.initial,provider_id:null,completed_at:null,payload_ciphertext:cipher});
+ expect(unseal(after.payload_ciphertext,aad,ring)).toBe(payload);
+ const rows=await engine.query('SELECT id FROM ls_service_interest.inquiry_email_outbox WHERE workspace_id=$1 AND application_id=$2',[f.workspace,reference]);
+ const ops=await engine.query('SELECT operation_id FROM ls_service_interest.public_application_operations WHERE workspace_id=$1 AND application_id=$2',[f.workspace,reference]);
+ expect(rows.rows).toEqual([{id:outboxId}]);expect(ops.rows).toEqual([{operation_id:operationId}]);expect(fetch).not.toHaveBeenCalled();
 });

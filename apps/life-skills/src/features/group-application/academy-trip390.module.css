@@ -39,9 +39,10 @@
 .heroText{position:absolute;inset-block-start:12px;inset-inline:20px;text-align:center;pointer-events:none;text-shadow:0 2px 10px #04185870}
 .page .heroText h1{font-size:clamp(36px,4vw,60px);line-height:1.08;font-weight:700;margin:0 auto;max-inline-size:900px;overflow-wrap:normal;word-break:normal}
 .heroText h1 span{display:block}.heroText h1 span:last-child{color:#fdc844}
-.page .heroEyebrow{font-size:16px;line-height:1.4;margin:0 auto 12px;color:white}
-.page .heroPillars{font-size:18px;line-height:1.4;margin:16px auto 0;color:white}
-.heroAction{position:absolute;inset-block-end:8%;inset-inline:24px;text-align:center}
+.page .heroEyebrow{display:flex;align-items:center;justify-content:center;gap:12px;font-size:22px;line-height:1.4;margin:0 auto 12px;color:white}
+.heroEyebrow>span{display:block;inline-size:52px;block-size:1px;background:#fdc844;flex:none}
+.page .heroPillars{font-size:28px;font-weight:600;line-height:1.4;margin:0;color:white;text-wrap:balance}
+.heroAction{position:absolute;inset-block-end:8%;inset-inline:24px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:16px}
 .page .heroAction .action{min-inline-size:220px;padding:14px 32px}
 .hero[data-reflow=true]{display:flex;flex-direction:column;block-size:auto}
 .hero[data-reflow=true] picture,.hero[data-reflow=true] img{block-size:auto}
@@ -56,6 +57,47 @@
  .heroAction{position:static;order:-1;padding:12px 20px 24px}
 }
 
+/* Natural flow is the default for shallow landscape frames. */
+@media(min-width:768px) and (orientation:landscape){
+ .page .heroText h1{font-size:clamp(36px,min(4vw,6.4svh),60px)}
+ .hero:not([data-desktop-bands=overlay]){display:flex;flex-direction:column;block-size:auto}
+ .hero:not([data-desktop-bands=overlay]) picture,.hero:not([data-desktop-bands=overlay]) img{block-size:auto}
+ .hero:not([data-desktop-bands=overlay]) .heroText{position:static;order:-2;padding:16px 12px 8px}
+ .hero:not([data-desktop-bands=overlay]) .heroAction{position:static;order:-1;padding:8px 20px 16px}
+}
+
+/* At ordinary desktop proportions, compose the first frame from the same
+   original-pixel bands used by measurement. Percentages in translateY refer
+   to the actual foreground group, so neither text height nor crop is guessed. */
+@supports (opacity:attr(data-master-height type(<number>))){
+ @media(min-width:1024px) and (min-height:768px) and (orientation:landscape) and (max-aspect-ratio:9/5){
+  .hero[data-master-height]{
+   --initial-desktop-overlay:1;
+   --master-height:attr(data-master-height type(<number>));
+   --master-top:attr(data-master-top type(<number>));
+   --master-bottom:attr(data-master-bottom type(<number>));
+   --hero-frame:calc(100svh - var(--header-height));
+   container-type:inline-size;
+  }
+  .hero[data-master-height]:not([data-desktop-bands=flow]){display:block;block-size:var(--hero-frame)}
+  .hero[data-master-height]:not([data-desktop-bands=flow]) picture{block-size:100%}
+  .hero[data-master-height]:not([data-desktop-bands=flow]) img{block-size:min(var(--hero-frame),calc(100cqw * var(--master-height)))}
+  .hero[data-master-height]:not([data-desktop-bands=flow]) :is(.heroText,.heroAction){
+   --photo-top:min(0px,calc((var(--hero-frame) - 100cqw * var(--master-height)) / 2));
+   position:absolute;padding:0;
+  }
+  .hero[data-master-height]:not([data-desktop-bands=flow]) .heroText{
+   inset-block-start:4px;
+   transform:translateY(clamp(0px,calc(var(--photo-top) + 100cqw * var(--master-top) - 100% - 8px),8px));
+  }
+  .hero[data-master-height]:not([data-desktop-bands=flow]) .heroAction{
+   inset-block-end:4px;
+   --lower-band:calc(var(--hero-frame) - var(--photo-top) - 100cqw * var(--master-bottom));
+   transform:translateY(calc(-1 * clamp(0px,calc(var(--lower-band) - 100% - 8px),calc(var(--hero-frame) * .08 - 4px))));
+  }
+ }
+}
+
 /* Reading rhythm and distinct content groups. */
 .section,.packageInner,.footer{box-sizing:border-box;inline-size:100%;max-inline-size:var(--content);margin-inline:auto;padding-inline:24px}
 .section{padding-block:72px}
@@ -66,7 +108,17 @@
 .introduction .sectionHeading h2{margin-inline:auto}
 .headingWord{display:inline-block;inline-size:max-content;max-inline-size:100%;overflow-wrap:normal;word-break:normal;hyphens:none}
 .page .lead{font-size:17px;color:#092668;line-height:1.65;max-inline-size:72ch;margin:0 auto 16px}
-.audienceLine{font-weight:700;margin:0}
+.page .audienceLine{font-weight:700;inline-size:fit-content;max-inline-size:100%;margin:0 auto}
+.introInclusions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px;max-inline-size:820px;margin:32px auto 0;text-align:center}
+.introInclusions>div{padding:24px;background:#eff5f8;border-radius:8px}
+.page .introInclusions h3{font-size:20px;margin:0 0 8px}.page .introInclusions p{margin:0}
+.valuesSection{background:#eff5f8}.valuesSection .sectionHeading p{max-inline-size:70ch;margin-inline:auto}
+.valuesGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:32px 40px;margin-block-start:32px}
+.valuesGrid article{display:grid;grid-template-columns:40px minmax(0,1fr);gap:16px;align-items:start}
+.valuesGrid svg{inline-size:40px;block-size:40px;flex:none;color:#092668}
+.page .valuesGrid h3{font-size:20px;margin:0 0 8px}.page .valuesGrid p{margin:0}
+.valuesAction{text-align:center;margin-block-start:32px}
+.founder>div{text-align:start}
 /* Six semantic peers; unavailable originals stay explicit in preview DOM. */
 .skillsSection{border-block-start:1px solid var(--line)}
 .skills{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;margin-block-start:32px}
@@ -178,11 +230,17 @@
  .page{font-size:17px;--header-height:74px}
  .headerInner{min-block-size:74px;padding:7px 20px;gap:10px}.logo img{inline-size:58px;block-size:58px}.languages button{font-size:14px;padding-inline:7px}
  .heroText{inset-inline:16px}.page .heroText h1{font-size:clamp(28px,8.1vw,42px);line-height:1.12}.heroAction{inset-block-end:calc(90px + env(safe-area-inset-bottom));inset-inline:20px}
+ .page .heroEyebrow{font-size:18px}.heroEyebrow>span{inline-size:28px}.page .heroPillars{font-size:21px}.valuesGrid{grid-template-columns:1fr}
  .section,.packageInner,.footer{padding-inline:20px}.section{padding-block:48px}
  .page .sectionHeading h2,.page .packageIntro h2,.page .founder h2,.page .finalInterest h2{font-size:32px}
  .skills{gap:20px}.logisticsPair{grid-template-columns:1fr}
  .torah{padding:24px 20px}
  .packageInner{grid-template-columns:1fr;gap:32px;padding-block:48px}.packageIntro .action{inline-size:100%}
+ /* At enlarged text, give each value's words a full line and leave the contact dock clear. */
+ .page[data-text-reflow=true] .valuesGrid{row-gap:2em}
+ .page[data-text-reflow=true] .valuesGrid article{grid-template-columns:minmax(0,1fr)}
+ .page[data-text-reflow=true] .hero[data-reflow=true] .heroText{padding-block:4px 0}
+ .page[data-text-reflow=true] .hero[data-reflow=true] .heroAction{padding-block-start:4px}
  .page[data-text-reflow=true] .torah{padding-inline:0;background:transparent}
  .founder{grid-template-columns:1fr;gap:24px;text-align:center}.founder>img{inline-size:180px;block-size:180px;margin-inline:auto}.founder p{margin-inline:auto}
  .faqLayout{grid-template-columns:1fr;gap:0}.page .faqs summary{padding:32px 0}
@@ -192,7 +250,7 @@
  .page .form .child{padding:16px 12px}
  .footer{gap:20px}.footerBrand span{font-size:16px}
 }
-@media(max-width:639px){.skills{grid-template-columns:1fr}}
+@media(max-width:639px){.skills,.introInclusions{grid-template-columns:1fr}}
 @media(max-width:359px){.headerInner,.section,.packageInner,.footer{padding-inline:16px}.headerInner{gap:6px}.logo img{inline-size:50px;block-size:50px}.dialogHeader,.dialogBody{padding-inline:16px}.heroAction{inset-inline:16px}.page .heroText h1{font-size:28px}.heroText{inset-inline:12px}}
 /* Short mobile viewports scroll rather than placing an action over people. */
 @media(max-width:767px) and (max-height:600px){
@@ -203,3 +261,5 @@
 }
 @media(max-height:480px){.hero{display:flex;flex-direction:column;block-size:auto}.hero picture,.hero img{block-size:auto}.heroText{position:static;order:-2;padding:16px 12px 8px}.heroAction{position:static;order:-1;padding:8px 20px 16px}.dialogHeader{padding-block:8px}.page .dialogHeader h2{font-size:21px}}
 @media(prefers-reduced-motion:reduce){.page *{scroll-behavior:auto}}
+
+.sectionHeading{text-align:center}.sectionHeading h2{margin-inline:auto}.page .lead{max-inline-size:62ch}

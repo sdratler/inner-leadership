@@ -14,6 +14,7 @@ import type {IdentityStore,SqlSession} from "../identity/store.ts";
 import {groupApplicationCommandSchema,groupApplicationReplaySchema,isFloridaGroupApplication,isTrip390Interest,floridaProgramIdSchema,type FloridaProgramId,type GroupApplicationFields,type GroupApplicationRecord} from "./contract.ts";
 import {INQUIRY_EMAIL_PURPOSE} from './inquiry-email-copy.ts';
 import {isCurrentTrip390Interest} from './academy-trip390-contract.ts';
+import {TRIP390_V3_INTEREST_VERSION} from './academy-trip390-v3.ts';
 import {queueInquiryEmail} from "./inquiry-email.ts";
 import {decodeStoredGroupApplication,groupApplicationRequestDigest,groupApplicationPayloadAad} from './group-application-record.ts';
 import {isFreeFounderRegistration,type AcademyFounderStore} from './academy-founder-store.ts';
@@ -53,7 +54,7 @@ export class PublicGroupApplicationStore{
   privateDigest({domain:"public-group-application-contact/v1",workspace:this.workspaceId,phone:fields.parentPhone},this.digestKey);}
  private decode(row:Row):GroupApplicationRecord{return decodeStoredGroupApplication(this.workspaceId,row,this.ring,this.digestKey);}
  private async savedAcknowledgment(tx:SqlSession,item:GroupApplicationRecord){
-  if(!isTrip390Interest(item.fields)||!isCurrentTrip390Interest(item.fields))return {};
+  if(!isTrip390Interest(item.fields)||!(isCurrentTrip390Interest(item.fields)||item.fields.version===TRIP390_V3_INTEREST_VERSION))return {};
   const rows=await tx.query<{state:string}>('SELECT state FROM ls_service_interest.inquiry_email_outbox WHERE workspace_id=$1 AND application_id=$2 AND purpose=$3',[this.workspaceId,item.id,INQUIRY_EMAIL_PURPOSE]);
   if(rows.length>1)throw new AppError('UNAVAILABLE');if(!rows.length)return {};
   return {acknowledgment:z.enum(['queued','unknown','sent','canceled']).parse(rows[0]!.state)};

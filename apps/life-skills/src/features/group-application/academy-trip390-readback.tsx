@@ -1,5 +1,5 @@
 import type {Locale} from "../../lib/locale.ts";
-import type {Trip390Interest} from "./academy-trip390-contract.ts";
+import {TRIP390_INTEREST_VERSION,type Trip390Interest} from "./academy-trip390-contract.ts";
 import styles from "./inquiry-review.module.css";
 
 /** Saved interest only. Language and consent come from the stored submission. */
@@ -11,7 +11,7 @@ export function AcademyTrip390Readback({fields,reference,receivedAt,locale}:{fie
  const notice=fields.acknowledgment;
  return <article className={`lsw-card ${styles.detail}`} data-trip390-interest={reference}>
   <h2><bdi>{fields.guardianName}</bdi></h2>
-  <p>{t("Saved Keys trip inquiry","פנייה שמורה לטיול לקיז")}</p>
+  <p>{fields.version===TRIP390_INTEREST_VERSION?t("Saved Fishing Academy reservation request","בקשת מקום שמורה לאקדמיית הדיג"):t("Saved Keys trip inquiry","פנייה שמורה לטיול לקיז")}</p>
   <dl className={styles.facts}>
    <dt>{t("Inquiry reference","מספר הפנייה")}</dt><dd><bdi dir="ltr">{reference}</bdi></dd>
    <dt>{t("Received (Florida time)","התקבלה (שעון פלורידה)")}</dt><dd><time dateTime={receivedAt}>{new Intl.DateTimeFormat(locale==="he"?"he-IL":"en-US",{dateStyle:"medium",timeStyle:"short",timeZone:"America/New_York"}).format(new Date(receivedAt))}</time></dd>
@@ -22,7 +22,7 @@ export function AcademyTrip390Readback({fields,reference,receivedAt,locale}:{fie
    <dt>{t("Parent message language","שפת ההודעות להורה")}</dt><dd>{language[fields.messageLanguage]}</dd>
    <dt>{t("Preferred instruction language","שפת הדרכה מועדפת")}</dt><dd>{fields.instructionLanguage?language[fields.instructionLanguage]:t("Not specified","לא צוינה")}</dd>
   </dl>
-  {'lessonDayDriving' in fields&&<><h3>{t("Total Sunday driving time", "זמן הנסיעה הכולל ביום ראשון")}</h3><p>{({up_to_30:t('Up to 30 minutes total','עד 30 דקות בסך הכול'),up_to_60:t('Up to 60 minutes total','עד 60 דקות בסך הכול'),up_to_90:t('Up to 90 minutes total','עד 90 דקות בסך הכול'),up_to_120:t('Up to 120 minutes total','עד 120 דקות בסך הכול'),flexible:t('Flexible','גמיש')})[fields.lessonDayDriving.limit]}</p></>}
+  {'lessonDayDriving' in fields&&<><h3>{fields.version===TRIP390_INTEREST_VERSION?t("Total local-lesson driving time","זמן הנסיעה הכולל לשיעור מקומי"):t("Total Sunday driving time", "זמן הנסיעה הכולל ביום ראשון")}</h3><p>{({up_to_30:t('Up to 30 minutes total','עד 30 דקות בסך הכול'),up_to_60:t('Up to 60 minutes total','עד 60 דקות בסך הכול'),up_to_90:t('Up to 90 minutes total','עד 90 דקות בסך הכול'),up_to_120:t('Up to 120 minutes total','עד 120 דקות בסך הכול'),flexible:t('Flexible','גמיש')})[fields.lessonDayDriving.limit]}</p></>}
   <h3>{t("Children in this inquiry","הילדים בפנייה")}</h3>
   <ul className={styles.children}>{fields.children.map(child=><li key={child.id}><strong><bdi>{child.name}</bdi></strong> · {t("Age","גיל")} {child.ageYears} · {experience[child.experience]}<br/>{t("Child ID","מזהה ילד")} <bdi dir="ltr">{child.id}</bdi></li>)}</ul>
   {'notes' in fields&&fields.notes&&<><h3>{t("Parent notes","הערות ההורה")}</h3><p className={styles.notes}><bdi>{fields.notes}</bdi></p></>}

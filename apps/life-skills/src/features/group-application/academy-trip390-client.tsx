@@ -15,12 +15,21 @@ export function AcademyTrip390Client({locale,openForm=false,reservationCollectio
    }
    return;
   }
-  if(url.hash)return;
+  if(url.hash){
+   if(url.hash==='#cost'){
+    const target=document.getElementById('cost');
+    if(target instanceof HTMLDetailsElement)target.open=true;
+   }
+   return;
+  }
   const sections=url.searchParams.getAll('section'),section=sections[0];
-  if(!openForm&&sections.length===1&&(section==='included'||section==='learn')){
-   url.searchParams.delete('section');url.hash=section;
+  const targetSection=section==='included'?'cost':section;
+  if(!openForm&&sections.length===1&&(targetSection==='cost'||targetSection==='learn')){
+   url.searchParams.delete('section');url.hash=targetSection;
    window.history.replaceState(window.history.state,'',url.pathname+url.search+url.hash);
-   document.getElementById(section)?.scrollIntoView();
+   const target=document.getElementById(targetSection);
+   if(target instanceof HTMLDetailsElement)target.open=true;
+   target?.scrollIntoView();
   }
  },[openForm]);
  return <AcademyTrip390Page initialLocale={locale} initialOpen={openForm} submitInterest={submitInterest} reservationCollectionEnabled={reservationCollectionEnabled}/>;
