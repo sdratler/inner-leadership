@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { NextRequest, NextResponse } from "next/server";
 import { parseEnvironment } from "./lib/env/schema.ts";
 import { securityHeaders } from "./lib/security/headers.ts";
@@ -186,10 +188,16 @@ export function proxy(request: NextRequest) {
     if (!asset || !canonicalPrivateOrigin || !groupApplicationPath || (request.method !== "GET" && request.method !== "HEAD")) {
       return decorate(new NextResponse(null, {status:404}), headers);
     }
-    const destination = request.nextUrl.clone();
-    destination.pathname = asset.filePath;
-    destination.search = "";
-    return decorate(NextResponse.rewrite(destination), headers);
+    // A rewrite can turn an internal image into a second TLS request when
+    // Next normalizes a loopback hostname. Read only the matched catalog file.
+    try {
+      const bytes = readFileSync(join(process.cwd(), "public", asset.filePath));
+      return decorate(new NextResponse(request.method === "HEAD" ? null : bytes, {
+        headers: {"Content-Type": "image/png", "Content-Length": String(bytes.length)},
+      }), headers);
+    } catch {
+      return decorate(new NextResponse(null, {status: 503}), headers);
+    }
   }
   if (pathname === "/") return decorate(NextResponse.redirect(new URL(isolatedPreviewPerimeter ? "/he/preview" : privateMode ? "/he/login" : "/he/foundation", request.url)),headers);
   const inbound = new Headers(request.headers);
