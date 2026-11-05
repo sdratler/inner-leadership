@@ -22,6 +22,18 @@ type ChildDraft = {id:string; name:string; age:string; experience:string};
 type ContactObstacle = Pick<DOMRect,'left'|'right'|'top'|'bottom'> & {gap:number; kind:'control'|'photo'|'text'};
 const navigation = ['learn', 'values', 'about', 'faq'] as const;
 
+// Render registered original geometry with the HTML, so the first desktop
+// frame and its hydrated counterpart use the same protected photo bands.
+const desktopMaster = heroAssets.textFree.desktop;
+const desktopRegion = heroAssets.current.en.desktop;
+const [, protectedTop, , protectedBottom] = desktopRegion.protectedRect;
+const desktopGeometry = desktopRegion.sourceSha256 === desktopMaster.sha256
+ && protectedTop !== undefined && protectedBottom !== undefined ? {
+ 'data-master-height': desktopMaster.height / desktopMaster.width,
+ 'data-master-top': protectedTop / desktopMaster.width,
+ 'data-master-bottom': protectedBottom / desktopMaster.width,
+} : {};
+
 function registeredHero(image:HTMLImageElement) {
  if(!image.naturalWidth||!image.currentSrc)return null;
  const path=new URL(image.currentSrc,window.location.href).pathname;
@@ -330,16 +342,16 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, reser
      const titleGap=parseFloat(getComputedStyle(eyebrow).marginBlockEnd);
      const titleInset=Math.min(12,upperBand-titleLines-titleGap-clearance);
      const actionInset=Math.min(height*.08,lowerBand-actionHeight-clearance);
-     const overlay=height>0&&window.innerHeight>480&&titleInset>=clearance&&actionInset>=clearance;
+     // CSS chooses the initial composition. Measurement can protect a larger
+     // foreground by falling back to flow, but never promotes an initial flow.
+     const initialOverlay=getComputedStyle(node).getPropertyValue('--initial-desktop-overlay').trim()==='1';
+     const overlay=initialOverlay&&titleInset>=clearance&&actionInset>=clearance;
      node.dataset.desktopBands=overlay?'overlay':'flow';
-     node.style.setProperty('--title-band-inset',overlay?titleInset+'px':'12px');
-     node.style.setProperty('--action-band-inset',overlay?actionInset+'px':'8%');
      setHeroReflow(!overlay);
      return;
     }
    }
    delete node.dataset.desktopBands;
-   node.style.removeProperty('--title-band-inset');node.style.removeProperty('--action-band-inset');
    setHeroReflow(desktop||portraitLandscape||heading.getBoundingClientRect().height>height*.25||action.getBoundingClientRect().height>height*.18);
   };
   const observer=typeof ResizeObserver==='undefined' ? null : new ResizeObserver(measure);
@@ -440,7 +452,7 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, reser
    <nav id="trip390-menu" className={styles.mobileNav} hidden={!menuOpen} aria-label={t('Mobile Academy navigation','ניווט נייד באקדמיה')}>{navLinks}<a className={styles.action} href="#interest" onClick={openInterest}>{interestLabel}</a></nav>
   </div></header>
   <main id="main" tabIndex={-1}>
-   <section className={styles.hero} ref={hero} data-reflow={heroReflow?'true':undefined} aria-labelledby="trip390-title">
+   <section className={styles.hero} ref={hero} {...desktopGeometry} data-reflow={heroReflow?'true':undefined} aria-labelledby="trip390-title">
     <picture><source media="(max-width:767px), (max-width:999px) and (orientation:portrait)" srcSet="/groups/academy/hero-mobile-20261018.png" width="1143" height="2048"/><img src="/groups/academy/hero-desktop-20261018.png" width="2048" height="1143" alt={copy.exact.hero.alt} fetchPriority="high"/></picture>
     <div className={styles.heroText} data-hero-heading><p className={styles.heroEyebrow}><span aria-hidden="true"/>{copy.hero.eyebrow}<span aria-hidden="true"/></p><h1 id="trip390-title" lang="en" dir="ltr"><span>Jewish Leadership</span><span>Fishing Academy</span></h1></div>
     <div className={styles.heroAction} data-hero-action data-jlfa-hero-action><p className={styles.heroPillars} data-jlfa-pillars>{copy.hero.pillars}</p><a data-jlfa-reserve className={styles.action} href="#interest" onClick={openInterest}>{interestLabel}</a></div>
