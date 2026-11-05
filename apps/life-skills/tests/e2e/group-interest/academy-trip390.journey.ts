@@ -293,6 +293,10 @@ test('landing matrix, native dialog interactions and independent holdout regress
   await page.locator('#values h2').scrollIntoViewIfNeeded();
   await expect.poll(async()=>(await inspectBodyContact(page)).findings).toEqual([]);
   await page.screenshot({path:info.outputPath(`${locale}-200percent-values-viewport.png`)});
+  // The next value's icon enters the right-hand contact lane in enlarged RTL.
+  await page.locator('#values article').nth(1).scrollIntoViewIfNeeded();
+  await expect.poll(async()=>(await inspectBodyContact(page)).findings).toEqual([]);
+  await page.screenshot({path:info.outputPath(`${locale}-200percent-communication-viewport.png`)});
   await page.evaluate(()=>window.scrollTo(0,0));
   await expect.poll(async()=>(await inspectLanding(page)).findings).toEqual([]);
   const enlarged=await inspectLanding(page);diagnostics.push({locale,textEmulation:'200% computed font sizes',enlarged});

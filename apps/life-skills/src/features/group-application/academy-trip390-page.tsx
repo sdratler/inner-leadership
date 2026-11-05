@@ -22,6 +22,16 @@ type ChildDraft = {id:string; name:string; age:string; experience:string};
 type ContactObstacle = Pick<DOMRect,'left'|'right'|'top'|'bottom'> & {gap:number; kind:'control'|'photo'|'text'};
 const navigation = ['learn', 'values', 'about', 'faq'] as const;
 
+function registeredHero(image:HTMLImageElement) {
+ if(!image.naturalWidth||!image.currentSrc)return null;
+ const path=new URL(image.currentSrc,window.location.href).pathname;
+ const role=path===heroAssets.textFree.mobile.publicPath?'mobile':path===heroAssets.textFree.desktop.publicPath?'desktop':null;
+ if(!role)return null;
+ const original=heroAssets.textFree[role],region=heroAssets.current.en[role];
+ if(region.sourceSha256!==original.sha256||image.naturalWidth!==original.width||image.naturalHeight!==original.height)return null;
+ return {role,original,region};
+}
+
 
 // A discretionary word break preserves the catalog text and normal whole-word
 // layout, while avoiding a stranded final letter when enlarged beyond its box.
@@ -150,7 +160,7 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, reser
     .map(rect=>({left:rect.left,right:rect.right,top:rect.top,bottom:rect.bottom,gap,kind:'control'}));
    // Protect painted text, including body copy, rather than reserving empty
    // full-width rows or a permanent rail beside the reading content.
-   const addTextRect=(rect:DOMRect)=>{
+   const addContentRect=(rect:DOMRect)=>{
     if(rect.width>0&&rect.height>0&&rect.bottom>0&&rect.top<window.innerHeight&&rect.left<box.right+4&&rect.right>box.left-4)
      obstacles.push({left:rect.left,right:rect.right,top:rect.top,bottom:rect.bottom,gap:4,kind:'text'});
    };
@@ -166,27 +176,24 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, reser
     for(let text=walker.nextNode();text;text=walker.nextNode()){
      if(!text.textContent?.trim())continue;
      const range=document.createRange();range.selectNodeContents(text);
-     Array.from(range.getClientRects()).forEach(addTextRect);
+     Array.from(range.getClientRects()).forEach(addContentRect);
     }
    });
+   page.current?.querySelectorAll<SVGSVGElement>('[data-jlfa-values] article svg').forEach(icon=>{
+    addContentRect(icon.getBoundingClientRect());
+   });
    const image=hero.current?.querySelector('img');
-   if(image?.naturalWidth&&image.currentSrc){
-    const path=new URL(image.currentSrc,window.location.href).pathname;
-    const role=path===heroAssets.textFree.mobile.publicPath?'mobile':path===heroAssets.textFree.desktop.publicPath?'desktop':null;
-    if(role){
-     const original=heroAssets.textFree[role],region=heroAssets.current.en[role];
-     // Consume only the registered original-pixel overlay-clearance rectangle.
-     // This does not revive owner03 derivative artwork, copy or approval scope.
-     if(region.sourceSha256===original.sha256&&image.naturalWidth===original.width&&image.naturalHeight===original.height){
-      const rect=image.getBoundingClientRect(),fit=getComputedStyle(image).objectFit;
-      const scale=fit==='contain'?Math.min(rect.width/original.width,rect.height/original.height):Math.max(rect.width/original.width,rect.height/original.height);
-      const x=rect.left+(rect.width-original.width*scale)/2,y=rect.top+(rect.height-original.height*scale)/2;
-      const [left,top,right,bottom]=region.protectedRect;
-      if(left!==undefined&&top!==undefined&&right!==undefined&&bottom!==undefined){
-       const visible={left:Math.max(0,rect.left,x+left*scale),top:Math.max(0,rect.top,y+top*scale),right:Math.min(window.innerWidth,rect.right,x+right*scale),bottom:Math.min(window.innerHeight,rect.bottom,y+bottom*scale)};
-       if(visible.right>visible.left&&visible.bottom>visible.top&&visible.left<box.right+gap&&visible.right>box.left-gap)obstacles.push({...visible,gap,kind:'photo'});
-      }
-     }
+   const asset=image&&registeredHero(image);
+   if(image&&asset){
+    // The source rectangle is defined in original pixels.
+    const {original,region}=asset;
+    const rect=image.getBoundingClientRect(),fit=getComputedStyle(image).objectFit;
+    const scale=fit==='contain'?Math.min(rect.width/original.width,rect.height/original.height):Math.max(rect.width/original.width,rect.height/original.height);
+    const x=rect.left+(rect.width-original.width*scale)/2,y=rect.top+(rect.height-original.height*scale)/2;
+    const [left,top,right,bottom]=region.protectedRect;
+    if(left!==undefined&&top!==undefined&&right!==undefined&&bottom!==undefined){
+     const visible={left:Math.max(0,rect.left,x+left*scale),top:Math.max(0,rect.top,y+top*scale),right:Math.min(window.innerWidth,rect.right,x+right*scale),bottom:Math.min(window.innerHeight,rect.bottom,y+bottom*scale)};
+     if(visible.right>visible.left&&visible.bottom>visible.top&&visible.left<box.right+gap&&visible.right>box.left-gap)obstacles.push({...visible,gap,kind:'photo'});
     }
    }
    const headerFloor=(header.current?.getBoundingClientRect().bottom??0)+gap;
@@ -304,7 +311,36 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, reser
    // A portrait viewport receiving the landscape original uses the existing
    // natural flow: no photo enlargement/crop or tall empty continuation band.
    const portraitLandscape=window.matchMedia('(orientation: portrait)').matches&&image.naturalWidth>image.naturalHeight;
-   setHeroReflow(portraitLandscape||heading.getBoundingClientRect().height>height*.25||action.getBoundingClientRect().height>height*.18);
+   const desktop=window.matchMedia('(min-width:768px) and (orientation:landscape)').matches;
+   const asset=registeredHero(image);
+   const eyebrow=heading.firstElementChild,title=heading.lastElementChild;
+   const pillars=action.firstElementChild,button=action.lastElementChild;
+   if(desktop&&asset?.role==='desktop'&&eyebrow&&title&&pillars&&button){
+    const scale=node.getBoundingClientRect().width/asset.original.width;
+    const photoHeight=scale*asset.original.height;
+    // Compute the prospective overlay independently of the current flow state.
+    // Width-fit aligns the full original at the top; cover centers its tall axis.
+    const imageOffset=Math.min(0,(height-photoHeight)/2);
+    const [,top,,bottom]=asset.region.protectedRect;
+    if(top!==undefined&&bottom!==undefined){
+     const upperBand=imageOffset+top*scale,lowerBand=height-(imageOffset+bottom*scale);
+     const clearance=4;
+     const titleLines=eyebrow.getBoundingClientRect().height+title.getBoundingClientRect().height;
+     const actionHeight=button.getBoundingClientRect().bottom-pillars.getBoundingClientRect().top;
+     const titleGap=parseFloat(getComputedStyle(eyebrow).marginBlockEnd);
+     const titleInset=Math.min(12,upperBand-titleLines-titleGap-clearance);
+     const actionInset=Math.min(height*.08,lowerBand-actionHeight-clearance);
+     const overlay=height>0&&window.innerHeight>480&&titleInset>=clearance&&actionInset>=clearance;
+     node.dataset.desktopBands=overlay?'overlay':'flow';
+     node.style.setProperty('--title-band-inset',overlay?titleInset+'px':'12px');
+     node.style.setProperty('--action-band-inset',overlay?actionInset+'px':'8%');
+     setHeroReflow(!overlay);
+     return;
+    }
+   }
+   delete node.dataset.desktopBands;
+   node.style.removeProperty('--title-band-inset');node.style.removeProperty('--action-band-inset');
+   setHeroReflow(desktop||portraitLandscape||heading.getBoundingClientRect().height>height*.25||action.getBoundingClientRect().height>height*.18);
   };
   const observer=typeof ResizeObserver==='undefined' ? null : new ResizeObserver(measure);
   [image,heading,action].forEach(element=>observer?.observe(element));

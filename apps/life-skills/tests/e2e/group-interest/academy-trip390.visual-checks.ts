@@ -173,6 +173,10 @@ export async function inspectBodyContact(page:Page){
     for(const r of range.getClientRects())if(r.width>0&&r.height>0&&r.left<b.right&&r.right>b.left&&r.top<b.bottom&&r.bottom>b.top)findings.push('body-contact-over-text');
    }
   }
+  for(const icon of document.querySelectorAll('[data-jlfa-values] article svg')){
+   const r=icon.getBoundingClientRect();
+   if(r.width>0&&r.height>0&&r.left<b.right&&r.right>b.left&&r.top<b.bottom&&r.bottom>b.top)findings.push('body-contact-over-value-icon');
+  }
   return {findings,position:{left:b.left,top:b.top,width:b.width,height:b.height}};
  });
 }
