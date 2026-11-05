@@ -11,7 +11,8 @@ export const trip390LearningAssets=[
   },
   {
     "assetId": "GEAR-KNOT-01-D",
-    "src": null,
+    "src": "?academy-image=knot",
+    "filePath": "/groups/academy/skills/macro_fishing_knot_over_turquoise_waters.png",
     "alt": {
       "en": "Close-up illustration of a fishing knot.",
       "he": "איור תקריב של קשר דיג."
@@ -28,7 +29,8 @@ export const trip390LearningAssets=[
   },
   {
     "assetId": "GEAR-RIG-READY-D",
-    "src": null,
+    "src": "?academy-image=rig",
+    "filePath": "/groups/academy/skills/sunlit_coastal_fishing_rig_by_the_bridge.png",
     "alt": {
       "en": "Fishing setup ready for use by the water.",
       "he": "מערך דיג מוכן לשימוש ליד המים."
@@ -44,7 +46,8 @@ export const trip390LearningAssets=[
   },
   {
     "assetId": "GEAR-ORGANIZED-02-D",
-    "src": null,
+    "src": "?academy-image=organized",
+    "filePath": "/groups/academy/skills/organised_tackle_by_the_sunlit_pier.png",
     "alt": {
       "en": "Fishing tackle arranged neatly for use and storage.",
       "he": "ציוד דיג מסודר לשימוש ולאחסון."
