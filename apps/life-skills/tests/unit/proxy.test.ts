@@ -29,7 +29,10 @@ describe("public static perimeter", () => {
     for(const path of ["/groups/private/skill-13.webp","/groups/private/private-hero-text-free-tablet.webp","/groups/testimonials/unknown.png","/groups/sponsor/unknown.png","/groups/people/unknown.webp","/groups/projects/manifest.json","/groups/projects/LS-PROJECT-09-wood-art.jpg","/groups/../api/private/people"])expect(groupApplicationPublicAsset(path,"GET",base)).toBe(false);
     const skillImages={
       reel:"/groups/academy/skills/golden_reel_on_a_sunlit_coastal_bridge.png",
+      knot:"/groups/academy/skills/macro_fishing_knot_over_turquoise_waters.png",
       hooks:"/groups/academy/skills/sunlit_fishing_tackle_by_the_sea.png",
+      rig:"/groups/academy/skills/sunlit_coastal_fishing_rig_by_the_bridge.png",
+      organized:"/groups/academy/skills/organised_tackle_by_the_sunlit_pier.png",
     };
     for(const [name,value] of Object.entries({...base,LS_APP_MODE:"foundation_locked"}))vi.stubEnv(name,value);
     for(const [key,file] of Object.entries(skillImages)){

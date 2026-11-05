@@ -166,17 +166,14 @@ test('landing matrix, native dialog interactions and independent holdout regress
     const card=cards.nth(index);await expect(card).toHaveAttribute('data-trip390-skill',String(index+1));
     await expect(card.locator('h3')).toHaveText(trip390Copy[locale].skills[index]!.title);await expect(card.locator('p')).toHaveText(trip390Copy[locale].skills[index]!.body);
     await card.scrollIntoViewIfNeeded();
-    if(asset.src===null){await expect(card.locator('img')).toHaveCount(0);await expect(card.locator('[data-trip390-image-unavailable]')).toHaveCount(1);diagnostics.push({locale,width,height,assetId:asset.assetId,status:'MISSING_ORIGINAL_MAJOR_OPEN'});}
-    else{
-     const image=card.locator('img');await expect(image).toHaveAttribute('src',asset.src);await expect(image).toHaveAttribute('alt',asset.alt[locale]);
-     await expect.poll(()=>image.evaluate(node=>(node as HTMLImageElement).complete&&(node as HTMLImageElement).naturalWidth>0)).toBe(true);
-     const response=await page.request.get(new URL(asset.src,page.url()).href);expect(response.status()).toBe(200);
-     const sourceFile='filePath' in asset?asset.filePath:asset.src;
-     expect(createHash('sha256').update(await response.body()).digest('hex')).toBe(createHash('sha256').update(readFileSync('public'+sourceFile)).digest('hex'));
-    }
+    const image=card.locator('img');await expect(image).toHaveAttribute('src',asset.src);await expect(image).toHaveAttribute('alt',asset.alt[locale]);
+    await expect.poll(()=>image.evaluate(node=>(node as HTMLImageElement).complete&&(node as HTMLImageElement).naturalWidth>0)).toBe(true);
+    const response=await page.request.get(new URL(asset.src,page.url()).href);expect(response.status()).toBe(200);
+    const sourceFile='filePath' in asset?asset.filePath:asset.src;
+    expect(createHash('sha256').update(await response.body()).digest('hex')).toBe(createHash('sha256').update(readFileSync('public'+sourceFile)).digest('hex'));
     const frame=card.locator('img,[data-trip390-image-unavailable]');const ratio=await frame.evaluate(node=>{const b=node.getBoundingClientRect();return b.width/b.height;});expect(Math.abs(ratio-16/9)).toBeLessThan(.005);
    }
-   await expect(page.locator('[data-trip390-image-unavailable]')).toHaveCount(trip390LearningAssets.filter(asset=>asset.src===null).length);
+   await expect(page.locator('[data-trip390-image-unavailable]')).toHaveCount(0);
    await expect(page.locator('[data-trip390-scene]')).toHaveCount(2);
    for(const slot of ['foundation','form']){
     const figure=page.locator(`[data-trip390-scene="${slot}"]`),image=figure.locator('img');
