@@ -170,7 +170,9 @@ test('landing matrix, native dialog interactions and independent holdout regress
     else{
      const image=card.locator('img');await expect(image).toHaveAttribute('src',asset.src);await expect(image).toHaveAttribute('alt',asset.alt[locale]);
      await expect.poll(()=>image.evaluate(node=>(node as HTMLImageElement).complete&&(node as HTMLImageElement).naturalWidth>0)).toBe(true);
-     const bytes=await (await page.request.get(asset.src)).body();expect(createHash('sha256').update(bytes).digest('hex')).toBe(createHash('sha256').update(readFileSync('public'+asset.src)).digest('hex'));
+     const response=await page.request.get(new URL(asset.src,page.url()).href);expect(response.status()).toBe(200);
+     const sourceFile='filePath' in asset?asset.filePath:asset.src;
+     expect(createHash('sha256').update(await response.body()).digest('hex')).toBe(createHash('sha256').update(readFileSync('public'+sourceFile)).digest('hex'));
     }
     const frame=card.locator('img,[data-trip390-image-unavailable]');const ratio=await frame.evaluate(node=>{const b=node.getBoundingClientRect();return b.width/b.height;});expect(Math.abs(ratio-16/9)).toBeLessThan(.005);
    }

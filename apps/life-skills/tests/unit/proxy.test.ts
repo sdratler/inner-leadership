@@ -1,4 +1,5 @@
-import { existsSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
 import { NextRequest } from "next/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { groupApplicationPublicAsset, groupApplicationReleasePath, proxy, publicStaticAsset } from "../../src/proxy.ts";
@@ -22,10 +23,53 @@ describe("public static perimeter", () => {
     for (const path of ["/fonts/other.ttf", "/fonts/private/Heebo-wght.ttf", "/fonts/../api/prospects", "/api/prospects"])
       expect(publicStaticAsset(path, "GET")).toBe(false);
   });
-  it("keeps the exact approved group images behind the group release and identity configuration",()=>{
+  it("keeps the exact approved group images behind the group release and identity configuration",async()=>{
     const key=(seed:string)=>Buffer.alloc(32,seed).toString("base64url"),base={NODE_ENV:"production",LS_APP_ORIGIN:"https://life-skills.example.invalid",LS_GROUP_APPLICATION_REAL_DATA_RELEASE:"true",LS_IDENTITY_ENABLED:"true",LS_IDENTITY_WORKSPACE_ID:"00000000-0000-4000-8000-000000000001",LS_IDENTITY_ACTIVE_KEY_ID:"v1",LS_IDENTITY_DATA_KEYS:JSON.stringify({v1:key("a")}),LS_IDENTITY_CSRF_KEY:key("b"),LS_IDENTITY_LOOKUP_KEY:key("c"),LS_IDENTITY_RATE_KEY:key("d")};
     for(const path of ["/groups/brand/life-skills-logo.png","/groups/private/skill-01.webp","/groups/private/skill-12.webp","/groups/private/private-hero-text-free-desktop.webp","/groups/private/private-hero-text-free-mobile.webp","/groups/people/founder-grass-group.webp","/groups/testimonials/l-bars-2024.png","/groups/sponsor/meir-bunny.png","/groups/projects/LS-PROJECT-01-group.jpg","/groups/projects/LS-PROJECT-09-wood-art.png"])expect(groupApplicationPublicAsset(path,"GET",base)).toBe(true);
     for(const path of ["/groups/private/skill-13.webp","/groups/private/private-hero-text-free-tablet.webp","/groups/testimonials/unknown.png","/groups/sponsor/unknown.png","/groups/people/unknown.webp","/groups/projects/manifest.json","/groups/projects/LS-PROJECT-09-wood-art.jpg","/groups/../api/private/people"])expect(groupApplicationPublicAsset(path,"GET",base)).toBe(false);
+    const skillImages={
+      reel:"/groups/academy/skills/golden_reel_on_a_sunlit_coastal_bridge.png",
+      hooks:"/groups/academy/skills/sunlit_fishing_tackle_by_the_sea.png",
+    };
+    for(const [name,value] of Object.entries({...base,LS_APP_MODE:"foundation_locked"}))vi.stubEnv(name,value);
+    for(const [key,file] of Object.entries(skillImages)){
+      const original=readFileSync(new URL(`../../public${file}`,import.meta.url));
+      for(const method of ["GET","HEAD"]){
+        expect(groupApplicationPublicAsset(file,method,base)).toBe(true);
+        for(const page of ["/en/florida","/he/florida/apply"]){
+          const response=proxy(new NextRequest(base.LS_APP_ORIGIN+page+"?academy-image="+key,{method}));
+          expect(response.status).toBe(200);
+          expect(response.headers.get("x-middleware-rewrite")).toBeNull();
+          expect(response.headers.get("location")).toBeNull();
+          expect(response.headers.get("content-type")).toBe("image/png");
+          expect(response.headers.get("content-length")).toBe(String(original.length));
+          if(method==="HEAD"){
+            expect(response.body).toBeNull();
+          }else{
+            const bytes=Buffer.from(await response.arrayBuffer());
+            expect(bytes.length).toBe(original.length);
+            expect(createHash("sha256").update(bytes).digest("hex")).toBe(createHash("sha256").update(original).digest("hex"));
+          }
+          expect(response.headers.get("content-security-policy")).toContain("img-src 'self' data:");
+        }
+      }
+      expect(groupApplicationPublicAsset(file,"POST",base)).toBe(false);
+      expect(groupApplicationPublicAsset(file,"GET",{...base,LS_GROUP_APPLICATION_REAL_DATA_RELEASE:"false"})).toBe(false);
+    }
+    const prefix=base.LS_APP_ORIGIN+"/en/florida?academy-image=";
+    for(const value of ["other","reel&academy-image=hooks","reel&extra=1","%2Fapi%2Fprivate","%72eel"]){
+      expect(proxy(new NextRequest(prefix+value)).status).toBe(404);
+    }
+    for(const method of ["POST","PUT","DELETE"]){
+      expect(proxy(new NextRequest(prefix+"reel",{method})).status).toBe(404);
+    }
+    expect(proxy(new NextRequest(prefix+"reel",{headers:{host:"other.example.invalid"}})).status).toBe(404);
+    expect(groupApplicationPublicAsset("/groups/academy/skills/unlisted.png","GET",base)).toBe(false);
+    vi.stubEnv("LS_GROUP_APPLICATION_REAL_DATA_RELEASE","false");
+    expect(proxy(new NextRequest(prefix+"reel")).headers.get("x-middleware-rewrite")).toBeNull();
+    vi.stubEnv("LS_GROUP_APPLICATION_REAL_DATA_RELEASE","true");
+    vi.stubEnv("LS_IDENTITY_ENABLED","false");
+    expect(proxy(new NextRequest(prefix+"hooks")).headers.get("x-middleware-rewrite")).toBeNull();
     expect(groupApplicationPublicAsset("/groups/private/skill-01.webp","POST",base)).toBe(false);
     expect(groupApplicationPublicAsset("/groups/private/skill-01.webp","GET",{...base,LS_GROUP_APPLICATION_REAL_DATA_RELEASE:"false"})).toBe(false);
   });
