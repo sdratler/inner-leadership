@@ -48,7 +48,7 @@ function normalize(session:Stripe.Checkout.Session,refunds:Stripe.ApiList<Stripe
  requireValue(refunds.object==='list'&&refunds.has_more===false&&refunds.data.length<=100&&new Set(refunds.data.map(r=>r.id)).size===refunds.data.length);
  let status:'pending'|'failed'|'paid',paidAt:string|null=null;
  const charge=pi.latest_charge===null?null:record(pi.latest_charge);
- if(charge){requireValue(charge.object==='charge'&&charge.livemode===false&&charge.currency==='usd'&&providerId(charge.payment_intent,'pi')===paymentIntentId&&charge.disputed===false);}
+ if(charge){requireValue(charge.object==='charge'&&charge.livemode===false&&charge.currency==='usd'&&providerId(charge.payment_intent,'pi')===paymentIntentId&&charge.disputed===false&&amount(charge.amount_captured)===received&&(received>0||charge.captured===false));}
  if(pi.status==='succeeded'){
   requireValue(session.payment_status==='paid'&&received===total&&charge&&charge.paid===true&&charge.captured===true&&charge.status==='succeeded'&&amount(charge.amount_captured)===received&&record(charge.payment_method_details).type==='card');
   const transaction=record(charge.balance_transaction);

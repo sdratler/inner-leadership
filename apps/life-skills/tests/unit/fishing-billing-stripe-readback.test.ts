@@ -108,4 +108,16 @@ describe('official SDK current payment readback, intercepted transport only',()=
   const refundFirst=await f.read(signed('refund.updated','re_SYNTHETIC')),paymentLater=await f.read(signed('payment_intent.succeeded','pi_SYNTHETIC'));
   expect(refundFirst.refunds).toEqual([{id:'re_SYNTHETIC',amountMinor:3000,state:'succeeded',occurredAt:at(captured+1000)}]);expect(paymentLater.refunds).toEqual(refundFirst.refunds);expect(paymentLater.paidAt).toBe(at(captured));
  });
+ it('terminal PI/Session labels cannot hide positive captured-charge principal',async()=>{
+  const f=setup();f.pi.status='canceled';f.pi.amount_received=0;f.session.payment_status='unpaid';f.session.status='expired';
+  await expect(f.read(signed('payment_intent.payment_failed','pi_SYNTHETIC'))).rejects.toMatchObject({code:'UNAVAILABLE'});
+ });
+ it('captured true with zero reported principal remains contradictory',async()=>{
+  const f=setup();f.pi.status='canceled';f.pi.amount_received=0;f.session.payment_status='unpaid';f.session.status='expired';f.charge.amount_captured=0;
+  await expect(f.read(signed('payment_intent.payment_failed','pi_SYNTHETIC'))).rejects.toMatchObject({code:'UNAVAILABLE'});
+ });
+ it('an uncaptured card authorization stays pending without inventing captured funds',async()=>{
+  const f=setup();f.pi.status='requires_capture';f.pi.amount_received=0;f.session.payment_status='unpaid';f.session.status='open';f.charge.amount_captured=0;f.charge.captured=false;
+  await expect(f.read(signed('payment_intent.processing','pi_SYNTHETIC'))).resolves.toMatchObject({status:'pending',receivedMinor:0,paidAt:null});
+ });
 });
