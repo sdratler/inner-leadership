@@ -47,6 +47,33 @@ CREATE TABLE ls_fishing_billing.stripe_events(
  account_id text NOT NULL,livemode boolean NOT NULL CHECK(livemode=false),event_id text NOT NULL,
  workspace_id uuid NOT NULL REFERENCES ls_identity.workspaces(id),body_digest text NOT NULL CHECK(body_digest~'^[a-f0-9]{64}$'),
  receipt_ciphertext text NOT NULL,received_at timestamptz NOT NULL,
- state text NOT NULL CHECK(state IN('pending','processed','review_required')),
+ state text NOT NULL CHECK(state IN('pending','processed','review_required')),processed_ciphertext text,
  PRIMARY KEY(account_id,livemode,event_id)
+);
+CREATE TABLE ls_fishing_billing.card_attempts(
+ workspace_id uuid NOT NULL,id uuid NOT NULL,quote_id uuid NOT NULL,
+ revision integer NOT NULL CHECK(revision>0),state text NOT NULL CHECK(state IN('prepared','unknown','open','pending','failed','expired','paid','stale','review_required')),
+ payload_ciphertext text NOT NULL,PRIMARY KEY(workspace_id,id),
+ FOREIGN KEY(workspace_id,quote_id) REFERENCES ls_fishing_billing.quotes(workspace_id,id)
+);
+CREATE TABLE ls_fishing_billing.card_settlements(
+ account_id text NOT NULL,livemode boolean NOT NULL CHECK(livemode=false),kind text NOT NULL CHECK(kind IN('payment','refund')),
+ transaction_id text NOT NULL,workspace_id uuid NOT NULL,quote_id uuid NOT NULL,attempt_id uuid NOT NULL,
+ receipt_id uuid NOT NULL,fact_ciphertext text NOT NULL,
+ PRIMARY KEY(account_id,livemode,kind,transaction_id),
+ FOREIGN KEY(workspace_id,quote_id) REFERENCES ls_fishing_billing.quotes(workspace_id,id),
+ FOREIGN KEY(workspace_id,attempt_id) REFERENCES ls_fishing_billing.card_attempts(workspace_id,id),
+ FOREIGN KEY(workspace_id,receipt_id) REFERENCES ls_fishing_billing.receipts(workspace_id,id)
+);
+CREATE TABLE ls_fishing_billing.card_attempt_requests(
+ workspace_id uuid NOT NULL,attempt_id uuid NOT NULL,quote_id uuid NOT NULL,payload_ciphertext text NOT NULL,
+ PRIMARY KEY(workspace_id,attempt_id),
+ FOREIGN KEY(workspace_id,attempt_id) REFERENCES ls_fishing_billing.card_attempts(workspace_id,id),
+ FOREIGN KEY(workspace_id,quote_id) REFERENCES ls_fishing_billing.quotes(workspace_id,id)
+);
+CREATE TABLE ls_fishing_billing.card_exceptions(
+ workspace_id uuid NOT NULL,id uuid NOT NULL,quote_id uuid NOT NULL,event_id text NOT NULL,
+ state text NOT NULL CHECK(state IN('open','resolved')),payload_ciphertext text NOT NULL,
+ PRIMARY KEY(workspace_id,id),UNIQUE(workspace_id,quote_id,event_id),
+ FOREIGN KEY(workspace_id,quote_id) REFERENCES ls_fishing_billing.quotes(workspace_id,id)
 );
