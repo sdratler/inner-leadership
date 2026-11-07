@@ -134,6 +134,11 @@ export const guestOwnerSnapshotV3Schema=z.object({quote:guestFamilyOfferSchema,b
   const original=q.lines.find(l=>l.id===line.lineId);
   if(!original||original.childId!==line.childId||JSON.stringify(original.period)!==JSON.stringify(line.period)||original.groupId!==line.groupId||original.amountMinor!==line.quotedMinor||original.dueAt!==line.dueAt)fail();
  }
+ const lineIds=new Set(q.lines.map(l=>l.id)),receiptIds=new Set(b.receipts.map(r=>r.id));
+ if(receiptIds.size!==b.receipts.length||s.receiptId!==null&&!receiptIds.has(s.receiptId))fail();
+ for(const receipt of b.receipts){
+  if(receipt.quoteId!==q.id||receipt.familyId!==q.familyId||receipt.allocations.some(a=>!lineIds.has(a.lineId))||receipt.originalReceiptId!==null&&!receiptIds.has(receipt.originalReceiptId))fail();
+ }
 });
 export type GuestBalanceV3=z.infer<typeof guestBalanceV3Schema>;
 export type GuestOwnerSnapshotV3=z.infer<typeof guestOwnerSnapshotV3Schema>;

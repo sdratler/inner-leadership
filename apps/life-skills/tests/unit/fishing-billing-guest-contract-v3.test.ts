@@ -1,8 +1,8 @@
 import {describe,it,expect,vi} from 'vitest';
 vi.mock('server-only',()=>({}));
-import {syntheticDraft,syntheticId,syntheticGuardian,syntheticAccepted} from '../../src/features/fishing-billing/fixtures.ts';
+import {syntheticDraft,syntheticId,syntheticGuardian,syntheticAccepted,syntheticReceipt} from '../../src/features/fishing-billing/fixtures.ts';
 import {issueFamilyOffer} from '../../src/features/fishing-billing/domain.ts';
-import {projectBalanceV2} from '../../src/features/fishing-billing/contracts-v2.ts';
+import {projectBalanceV2,dateCashReceiptSchema} from '../../src/features/fishing-billing/contracts-v2.ts';
 import {familyOfferSchema,BILLING_DTO_VERSION} from '../../src/features/fishing-billing/contracts.ts';
 import {BILLING_GUEST_V3,guestFinancialBundleSchema,guestCompletionBundleSchema,guestFinancialAcceptanceSchema,guestFamilyOfferSchema,
  guestGrantRecordSchema,guestAcceptCommandSchema,guestCompletionCommandSchema,guestAcceptanceReceiptSchema,guestCompletionReceiptSchema,guestPayableBasisSchema,guestOwnerSnapshotV3Schema} from '../../src/lib/fishing-billing-guest-contract-v3.ts';
@@ -128,5 +128,26 @@ describe('explicit guest successor contracts and immutable material integrity',(
   const f=setup(),balance={...projectBalanceV2(syntheticAccepted(),[]),version:BILLING_GUEST_V3},current={quote:f.guest,balance,receiptId:null};
   expect(guestOwnerSnapshotV3Schema.safeParse({...current,balance:{...balance,revision:2}}).success).toBe(false);
   const tampered=structuredClone(current);tampered.balance.lines[0]!.childId=syntheticId(999);expect(guestOwnerSnapshotV3Schema.safeParse(tampered).success).toBe(false);
+ });
+ it('retains legitimate mixed historical instant and date-only cash receipts in a joined guest read',()=>{
+  const f=setup(),instant={...syntheticReceipt('cash',10,10000,970),receivedAt:'2035-01-02T15:02:00Z',recordedAt:'2035-01-02T15:03:00Z'};
+  const {receivedAt,...dateFields}=syntheticReceipt('cash',11,25000,971);void receivedAt;
+  const date=dateCashReceiptSchema.parse({...dateFields,receivedPrecision:'date',receivedDate:'2035-01-02',timeZone:'America/New_York',recordedAt:'2035-01-03T15:03:00Z'});
+  const balance={...projectBalanceV2(syntheticAccepted(),[instant,date]),version:BILLING_GUEST_V3};
+  expect(guestOwnerSnapshotV3Schema.parse({quote:f.guest,balance,receiptId:instant.id}).balance.receipts).toEqual([instant,date]);
+ });
+ it.each(['quoteId','familyId'] as const)('rejects receipt %s crossing the current private snapshot',key=>{
+  const f=setup(),receipt=syntheticReceipt('cash',10,10000,970),balance={...projectBalanceV2(syntheticAccepted(),[receipt]),version:BILLING_GUEST_V3};
+  expect(guestOwnerSnapshotV3Schema.safeParse({quote:f.guest,balance:{...balance,receipts:[{...receipt,[key]:syntheticId(999)}]},receiptId:null}).success).toBe(false);
+ });
+ it('rejects an unknown receipt allocation line without duplicating ledger arithmetic',()=>{
+  const f=setup(),receipt=syntheticReceipt('cash',10,10000,970),balance={...projectBalanceV2(syntheticAccepted(),[receipt]),version:BILLING_GUEST_V3};
+  expect(guestOwnerSnapshotV3Schema.safeParse({quote:f.guest,balance:{...balance,receipts:[{...receipt,allocations:[{lineId:syntheticId(999),amountMinor:10000}]}]},receiptId:null}).success).toBe(false);
+ });
+ it('rejects an unjoined current receipt reference or original-correction reference',()=>{
+  const f=setup(),receipt=syntheticReceipt('cash',10,10000,970),balance={...projectBalanceV2(syntheticAccepted(),[receipt]),version:BILLING_GUEST_V3};
+  expect(guestOwnerSnapshotV3Schema.safeParse({quote:f.guest,balance,receiptId:syntheticId(999)}).success).toBe(false);
+  const correction={...receipt,id:syntheticId(972),operationId:syntheticId(973),kind:'cash_reversal' as const,originalReceiptId:syntheticId(999),reason:'SYNTHETIC CORRECTION'};
+  expect(guestOwnerSnapshotV3Schema.safeParse({quote:f.guest,balance:{...balance,receipts:[receipt,correction]},receiptId:null}).success).toBe(false);
  });
 });
