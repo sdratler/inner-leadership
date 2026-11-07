@@ -238,6 +238,18 @@ it('rolls back UNKNOWN and existing-outbox writes together when reservation fail
  expect((await db.query('SELECT * FROM synthetic_billing.existing_outbox')).rows).toHaveLength(0);
  outboxFails=false;expect((await serviceStore().reserveReminderServiceBatch({limit:1})).results[0]!.state).toBe('reserved');
 });
+it('fails before any later channel or sequence reservation when an original UNKNOWN audience index is tampered',async()=>{
+ const f=await planned();await store().queueReminders(owner,{quoteId:f.quote.id,policy,guardianId:parent.id,channel:'whatsapp'});
+ const first=await serviceStore().reserveReminderServiceBatch({limit:1}),reserved=first.results[0]!;if(reserved.state!=='reserved')throw new Error('Expected original UNKNOWN');
+ const prior=(await db.query<{payload_ciphertext:string}>('SELECT payload_ciphertext FROM ls_fishing_billing.reminders WHERE id=$1',[reserved.intentId])).rows[0]!.payload_ciphertext;
+ await db.query('UPDATE ls_fishing_billing.reminders SET audience_key=$2 WHERE id=$1',[reserved.intentId,'f'.repeat(64)]);
+ const later=serviceStore(serviceConfiguration,outbox,new Date('2035-01-07T15:00:00Z'));
+ await expect(later.reserveReminderServiceBatch({limit:50})).rejects.toThrow('UNAVAILABLE');
+ expect(serviceCalls).toBe(1);expect((await db.query('SELECT * FROM synthetic_billing.existing_outbox')).rows).toHaveLength(1);
+ const retained=(await db.query<{state:string;payload_ciphertext:string;audience_key:string}>('SELECT state,payload_ciphertext,audience_key FROM ls_fishing_billing.reminders WHERE id=$1',[reserved.intentId])).rows[0]!;
+ expect(retained).toMatchObject({state:'unknown',payload_ciphertext:prior,audience_key:'f'.repeat(64)});
+ expect((await db.query("SELECT id FROM ls_fishing_billing.reminders WHERE quote_id=$1 AND state='queued'",[f.quote.id])).rows).toHaveLength(3);
+});
 it('accepts a late original-dispatch receipt after paid/cancel/pause/consent/window changes without resending',async()=>{
  const f=await planned(),r=await serviceStore().reserveReminderServiceBatch({limit:1}),reserved=r.results[0]!;
  if(reserved.state!=='reserved')throw new Error('Expected reserved fixture');

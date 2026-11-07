@@ -529,9 +529,11 @@ export class FishingBillingStore{
     const intent=this.decodeIntent(c,row),q=await this.quote(c,intent.quoteId,true);
     await configuration.authority.authorize(c,configuration.binding,'reserve',scope(q),intent);
     requireBilling(intent.familyId===q.familyId,'UNAVAILABLE');
-    const unknown=await c.tx.query<IntentRow>(iSelect+" WHERE workspace_id=$1 AND quote_id=$2 AND audience_key=$3 AND state='unknown' LIMIT 1001 FOR UPDATE",[c.workspaceId,q.id,row.audienceKey]);
-    requireBilling(unknown.length<=1000,'UNAVAILABLE');
-    if(unknown.some(item=>this.decodeIntent(c,item).guardianId===intent.guardianId)){
+    // The indexed SQL exclusion is only a prefilter. Authenticate the entire
+    // bounded quote set before comparing guardian/state; a modified plaintext
+    // audience key must never hide an original unresolved dispatch.
+    const authenticated=await this.currentIntents(c,q);
+    if(authenticated.some(item=>item.state==='unknown'&&item.guardianId===intent.guardianId)){
      results.push({intentId:intent.id,state:'blocked_unknown',reason:'unresolved_dispatch'});continue;
     }
     const policy=reminderPolicySchema.parse(JSON.parse(unseal(row.policyCiphertext,aad('reminder_policy',c.workspaceId,intent.id),this.ring)));
