@@ -52,10 +52,10 @@ beforeEach(async()=>{
 });
 async function row(){return (await query<{ciphertext:string;state:string;purpose:string;providerId:string|null}>('SELECT payload_ciphertext AS ciphertext,state,purpose,provider_id AS "providerId" FROM ls_service_interest.inquiry_email_outbox WHERE id=$1',[dispatch]))[0]!;}
 async function sent(f:ReturnType<typeof setup>,change:Record<string,unknown>={}){
- const saved=await row(),reservedAt='2035-01-06T14:59:00.000Z',acceptedAt='2035-01-06T14:59:01.000Z';
+ const saved=await row(),reservedAt=at.toISOString(),acceptedAt=at.toISOString();
  const receipt=monthlyReminderProviderReceiptSchema.parse({version:'JLFA-MONTHLY-REMINDER-SEND-v1',workspaceId:workspace,outboxBindingId:binding.outboxBindingId,intentId:f.payload.intent.id,dispatchId:dispatch,payloadSha256:createHash('sha256').update(saved.ciphertext).digest('hex'),providerId:'SYNTHETIC_PROVIDER_ID',reservedAt,acceptedAt,...change});
  const encrypted=seal(JSON.stringify(receipt),'ls_service_interest/monthly_payment_reminder/v1/'+workspace+'/'+dispatch+'/provider',ring);
- await query("UPDATE ls_service_interest.inquiry_email_outbox SET state='sent',reserved_at=$2,completed_at=$3,provider_id=$4,monthly_receipt_ciphertext=$5 WHERE id=$1",[dispatch,new Date(reservedAt),new Date(acceptedAt),'SYNTHETIC_PROVIDER_ID',encrypted]);
+ await query("UPDATE ls_service_interest.inquiry_email_outbox SET state='sent',reserved_at=$2,completed_at=$3,provider_id=$4,monthly_receipt_ciphertext=$5 WHERE id=$1",[dispatch,new Date(receipt.reservedAt),new Date(receipt.acceptedAt),'SYNTHETIC_PROVIDER_ID',encrypted]);
 }
 describe('existing outbox monthly reminder bridge, synthetic SQL only',()=>{
  it('stores one encrypted sibling message with the new purpose and preserves historical acknowledgment',async()=>{
@@ -64,7 +64,7 @@ describe('existing outbox monthly reminder bridge, synthetic SQL only',()=>{
   expect((await query<{ciphertext:string}>('SELECT payload_ciphertext AS ciphertext FROM ls_service_interest.inquiry_email_outbox WHERE id=$1',[oldId]))[0]!.ciphertext).toBe('HISTORICAL_UNCHANGED');expect(f.reservation.mock.calls[0]![1].kind).toBe('service');
  });
  it('replays the exact reservation without resetting UNKNOWN or replacing ciphertext',async()=>{
-  const f=setup();await f.reserve();await query("UPDATE ls_service_interest.inquiry_email_outbox SET state='unknown',reserved_at=$2 WHERE id=$1",[dispatch,at]);const before=await row();await f.reserve();expect(await row()).toEqual(before);expect((await query('SELECT id FROM ls_service_interest.inquiry_email_outbox')).length).toBe(2);
+  const f=setup();await f.reserve();await query("UPDATE ls_service_interest.inquiry_email_outbox SET state='unknown',reserved_at=$2 WHERE id=$1",[dispatch,at]);const before=await row();await transaction(c=>f.outbox.reserveService({...c,now:new Date(at.valueOf()+60000)},binding,f.payload));expect(await row()).toEqual(before);expect((await query('SELECT id FROM ls_service_interest.inquiry_email_outbox')).length).toBe(2);
  });
  it('rejects same dispatch with changed approved content without changing original row',async()=>{
   const f=setup();await f.reserve();const before=await row();f.mail.text='Different synthetic content';await expect(f.reserve()).rejects.toMatchObject({code:'UNAVAILABLE'});expect(await row()).toEqual(before);
@@ -101,6 +101,12 @@ describe('existing outbox monthly reminder bridge, synthetic SQL only',()=>{
  });
  it('rejects plaintext provider metadata tampering rather than claiming acceptance',async()=>{
   const f=setup();await f.reserve();await sent(f);await query("UPDATE ls_service_interest.inquiry_email_outbox SET provider_id='OTHER' WHERE id=$1",[dispatch]);await expect(f.read()).rejects.toMatchObject({code:'UNAVAILABLE'});
+ });
+ it('withholds a sealed acceptance whose reservation predates the original payload',async()=>{
+  const f=setup();await f.reserve();await sent(f,{reservedAt:'2035-01-06T14:59:00.000Z',acceptedAt:'2035-01-06T14:59:01.000Z'});await expect(f.read()).rejects.toMatchObject({code:'UNAVAILABLE'});
+ });
+ it('authenticates created_at rather than trusting a changed plaintext chronology index',async()=>{
+  const f=setup();await f.reserve();await sent(f);await query('UPDATE ls_service_interest.inquiry_email_outbox SET created_at=$2 WHERE id=$1',[dispatch,new Date(at.valueOf()-60000)]);await expect(f.read()).rejects.toMatchObject({code:'UNAVAILABLE'});
  });
  it('rejects a receipt for a foreign original payload or binding',async()=>{
   const f=setup();await f.reserve();await sent(f,{payloadSha256:'a'.repeat(64)});await expect(f.read()).rejects.toMatchObject({code:'UNAVAILABLE'});await sent(f,{outboxBindingId:'OTHER'});await expect(f.read()).rejects.toMatchObject({code:'UNAVAILABLE'});

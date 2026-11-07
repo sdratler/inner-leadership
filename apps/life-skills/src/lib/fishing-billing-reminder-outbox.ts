@@ -34,7 +34,7 @@ export interface BillingReminderOutboxAuthority{
 const payloadSchema=z.object({intent:reminderIntentSchema,amount:z.object({
  currency:z.literal('USD'),quoteId:billingId,familyId:billingId,revision:z.number().int().positive(),remainingMinor:z.number().int().positive(),lines:z.array(balanceLineSchema).min(1).max(10),
 }).strict()}).strict();
-const storedSchema=z.object({version:z.literal(version),workspaceId:billingId,outboxBindingId:z.string().min(1).max(160),
+const storedSchema=z.object({version:z.literal(version),workspaceId:billingId,outboxBindingId:z.string().min(1).max(160),createdAt:z.iso.datetime(),
  dispatchId:billingId,intentId:billingId,payload:payloadSchema,mail:mailSchema,
 }).strict();
 /** Shape for the separately admitted worker's actual send receipt. Schema/data
@@ -45,8 +45,8 @@ export const monthlyReminderProviderReceiptSchema=z.object({version:z.literal('J
  payloadSha256:z.string().regex(/^[a-f0-9]{64}$/),providerId:z.string().regex(/^[A-Za-z0-9_-]{1,256}$/),
  reservedAt:z.iso.datetime(),acceptedAt:z.iso.datetime(),
 }).strict();
-type Row={id:string;reference:string;ciphertext:string;state:'queued'|'unknown'|'sent'|'canceled';reservedAt:Date|null;completedAt:Date|null;providerId:string|null;messageKey:string;founderId:string|null;providerReceiptCiphertext:string|null};
-const select='SELECT id,application_id AS reference,payload_ciphertext AS ciphertext,state,reserved_at AS "reservedAt",completed_at AS "completedAt",provider_id AS "providerId",message_key AS "messageKey",founder_id AS "founderId",monthly_receipt_ciphertext AS "providerReceiptCiphertext" FROM ls_service_interest.inquiry_email_outbox';
+type Row={id:string;reference:string;ciphertext:string;state:'queued'|'unknown'|'sent'|'canceled';createdAt:Date;reservedAt:Date|null;completedAt:Date|null;providerId:string|null;messageKey:string;founderId:string|null;providerReceiptCiphertext:string|null};
+const select='SELECT id,application_id AS reference,payload_ciphertext AS ciphertext,state,created_at AS "createdAt",reserved_at AS "reservedAt",completed_at AS "completedAt",provider_id AS "providerId",message_key AS "messageKey",founder_id AS "founderId",monthly_receipt_ciphertext AS "providerReceiptCiphertext" FROM ls_service_interest.inquiry_email_outbox';
 const aad=(workspace:string,id:string)=>'ls_service_interest/monthly_payment_reminder/v1/'+workspace+'/'+id;
 const unavailable=()=>new AppError('UNAVAILABLE');
 const canonical=(v:unknown):string=>v===null||typeof v!=='object'?JSON.stringify(v):Array.isArray(v)?'['+v.map(canonical).join(',')+']':'{'+Object.keys(v).sort().map(k=>JSON.stringify(k)+':'+canonical((v as Record<string,unknown>)[k])).join(',')+'}';
@@ -66,7 +66,7 @@ export function createFishingBillingReminderOutbox(deps:{workspaceId:WorkspaceId
  function decode(row:Row){
   try{
    const value=storedSchema.parse(JSON.parse(unseal(row.ciphertext,aad(workspace,row.id),ring)));
-   if(value.workspaceId!==workspace||value.dispatchId!==row.id||value.intentId!==value.payload.intent.id||value.payload.intent.dispatchId!==row.id||value.mail.reference!==row.reference||value.outboxBindingId!==bindingId||row.founderId!==null||row.messageKey!=='monthly:'+row.id)throw unavailable();
+   if(value.workspaceId!==workspace||value.dispatchId!==row.id||value.intentId!==value.payload.intent.id||value.payload.intent.dispatchId!==row.id||value.mail.reference!==row.reference||value.outboxBindingId!==bindingId||row.founderId!==null||row.messageKey!=='monthly:'+row.id||!row.createdAt||!Number.isFinite(row.createdAt.valueOf())||row.createdAt.toISOString()!==value.createdAt)throw unavailable();
    return value;
   }catch{throw unavailable();}
  }
@@ -76,12 +76,13 @@ export function createFishingBillingReminderOutbox(deps:{workspaceId:WorkspaceId
    if(i.channel!=='email'||i.state!=='unknown'||!i.dispatchId||i.providerId!==null||i.quoteId!==a.quoteId||i.familyId!==a.familyId||a.lines.some(l=>l.remainingMinor<=0||l.dueAt===null||Date.parse(l.dueAt)!==Date.parse(i.dueAt))||new Set(a.lines.map(l=>l.lineId)).size!==a.lines.length||a.lines.reduce((n,l)=>n+l.remainingMinor,0)!==a.remainingMinor)throw unavailable();
    const mail=mailSchema.parse(await authority.reservation(c,principal,payload));
    if(mail.quoteId!==i.quoteId||mail.familyId!==i.familyId||mail.guardianId!==i.guardianId||mail.locale!==i.locale)throw unavailable();
-   const value=storedSchema.parse({version,workspaceId:workspace,outboxBindingId:bindingId,dispatchId:i.dispatchId,intentId:i.id,payload,mail});
+   const value=storedSchema.parse({version,workspaceId:workspace,outboxBindingId:bindingId,createdAt:c.now.toISOString(),dispatchId:i.dispatchId,intentId:i.id,payload,mail});
    const inserted=await c.tx.query('INSERT INTO ls_service_interest.inquiry_email_outbox(workspace_id,id,application_id,purpose,payload_ciphertext,state,created_at,message_key) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(workspace_id,id) DO NOTHING RETURNING id',
     [workspace,i.dispatchId,mail.reference,BILLING_REMINDER_OUTBOX_PURPOSE,seal(JSON.stringify(value),aad(workspace,i.dispatchId),ring),'queued',c.now,'monthly:'+i.dispatchId]);
    if(inserted.length===1)return;
    const old=await one<Row>(c.tx,select+' WHERE workspace_id=$1 AND id=$2 AND purpose=$3 FOR UPDATE',[workspace,i.dispatchId,BILLING_REMINDER_OUTBOX_PURPOSE]);
-   if(!old||canonical(decode(old))!==canonical(value))throw unavailable();
+   if(!old)throw unavailable();const original=decode(old);
+   if(old.createdAt>c.now||canonical(original)!==canonical({...value,createdAt:original.createdAt}))throw unavailable();
    // Matching reservation is a read-only replay, including UNKNOWN/SENT rows.
    // Never reset state, reserved time, provider receipt or original ciphertext.
   }catch{throw unavailable();}
@@ -104,7 +105,7 @@ export function createFishingBillingReminderOutbox(deps:{workspaceId:WorkspaceId
     // Existing sent means provider acceptance, NOT inbox receipt/delivery.
     // Canceled/unknown/queued does not establish an actual failed send either.
     if(row.state!=='sent')return null;
-    if(!row.reservedAt||!row.completedAt||!row.providerId||!Number.isFinite(row.reservedAt.valueOf())||!Number.isFinite(row.completedAt.valueOf())||row.completedAt<row.reservedAt||row.completedAt>c.now)throw unavailable();
+    if(!row.reservedAt||!row.completedAt||!row.providerId||!Number.isFinite(row.reservedAt.valueOf())||!Number.isFinite(row.completedAt.valueOf())||row.reservedAt<row.createdAt||row.completedAt<row.reservedAt||row.completedAt>c.now)throw unavailable();
     if(!row.providerReceiptCiphertext)throw unavailable();
     const receipt=monthlyReminderProviderReceiptSchema.parse(JSON.parse(unseal(row.providerReceiptCiphertext,aad(workspace,row.id)+'/provider',ring)));
     if(receipt.workspaceId!==workspace||receipt.outboxBindingId!==bindingId||receipt.intentId!==lookup.intentId||receipt.dispatchId!==row.id||receipt.providerId!==row.providerId||receipt.reservedAt!==row.reservedAt.toISOString()||receipt.acceptedAt!==row.completedAt.toISOString()||receipt.payloadSha256!==createHash('sha256').update(row.ciphertext).digest('hex'))throw unavailable();
