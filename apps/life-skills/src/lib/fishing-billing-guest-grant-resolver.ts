@@ -62,6 +62,13 @@ type Facts=Readonly<{grant:GuestGrantRecord;command:Command;commandDigest:string
 function freeze<T>(value:T):T{if(value&&typeof value==='object'){for(const item of Object.values(value))freeze(item);Object.freeze(value);}return value;}
 function canonical(v:unknown):string{return v===null||typeof v!=='object'?JSON.stringify(v):Array.isArray(v)?'['+v.map(canonical).join(',')+']':'{'+Object.keys(v).sort().map(k=>JSON.stringify(k)+':'+canonical((v as Record<string,unknown>)[k])).join(',')+'}';}
 const unavailable=()=>new AppError('UNAVAILABLE');
+/** One canonical recipe for fresh acceptance and original-evidence readback.
+ * The native caller retains these exact server-resolved texts in encrypted
+ * evidence; this hash alone proves neither display nor identity nor approval. */
+export function guestFinancialStatementSha256(raw:unknown):string{
+ const p=guestPresentationEvidenceSchema.parse(raw);if(p.action!=='accept_financial_offer')throw unavailable();
+ return createHash('sha256').update(canonical({locale:p.locale,...p.affirmation})).digest('hex');
+}
 
 /** Unmounted, actor-free grant resolution only. No owner/parent session is
  * fabricated. No issue/consume/revoke, acceptance/obligation/journal write,
@@ -111,7 +118,7 @@ export class FishingBillingGuestGrantResolver{
    // Native persistence must retain presentation alongside the submitted name
    // in its encrypted evidence record. Its real record ID is privateEvidenceId;
    // recipient binding is not silently relabelled as assurance evidence.
-   const statementSha256=presentation?.action==='accept_financial_offer'?createHash('sha256').update(canonical({locale:presentation.locale,...presentation.affirmation})).digest('hex'):null;
+   const statementSha256=presentation?.action==='accept_financial_offer'?guestFinancialStatementSha256(presentation):null;
    const facts=freeze({grant:g,command,commandDigest,kind,originalReceiptId:lifecycle.use?.receiptId??null,currentEvidence,presentation,statementSha256}),capability=Object.freeze({}) as ResolvedBillingGuestGrant;
    this.capabilities.set(capability,{context,tx,facts,lifecycle:freeze(lifecycle)});return capability;
   }catch{throw unavailable();}

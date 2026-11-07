@@ -10,7 +10,7 @@ import {syntheticId,syntheticDraft} from '../../src/features/fishing-billing/fix
 import {issueFamilyOffer} from '../../src/features/fishing-billing/domain.ts';
 import {BILLING_GUEST_V3} from '../../src/lib/fishing-billing-guest-contract-v3.ts';
 import {bindGuestIssuedMaterial,bindGuestDisplayBundle} from '../../src/lib/fishing-billing-guest-material-v3.ts';
-import {FishingBillingGuestGrantResolver,guestGrantLifecycleSchema,type BillingGuestGrantAuthority,type ResolvedBillingGuestGrant} from '../../src/lib/fishing-billing-guest-grant-resolver.ts';
+import {FishingBillingGuestGrantResolver,guestGrantLifecycleSchema,guestFinancialStatementSha256,type BillingGuestGrantAuthority,type ResolvedBillingGuestGrant} from '../../src/lib/fishing-billing-guest-grant-resolver.ts';
 
 // Actual resolver/AEAD/HMAC/opaque capability, synthetic SQL/authority/clock.
 // No native DB, schema installation, legal admission, browser or provider.
@@ -125,8 +125,16 @@ describe('native guest grant resolution, unmounted and no write effects',()=>{
   expect(facts.presentation).toEqual(f.presentation);expect(Object.isFrozen(facts.presentation)).toBe(true);expect(Object.isFrozen(facts.currentEvidence)).toBe(true);
   // Canonical exact text, including whitespace, comes from the server evidence.
   expect(facts.statementSha256).toBe(createHash('sha256').update(JSON.stringify({financialTermsText:f.presentation.affirmation.financialTermsText,guardianAuthorityText:f.presentation.affirmation.guardianAuthorityText,locale:'he',version:'SYNTHETIC-STATEMENT-v1'})).digest('hex'));
+  expect(guestFinancialStatementSha256(facts.presentation)).toBe(facts.statementSha256);
   f.presentation.affirmation.financialTermsText+=' CHANGED';expect(facts.presentation).not.toEqual(f.presentation);
   await expect(f.resolver.current(f.context,cap,'accept_financial_offer')).rejects.toMatchObject({code:'UNAVAILABLE'});
+ });
+ it('uses the same financial statement hash for original evidence and denies a completion purpose',()=>{
+  const f=setup(),original=guestFinancialStatementSha256(f.presentation);
+  expect(guestFinancialStatementSha256(JSON.parse(JSON.stringify(f.presentation)))).toBe(original);
+  f.presentation.affirmation.financialTermsText+=' ';expect(guestFinancialStatementSha256(f.presentation)).not.toBe(original);
+  const {affirmation,...scope}=f.presentation;void affirmation;
+  expect(()=>guestFinancialStatementSha256({...scope,action:'submit_private_completion'})).toThrow();
  });
  it.each(['workspaceId','familyId','quoteId','grantId','recipientBindingEvidenceId'] as const)('denies valid-looking current evidence for another %s',async field=>{
   const f=setup();f.authority.current.mockResolvedValue({...f.currentEvidence,[field]:syntheticId(999)});await expect(f.resolve()).rejects.toMatchObject({code:'UNAVAILABLE'});expect(f.authority.display).not.toHaveBeenCalled();
