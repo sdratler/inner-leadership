@@ -378,3 +378,13 @@ it('owner-transport bounds response bytes and does not accept an oversized reply
  p.transport.mockImplementationOnce(async()=>new Response(new ReadableStream({start(c){c.enqueue(new Uint8Array(OWNER_RESPONSE_MAX_BYTES+1));},cancel(){cancelled=true;}}),{headers:{'content-type':'application/json'}}));
  expect(await p.client.recordCashDate(cashDate(q))).toEqual({kind:'unknown'});expect(cancelled).toBe(true);expect(p.transport).toHaveBeenCalledOnce();expect(p.ports.recordCashDate).not.toHaveBeenCalled();
 });
+it.each(['confirmed','conflict'] as const)('owner-transport never regresses the submitted revision on a %s reply',async state=>{
+ const f=await nativeAccepted(),q=await store().readQuote(owner,f.command.id),cmd=cashDate(q),receipt=await store().recordCashDate(owner,cmd),current=await store().readSnapshot(owner,q.id),p=ownerPipeline(q);
+ const command={...cmd,expectedVersion:state==='confirmed'?receipt.entityVersion:receipt.entityVersion+1};
+ p.transport.mockImplementationOnce(async()=>state==='confirmed'?Response.json({ok:true,data:billingOwnerReadV3Schema.parse({version:OWNER_MONEY_V3,state:'confirmed',receipt,current}),requestId:randomUUID()}):Response.json({ok:false,error:{code:'CONFLICT'},requestId:randomUUID()},{status:409}));
+ expect((await p.client.recordCashDate(command)).kind).toBe('unknown');expect(p.ports.recordCashDate).not.toHaveBeenCalled();expect(p.transport).toHaveBeenCalledTimes(state==='confirmed'?1:2);expect((await db.query('SELECT id FROM ls_fishing_billing.receipts WHERE quote_id=$1',[q.id])).rows).toHaveLength(1);
+});
+it('owner-transport HTTP also rejects an original receipt below the submitted command revision',async()=>{
+ const f=await nativeAccepted(),q=await store().readQuote(owner,f.command.id),cmd=cashDate(q),receipt=await store().recordCashDate(owner,cmd),p=ownerPipeline(q);p.ports.recordCashDate.mockResolvedValueOnce(receipt);
+ const r=await fishingBillingOwnerHttpV3(ownerRequest('',{action:'cash_date',command:{...cmd,expectedVersion:receipt.entityVersion}}),p.load);expect(r.status).toBe(503);expect(await r.json()).toMatchObject({ok:false,error:{code:'UNAVAILABLE'}});expect(p.ports.readSnapshot).not.toHaveBeenCalled();expect((await db.query('SELECT id FROM ls_fishing_billing.receipts WHERE quote_id=$1',[q.id])).rows).toHaveLength(1);
+});

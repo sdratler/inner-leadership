@@ -76,7 +76,7 @@ export async function fishingBillingOwnerHttpV3(request:Request,load:()=>Promise
    const found=input.action==='cash_date'?await d.store.recordCashDate(actor,input.command):
     input.action==='reverse_cash'?await d.store.reverseCash(actor,input.command):await d.store.setState(actor,input.command);
    const receipt=ownerMoneyReceiptV3Schema.parse(found);
-   if(receipt.operationId!==input.command.operationId||receipt.action!==input.action||receipt.entityId!==input.command.quoteId||receipt.result.quote.id!==input.command.quoteId||receipt.result.quote.workspaceId!==actor.workspaceId)throw new AppError('UNAVAILABLE');
+   if(receipt.operationId!==input.command.operationId||receipt.action!==input.action||receipt.entityVersion!==input.command.expectedVersion+1||receipt.entityId!==input.command.quoteId||receipt.result.quote.id!==input.command.quoteId||receipt.result.quote.workspaceId!==actor.workspaceId)throw new AppError('UNAVAILABLE');
    // Even a replay returns its original receipt. Refresh now; failure here is
    // uncertain to the caller, never a claim that the mutation was rolled back.
    const current=await currentAfterReceipt(d,actor,receipt);

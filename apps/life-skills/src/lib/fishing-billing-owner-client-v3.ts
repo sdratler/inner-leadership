@@ -35,9 +35,9 @@ export function createFishingBillingOwnerClientV3(options:Options){
    b.quoteId!==q.id||b.familyId!==q.familyId||b.revision!==q.revision||q.revision<minimumVersion)throw unavailable();
   return data;
  }
- function confirmed(data:Extract<z.infer<typeof billingOwnerReadV3Schema>,{state:'confirmed'}>,operationId:string,action?:BillingOwnerCommandV3['action']){
+ function confirmed(data:Extract<z.infer<typeof billingOwnerReadV3Schema>,{state:'confirmed'}>,operationId:string,action?:BillingOwnerCommandV3['action'],expectedVersion?:number){
   const receipt=data.receipt,q=receipt.result.quote,b=receipt.result.balance;
-  if(receipt.operationId!==operationId||action!==undefined&&receipt.action!==action||receipt.entityId!==scope.quoteId||q.id!==scope.quoteId||
+  if(receipt.operationId!==operationId||action!==undefined&&receipt.action!==action||expectedVersion!==undefined&&receipt.entityVersion!==expectedVersion+1||receipt.entityId!==scope.quoteId||q.id!==scope.quoteId||
    q.familyId!==scope.familyId||q.workspaceId!==scope.workspaceId||receipt.entityVersion!==q.revision||
    b.quoteId!==q.id||b.familyId!==q.familyId||b.revision!==q.revision)throw unavailable();
   return {receipt,current:scoped(data.current,receipt.entityVersion)};
@@ -95,12 +95,12 @@ export function createFishingBillingOwnerClientV3(options:Options){
   if(command.command.quoteId!==scope.quoteId)return {kind:'rejected',code:'FORBIDDEN'};
   try{
    const r=await exchange(null,null,command),ok=success.safeParse(r.body);
-   if(r.status===200&&ok.success&&ok.data.data.state==='confirmed')return {kind:'confirmed',...confirmed(ok.data.data,command.command.operationId,command.action)};
+   if(r.status===200&&ok.success&&ok.data.data.state==='confirmed')return {kind:'confirmed',...confirmed(ok.data.data,command.command.operationId,command.action,command.command.expectedVersion)};
    const error=failure.safeParse(r.body);
    if(!error.success)return {kind:'unknown'};
    if(r.status===400&&error.data.error.code==='INVALID_REQUEST')return {kind:'rejected',code:'INVALID_REQUEST'};
    if((r.status===401&&error.data.error.code==='UNAUTHENTICATED')||(r.status===403&&error.data.error.code==='FORBIDDEN'))return {kind:'rejected',code:'FORBIDDEN'};
-   if(r.status===409&&error.data.error.code==='CONFLICT')return {kind:'conflict',current:await readBalance(scope.quoteId)};
+   if(r.status===409&&error.data.error.code==='CONFLICT')return {kind:'conflict',current:scoped(await readBalance(scope.quoteId),command.command.expectedVersion)};
    return {kind:'unknown'};
   }catch{return {kind:'unknown'};}
  }
