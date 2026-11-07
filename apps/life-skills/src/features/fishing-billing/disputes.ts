@@ -111,6 +111,8 @@ export async function planDisputeReconciliation(input:PlanInput,authority:Billin
    continue;
   }
   if(movement.principalMinor>payment.amountMinor||movement.principalMinor>f.disputedMinor)return hold('principal_exceeds_payment');
+  if(movement.direction==='reinstatement'&&![...history,...additions].some(a=>a.kind==='dispute_withdrawal'&&a.disputeId===f.disputeId&&
+   a.originalReceiptId===p.originalReceiptId&&a.chargeId===p.chargeId&&same(a.binding,p.binding)))return hold('withdrawal_not_observed');
   const approval=authority?await authority.resolve({payment,movement,history:[...history,...additions]}):null;
   if(!approval)return hold('native_allocation_required');
   const allocation=nativeDisputeAllocationSchema.parse(approval);

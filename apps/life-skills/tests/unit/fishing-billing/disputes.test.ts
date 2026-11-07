@@ -54,10 +54,18 @@ it('holds missing native allocation or ambiguous principal/fees without partial 
 });
 it('requires an actual linked withdrawal before reinstatement and rejects native cross-child allocations',async()=>{
  const f=scenario(),restored={...f.facts,status:'won' as const,movements:[f.reinstatement]};
- const missing:BillingDisputeAllocationAuthority={resolve:async({movement})=>({allocations:[{lineId:syntheticId(10),amountMinor:movement.principalMinor!}],evidence:f.allocationEvidence,withdrawalAdjustmentId:syntheticId(999)})};
- expect(await planDisputeReconciliation({...f,facts:restored},missing)).toMatchObject({state:'review_required',reason:'allocation_or_movement_conflict',additions:[]});
+ const mustNotResolve:BillingDisputeAllocationAuthority={resolve:async()=>{throw new Error('Orphan must be held before allocation lookup');}};
+ expect(await planDisputeReconciliation({...f,facts:restored},mustNotResolve)).toMatchObject({state:'review_required',reason:'withdrawal_not_observed',additions:[]});
  const wrong:BillingDisputeAllocationAuthority={resolve:async()=>({allocations:[{lineId:syntheticId(11),amountMinor:20000}],evidence:f.allocationEvidence,withdrawalAdjustmentId:null})};
  expect(await planDisputeReconciliation(f,wrong)).toMatchObject({state:'review_required',reason:'allocation_or_movement_conflict',additions:[]});
+});
+it('retains a partial principal reinstatement and checks its exact withdrawal link',async()=>{
+ const f=scenario(),first=await planDisputeReconciliation(f,allocations),partial={...f.reinstatement,principalMinor:5000,grossMinor:5000,feeMinor:0,netMinor:5000};
+ const input={...f,history:first.additions,facts:{...f.facts,status:'won' as const,movements:[f.withdrawal,partial]}};
+ const r=await planDisputeReconciliation(input,allocations);expect(r.state).toBe('ready');
+ expect(r.additions).toHaveLength(1);expect(r.balance).toMatchObject({paidMinor:70000,remainingMinor:60000,processorFeeMinor:1500});
+ const wrongLink:BillingDisputeAllocationAuthority={resolve:async({movement})=>({allocations:[{lineId:syntheticId(10),amountMinor:movement.principalMinor!}],evidence:f.allocationEvidence,withdrawalAdjustmentId:syntheticId(999)})};
+ expect(await planDisputeReconciliation(input,wrongLink)).toMatchObject({state:'review_required',reason:'allocation_or_movement_conflict',additions:[]});
 });
 it('holds conflicting movement identity, incomplete reads and disappearing provider history',async()=>{
  const f=scenario(),first=await planDisputeReconciliation(f,allocations);
