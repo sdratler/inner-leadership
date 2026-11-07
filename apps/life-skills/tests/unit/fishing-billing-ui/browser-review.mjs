@@ -18,9 +18,9 @@ assert(process.env.BILLING_UI_ATTEMPT_ID==='B237-UI-RENDER-01-20261107','Exact o
 assert.equal(await realpath(path.dirname(target)),path.resolve(path.dirname(target)),'No redirected evidence parent');
 await mkdir(target); // Exclusive: never overwrite a previous run.
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
-let server=null,browserServer=null,browser=null,page=null,base=null,timedOut=false,cleanupPromise=null;
+let server=null,browserServer=null,browser=null,page=null,base=null,port=null,timedOut=false,cleanupPromise=null;
 const errors=[],results={kind:'synthetic_component_only',attempt:process.env.BILLING_UI_ATTEMPT_ID,nodePid:process.pid,checks:[],screenshots:[],consoleErrors:errors,success:false};
-async function lifecycle(){await writeFile(path.join(target,'lifecycle.json'),JSON.stringify({nodePid:process.pid,browserPid:browserServer?.process().pid??null,port:server?.address()?.port??null,base,timedOut}));}
+async function lifecycle(){await writeFile(path.join(target,'lifecycle.json'),JSON.stringify({nodePid:process.pid,browserPid:browserServer?.process().pid??null,port,base,timedOut}));}
 async function bounded(promise,ms){let timeout;try{return await Promise.race([promise,new Promise((_,reject)=>{timeout=setTimeout(()=>reject(Error('BOUNDED_SHUTDOWN_TIMEOUT')),ms);})]);}finally{clearTimeout(timeout);}}
 function cleanup(){return cleanupPromise??=(async()=>{
  if(browserServer){try{await bounded(browserServer.close(),5000);}catch{await bounded(browserServer.kill(),3000);}finally{results.browserExited=browserServer.process().exitCode!==null;}}
@@ -43,6 +43,7 @@ const allowed=new Map([['/harness.js','text/javascript'],['/harness.css','text/c
 server=createServer(async(req,res)=>{
  try{
  const pathname=new URL(req.url,'http://localhost').pathname;
+ if(pathname==='/favicon.ico'){res.statusCode=204;res.end();return;}
  if(pathname==='/'){res.setHeader('content-type','text/html');res.end(html);return;}
  const mime=allowed.get(pathname);
  if(!mime){res.statusCode=404;res.end();return;}
@@ -50,7 +51,7 @@ server=createServer(async(req,res)=>{
  }catch{res.statusCode=500;res.end();}
 });
 await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});
-base=`http://127.0.0.1:${server.address().port}`;results.base=base;await lifecycle();
+port=server.address().port;base=`http://127.0.0.1:${port}`;results.base=base;await lifecycle();
 results.browserExecutable={path:chromium.executablePath(),sha256:sha(await readFile(chromium.executablePath()))};
 browserServer=await chromium.launchServer({headless:true,host:'127.0.0.1',timeout:15000});await lifecycle();
 browser=await chromium.connect(browserServer.wsEndpoint(),{timeout:10000});
@@ -61,7 +62,7 @@ page.on('pageerror',error=>errors.push(error.message));
 page.on('console',message=>{if(message.type()==='error')errors.push(message.text());});
 async function open(query,width=390,height=844){await page.setViewportSize({width,height});await page.goto(`${base}/?${query}`);await page.locator('[data-billing-owner-panel]').waitFor();await page.evaluate(()=>document.fonts.ready);}
 async function check(name,fn){await fn();results.checks.push(name);}
-async function capture(name){const file=path.join(target,`${name}.png`);await page.screenshot({path:file,fullPage:true});results.screenshots.push(file);}
+async function capture(name){for(const fullPage of [false,true]){const file=path.join(target,`${name}${fullPage?'':'-viewport'}.png`);await page.screenshot({path:file,fullPage});results.screenshots.push(file);}}
 async function noOverflow(){assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'horizontal page overflow');}
 async function cash(locale='en'){
  await page.getByRole('button',{name:locale==='he'?'התקבל מזומן':'Cash received',exact:true}).click();
@@ -94,6 +95,7 @@ async function cash(locale='en'){
  async function visibleControl(){return review.evaluate(el=>{const r=el.getBoundingClientRect();return document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)===el;});}
  await check('holdout action is painted and reachable',async()=>assert(await visibleControl()));
  await page.evaluate(()=>{const cover=document.createElement('div');cover.id='qa-occlusion';cover.style.cssText='position:fixed;inset:0;z-index:2147483647;background:#fff';document.body.append(cover);});
+ await capture('he-holdout-intentionally-occluded');
  await check('intentional test-only occlusion is rejected',async()=>assert.equal(await visibleControl(),false));
  await page.locator('#qa-occlusion').evaluate(el=>el.remove());await check('holdout action restored after removing test mutation',async()=>assert(await visibleControl()));
  await capture('he-holdout-corrected');
