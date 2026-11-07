@@ -12,7 +12,7 @@ function setup(){
  const metadata={billing_quote_id:syntheticId(7),billing_attempt_id:syntheticId(801)};
  const charge={object:'charge',id:'ch_SYNTHETIC',livemode:false,currency:'usd',payment_intent:'pi_SYNTHETIC',disputed:false,paid:true,captured:true,status:'succeeded',amount_captured:20000,payment_method_details:{type:'card'},balance_transaction:{object:'balance_transaction',type:'charge',amount:20000,fee:610,net:19390,currency:'usd',source:'ch_SYNTHETIC',created:captured}};
  const pi={object:'payment_intent',id:'pi_SYNTHETIC',livemode:false,currency:'usd',metadata:{...metadata},amount:20000,amount_received:20000,payment_method_types:['card'],status:'succeeded',created:captured-1000,latest_charge:charge as typeof charge|null};
- const session={object:'checkout.session',id:'cs_test_SYNTHETIC',livemode:false,mode:'payment',currency:'usd',payment_method_types:['card'],metadata:{...metadata},client_reference_id:syntheticId(7),amount_total:20000,payment_status:'paid',payment_intent:pi};
+ const session={object:'checkout.session',id:'cs_test_SYNTHETIC',livemode:false,mode:'payment',status:'complete',currency:'usd',payment_method_types:['card'],metadata:{...metadata},client_reference_id:syntheticId(7),amount_total:20000,payment_status:'paid',payment_intent:pi};
  const refund={object:'refund',id:'re_SYNTHETIC',currency:'usd',amount:5000,payment_intent:'pi_SYNTHETIC',charge:'ch_SYNTHETIC',status:'succeeded',created:captured+10,balance_transaction:{object:'balance_transaction',type:'refund',amount:-5000,fee:-100,net:-4900,currency:'usd',source:'re_SYNTHETIC',created:captured+20} as object|null};
  const refunds={object:'list',has_more:false,data:[] as typeof refund[]};let sessionCount=1,returnedSessionId:string|null=null,refundIntentId:string|null=null;
  const calls:{path:string;method:string;query:URLSearchParams}[]=[],authorize=vi.fn(async()=>{});
@@ -45,7 +45,7 @@ describe('official SDK current payment readback, intercepted transport only',()=
   expect(result.refunds).toEqual([{id:'re_SYNTHETIC',amountMinor:5000,state:'succeeded',occurredAt:at(captured+20)}]);expect(result.receivedMinor).toBe(20000);expect('allocations' in result).toBe(false);
  });
  it('keeps processing truthful with no invented paid timestamp',async()=>{
-  const f=setup();f.pi.status='processing';f.pi.amount_received=0;f.pi.latest_charge=null;f.session.payment_status='unpaid';
+  const f=setup();f.pi.status='processing';f.pi.amount_received=0;f.pi.latest_charge=null;f.session.payment_status='unpaid';f.session.status='open';
   await expect(f.read(signed('payment_intent.processing','pi_SYNTHETIC'))).resolves.toMatchObject({status:'pending',receivedMinor:0,paidAt:null});
  });
  it.each(['metadata','amount','currency','charge_link'] as const)('mismatched %s is unresolved',async key=>{
@@ -84,5 +84,28 @@ describe('official SDK current payment readback, intercepted transport only',()=
  });
  it('a stalled request is bounded without retry or raw provider-error exposure',async()=>{
   vi.useFakeTimers();try{const f=setup();f.transport.mockImplementation(async()=>new Promise<Response>(()=>{}));const pending=f.read().catch((e:Error)=>e);await vi.advanceTimersByTimeAsync(25001);expect(await pending).toMatchObject({code:'UNAVAILABLE'});expect(f.transport).toHaveBeenCalledTimes(1);}finally{vi.useRealTimers();}
+ });
+ it.each(['checkout.session.completed','payment_intent.payment_failed'] as const)('an open retryable decline stays pending despite %s delivery',async eventType=>{
+  const f=setup();f.pi.status='requires_payment_method';f.pi.amount_received=0;f.session.payment_status='unpaid';f.session.status='open';
+  Object.assign(f.charge,{paid:false,captured:false,status:'failed',amount_captured:0,balance_transaction:null});
+  const receipt=eventType.startsWith('checkout.')?signed(eventType):signed(eventType,'pi_SYNTHETIC');
+  await expect(f.read(receipt)).resolves.toMatchObject({status:'pending',receivedMinor:0,paidAt:null});
+ });
+ it.each(['canceled','requires_payment_method'])('expired Session plus nonpayable %s evidence can be terminal',async state=>{
+  const f=setup();f.pi.status=state;f.pi.amount_received=0;f.pi.latest_charge=null;f.session.payment_status='unpaid';f.session.status='expired';
+  await expect(f.read(signed('payment_intent.payment_failed','pi_SYNTHETIC'))).resolves.toMatchObject({status:'failed',receivedMinor:0,paidAt:null});
+ });
+ it('conflicting open Session and canceled PI stay unresolved',async()=>{
+  const f=setup();f.pi.status='canceled';f.pi.amount_received=0;f.pi.latest_charge=null;f.session.payment_status='unpaid';f.session.status='open';
+  await expect(f.read(signed('payment_intent.payment_failed','pi_SYNTHETIC'))).rejects.toMatchObject({code:'UNAVAILABLE'});
+ });
+ it('a successful refund posted before its captured payment is unresolved',async()=>{
+  const f=setup();f.refunds.data=[f.refund];Object.assign(f.refund.balance_transaction!,{created:captured-10});
+  await expect(f.read(signed('refund.updated','re_SYNTHETIC'))).rejects.toMatchObject({code:'UNAVAILABLE'});
+ });
+ it('valid later refund facts can arrive before the payment webhook without a fabricated ordering rule',async()=>{
+  const f=setup();f.refund.amount=3000;Object.assign(f.refund.balance_transaction!,{amount:-3000,net:-2900,created:captured+1000});f.refunds.data=[f.refund];
+  const refundFirst=await f.read(signed('refund.updated','re_SYNTHETIC')),paymentLater=await f.read(signed('payment_intent.succeeded','pi_SYNTHETIC'));
+  expect(refundFirst.refunds).toEqual([{id:'re_SYNTHETIC',amountMinor:3000,state:'succeeded',occurredAt:at(captured+1000)}]);expect(paymentLater.refunds).toEqual(refundFirst.refunds);expect(paymentLater.paidAt).toBe(at(captured));
  });
 });

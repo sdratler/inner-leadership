@@ -56,8 +56,12 @@ function normalize(session:Stripe.Checkout.Session,refunds:Stripe.ApiList<Stripe
   paidAt=instant(transaction.created,observedAt);status='paid';
  }else{
   requireValue(received===0&&refunds.data.length===0&&session.payment_status==='unpaid');
-  if(pi.status==='canceled'||pi.status==='requires_payment_method')status='failed';
-  else{requireValue(['processing','requires_action','requires_confirmation','requires_capture'].includes(String(pi.status)));status='pending';}
+  if(session.status==='expired'&&['canceled','requires_payment_method'].includes(String(pi.status)))status='failed';
+  else{
+   requireValue(['open','complete'].includes(String(session.status))&&['requires_payment_method','processing','requires_action','requires_confirmation','requires_capture'].includes(String(pi.status)));
+   if(pi.status==='requires_payment_method')requireValue(session.status==='open');
+   status='pending';
+  }
  }
  const mapped=refunds.data.map(raw=>{
   const r=record(raw),id=providerId(r.id,'re');requireValue(r.object==='refund'&&r.livemode!==true&&r.currency==='usd'&&providerId(r.payment_intent,'pi')===paymentIntentId&&charge&&providerId(r.charge,'ch')===providerId(charge.id,'ch'));
@@ -65,7 +69,7 @@ function normalize(session:Stripe.Checkout.Session,refunds:Stripe.ApiList<Stripe
   let state:'pending'|'succeeded'|'failed',occurredAt:string;
   if(r.status==='succeeded'){
    const tx=record(r.balance_transaction);requireValue(tx.object==='balance_transaction'&&['refund','payment_refund'].includes(String(tx.type))&&tx.currency==='usd'&&tx.amount===-principal&&providerId(tx.source,'re')===id);
-   state='succeeded';occurredAt=instant(tx.created,observedAt);
+   state='succeeded';occurredAt=instant(tx.created,observedAt);requireValue(paidAt!==null&&Date.parse(occurredAt)>=Date.parse(paidAt));
   }else{requireValue(['pending','requires_action','failed','canceled'].includes(String(r.status)));state=r.status==='failed'||r.status==='canceled'?'failed':'pending';occurredAt=instant(r.created,observedAt);}
   return {id,amountMinor:principal,state,occurredAt};
  });
