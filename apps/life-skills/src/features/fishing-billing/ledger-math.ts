@@ -1,12 +1,15 @@
 import {policyKeys,type FamilyOffer,type LedgerReceipt} from './contracts.ts';
 import {requireBilling} from './billing-errors.ts';
 export type MoneyReceipt=Omit<LedgerReceipt,'receivedAt'>;
-export function missingPolicy(offer:FamilyOffer){
+export type LedgerQuoteInput=Pick<FamilyOffer,'id'|'familyId'|'revision'|'lines'|'createdAt'|'state'|'paused'>&{
+ definition:Pick<FamilyOffer['definition'],'policies'>;acceptance:unknown|null;
+};
+export function missingPolicy(offer:LedgerQuoteInput){
  return policyKeys.filter(key=>!offer.definition.policies[key]||(key==='payment_due'&&offer.lines.some(l=>!l.dueAt)));
 }
 /** Shared money/allocation calculation. Callers validate their explicit date or
  * instant format first; no receipt time is manufactured by this arithmetic. */
-export function calculateLedger<R extends MoneyReceipt>(quote:FamilyOffer,receipts:R[],pendingAttemptIds:string[]){
+export function calculateLedger<R extends MoneyReceipt>(quote:LedgerQuoteInput,receipts:R[],pendingAttemptIds:string[]){
  const lineIds=new Set(quote.lines.map(l=>l.id)),byId=new Map<string,R>(),ops=new Set<string>(),providerFacts=new Set<string>();
  for(const r of receipts){
   requireBilling(r.quoteId===quote.id&&r.familyId===quote.familyId&&!byId.has(r.id)&&!ops.has(r.operationId));
