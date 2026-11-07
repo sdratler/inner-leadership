@@ -16,6 +16,11 @@ import type {BillingReminderServiceAuthority,ReminderServiceBinding,ReminderServ
 /** Server projection after the native decoder authenticated the actual source,
  * original acceptance/evidence, complete money/status records and current
  * authority in ONE transaction. These pure arguments never confer access. */
+export function requireHistoricalAcceptedOriginalV3(rawCurrent:unknown,rawOriginal:unknown){
+ const q=familyOfferSchema.parse(rawCurrent),original=familyOfferSchema.parse(rawOriginal),a=original.acceptance;
+ if(!q.acceptance||!a||original.state!=='accepted'||original.revision!==a.quoteRevision+1||original.revision>q.revision||original.id!==q.id||original.workspaceId!==q.workspaceId||original.familyId!==q.familyId||JSON.stringify([original.createdAt,original.issuedAt,original.definition,original.lines,original.override,original.acceptance])!==JSON.stringify([q.createdAt,q.issuedAt,q.definition,q.lines,q.override,q.acceptance]))throw new AppError('UNAVAILABLE');
+ return original;
+}
 export function projectBillingCurrentLedgerV3(input:{
  source:CurrentLedgerSourceV3;receipts:readonly LedgerReceiptV2[];exceptions:readonly ReturnType<typeof cardExceptionSchema.parse>[];pendingAttemptIds?:string[];
  reminders?:CurrentLedgerFrameV3['balance']['reminders'];originalAccountSnapshot?:unknown;
@@ -30,8 +35,7 @@ export function projectBillingCurrentLedgerV3(input:{
   const guest=verifyGuestFamilyOffer(source.quote),a=guest.acceptance;
   if(a)payableBasis=verifyGuestPayableBasis(guestPayableBasisSchema.parse({version:BILLING_GUEST_V3,workspaceId:q.workspaceId,familyId:q.familyId,quoteId:q.id,offer:a.offer,obligationLineIds:q.lines.map(l=>l.id),acceptance:{kind:'guest_successor',evidence:a}}));
  }else if(q.acceptance){
-  const original=familyOfferSchema.parse(input.originalAccountSnapshot),a=original.acceptance;
-  if(!a||original.state!=='accepted'||original.revision!==a.quoteRevision+1||original.revision>q.revision||original.id!==q.id||original.workspaceId!==q.workspaceId||original.familyId!==q.familyId||JSON.stringify([original.createdAt,original.issuedAt,original.definition,original.lines,original.override,original.acceptance])!==JSON.stringify([q.createdAt,q.issuedAt,q.definition,q.lines,q.override,q.acceptance]))throw new AppError('UNAVAILABLE');
+  const original=requireHistoricalAcceptedOriginalV3(q,input.originalAccountSnapshot);
   payableBasis=verifyGuestPayableBasis(projectHistoricalAccountPayableBasis(original),original);
  }else if(input.originalAccountSnapshot!==undefined)throw new AppError('UNAVAILABLE');
  const balance=source.kind==='historical_account'?projectBalanceV2(source.quote,receipts,pending):projectGuestBalanceV3(source.quote,receipts,pending);

@@ -9,6 +9,7 @@ import {seal,unseal,opaqueToken,tokenDigest} from '../../src/features/identity/c
 import type {Actor} from '../../src/features/identity/types.ts';
 import type {IdentityStore,SqlSession} from '../../src/features/identity/store.ts';
 import type {BillingAuthority,BillingContext,BillingAction,BillingScope} from '../../src/features/fishing-billing/native.ts';
+import {FishingBillingStore,commandRecordSchema} from '../../src/features/fishing-billing/native.ts';
 import {syntheticDefinition,syntheticAccepted,syntheticReceipt,syntheticId} from '../../src/features/fishing-billing/fixtures.ts';
 import {BILLING_DTO_VERSION,familyOfferSchema,reminderIntentSchema} from '../../src/features/fishing-billing/contracts.ts';
 import {ledgerReceiptV2Schema,BILLING_DTO_V2,projectBalanceV2} from '../../src/features/fishing-billing/contracts-v2.ts';
@@ -26,6 +27,7 @@ import {createFishingBillingOwnerClientV3} from '../../src/lib/fishing-billing-o
 import {currentLedgerFrameV3Schema,type CurrentLedgerSourceV3} from '../../src/lib/fishing-billing-current-contract-v3.ts';
 import {projectBillingCurrentLedgerV3} from '../../src/lib/fishing-billing-current-ledger-v3.ts';
 import {projectHistoricalAccountPayableBasis} from '../../src/lib/fishing-billing-guest-material-v3.ts';
+import {decodeBillingCurrentQuoteV3,readHistoricalFinancialOriginalV3,type CurrentBillingQuoteRowV3} from '../../src/lib/fishing-billing-current-readback-v3.ts';
 
 // Actual memory-only SQL/IdentityStore/fresh session/AEAD/pure-domain/journal.
 // Family authority is synthetic; no actual program/legal/native target, account
@@ -434,4 +436,55 @@ it('current-frame validates the complete exception set, preserves resolved state
  expect(()=>projectBillingCurrentLedgerV3({...input,exceptions:[exception,exception]})).toThrow();expect(()=>projectBillingCurrentLedgerV3({...input,exceptions:Array.from({length:1001},()=>exception)})).toThrow();
  const card=syntheticReceipt('card',10,100,877),dispute={...syntheticReceipt('card',10,100,878),kind:'dispute' as const,originalReceiptId:card.id,reason:'SYNTHETIC disputed provider fact'};expect(projectBillingCurrentLedgerV3({...input,receipts:[card,dispute]}).balance.state).toBe('review_required');
  expect(currentLedgerFrameV3Schema.safeParse({...frame,cardExceptions:[{id:exception.id,state:'open'}]}).success).toBe(false);
+});
+// Historical witness uses the ACTUAL existing account Native create/issue/
+// parent acceptance journal, then a later owner action. Source/family authority
+// remains the synthetic fixture above; no actual parent or legal approval.
+const historicalNative=()=>new FishingBillingStore(binder,ws,ring,key,authority,{now:()=>new Date(at)});
+async function historicalAccepted(){
+ const f=await scenario(),native=historicalNative();await native.createOffer(owner,f.command);const issued=await native.issueOffer(owner,issue(f.command.id)),command={operationId:randomUUID(),expectedVersion:issued.entityVersion,quoteId:f.command.id,terms:issued.result.quote.definition.terms,acknowledged:true as const},accepted=await native.acceptOffer(parent,command);
+ const later=await native.setStateV2(owner,{version:BILLING_DTO_V2,operationId:randomUUID(),expectedVersion:accepted.entityVersion,quoteId:f.command.id,paused:true});return {...f,command,accepted,current:later.result.quote};
+}
+function historicalCommandDigest(command:unknown):string{
+ const sorted=(v:unknown):unknown=>Array.isArray(v)?v.map(sorted):v!==null&&typeof v==='object'?Object.fromEntries(Object.entries(v).sort(([a],[b])=>a.localeCompare(b)).map(([k,value])=>[k,sorted(value)])):v;
+ return createHmac('sha256',key).update(JSON.stringify(sorted(command))).digest('hex');
+}
+const historicalWitness=(quote:unknown)=>binder.transaction(tx=>readHistoricalFinancialOriginalV3({tx,workspaceId:ws,now:new Date(at)},quote,ring,historicalCommandDigest));
+async function currentQuoteRow(id:string){return (await db.query<CurrentBillingQuoteRowV3>('SELECT id,family_id AS "familyId",definition_id AS "definitionId",revision,created_at AS "createdAt",payload_ciphertext AS ciphertext FROM ls_fishing_billing.quotes WHERE workspace_id=$1 AND id=$2',[ws,id])).rows[0]!;}
+it('current-native-read decodes both actual authenticated quote sources without format hints or record conversion',async()=>{
+ const historical=await historicalAccepted(),guest=await nativeAccepted();
+ for(const [id,kind] of [[historical.command.quoteId,'historical_account'],[guest.command.id,'guest_successor']] as const){const row=await currentQuoteRow(id),before=row.ciphertext,source=decodeBillingCurrentQuoteV3(ws,id,row,ring);expect(source.kind).toBe(kind);expect(source.quote.id).toBe(id);expect((await currentQuoteRow(id)).ciphertext).toBe(before);}
+});
+it('current-native-read authenticates metadata and fails wrong-schema or unsupported AAD without fallback',async()=>{
+ const f=await nativeAccepted(),row=await currentQuoteRow(f.command.id);
+ for(const changed of [{...row,familyId:randomUUID()},{...row,revision:row.revision+1},{...row,definitionId:randomUUID()},{...row,createdAt:new Date('2034-01-01')},{...row,id:randomUUID()}])expect(()=>decodeBillingCurrentQuoteV3(ws,row.id,changed,ring)).toThrowError(expect.objectContaining({code:'UNAVAILABLE'}));
+ expect(()=>decodeBillingCurrentQuoteV3(other,row.id,row,ring)).toThrow();
+ const raw=unseal(row.ciphertext,'ls_fishing_billing/guest/v3/quote/'+ws+'/'+row.id,ring);
+ for(const aad of ['ls_fishing_billing/v1/quote/','SYNTHETIC_UNSUPPORTED/'])expect(()=>decodeBillingCurrentQuoteV3(ws,row.id,{...row,ciphertext:seal(raw,aad+ws+'/'+row.id,ring)},ring)).toThrowError(expect.objectContaining({code:'UNAVAILABLE'}));
+});
+it('current-native-read recovers the actual original parent acceptance without impersonation or owner-equal journal lookup',async()=>{
+ const f=await historicalAccepted(),before=(await currentQuoteRow(f.current.id)).ciphertext,original=await historicalWitness(f.current);expect(original).toEqual(f.accepted.result.quote);expect(original?.acceptance?.actorId).toBe(parent.id);expect(original?.acceptance?.actorId).not.toBe(owner.id);expect(f.current.revision).toBe(original!.revision+1);
+ const frame=projectBillingCurrentLedgerV3({source:{kind:'historical_account',quote:f.current},receipts:[],exceptions:[],originalAccountSnapshot:original});expect(frame.payableBasis?.acceptance).toMatchObject({kind:'historical_account',actorAccountId:parent.id});expect(frame.source.quote.paused).toBe(true);expect((await currentQuoteRow(f.current.id)).ciphertext).toBe(before);
+});
+it.each(['actor','digest','time','action','obligation','duplicate','original-material','original-operation'] as const)('current-native-read rejects a broken original historical %s join',async mode=>{
+ const f=await historicalAccepted(),id=f.command.operationId;
+ if(mode==='actor')await db.query('UPDATE ls_fishing_billing.commands SET actor_id=$2 WHERE operation_id=$1',[id,owner.id]);
+ else if(mode==='digest')await db.query('UPDATE ls_fishing_billing.commands SET request_digest=$2 WHERE operation_id=$1',[id,'e'.repeat(64)]);
+ else if(mode==='time')await db.query("UPDATE ls_fishing_billing.commands SET created_at='2034-01-01' WHERE operation_id=$1",[id]);
+ else if(mode==='action')await db.query("UPDATE ls_fishing_billing.commands SET action='issue' WHERE operation_id=$1",[id]);
+ else if(mode==='obligation')await db.query('DELETE FROM ls_fishing_billing.obligations WHERE quote_id=$1 AND line_id=$2',[f.current.id,f.current.lines[0]!.id]);
+ else if(mode==='duplicate')await db.query('INSERT INTO ls_fishing_billing.commands SELECT workspace_id,$2,actor_id,action,quote_id,request_digest,result_ciphertext,created_at FROM ls_fishing_billing.commands WHERE operation_id=$1',[id,randomUUID()]);
+ else{
+  const stored=(await db.query<{result_ciphertext:string}>('SELECT result_ciphertext FROM ls_fishing_billing.commands WHERE operation_id=$1',[id])).rows[0]!,aad='ls_fishing_billing/v1/command/'+ws+'/'+id,record=commandRecordSchema.parse(JSON.parse(unseal(stored.result_ciphertext,aad,ring))),receipt=structuredClone(f.accepted);
+  if(mode==='original-material')receipt.result.quote.lines[0]!.groupId=randomUUID();else receipt.operationId=randomUUID();record.result=receipt;await db.query('UPDATE ls_fishing_billing.commands SET result_ciphertext=$2 WHERE operation_id=$1',[id,seal(JSON.stringify(record),aad,ring)]);
+ }
+ await expect(historicalWitness(f.current)).rejects.toMatchObject({code:'UNAVAILABLE'});
+});
+it('current-native-read returns no acceptance for an actual unanswered account quote and rejects unexpected debt',async()=>{
+ const f=await scenario(),created=await historicalNative().createOffer(owner,f.command);expect(await historicalWitness(created.result.quote)).toBeNull();const l=created.result.quote.lines[0]!;
+ await db.query('INSERT INTO ls_fishing_billing.obligations VALUES($1,$2,$3,$4,$5,$6,$7,$8)',[ws,f.command.id,l.id,f.family,l.childId,l.period.id,l.period.startsAt,l.period.endsAt]);await expect(historicalWitness(created.result.quote)).rejects.toMatchObject({code:'UNAVAILABLE'});
+});
+it('current-native-read captures its actual transaction and workspace before asynchronous historical reads',async()=>{
+ const f=await historicalAccepted();let redirected=false;
+ await binder.transaction(async tx=>{const c={tx,workspaceId:ws,now:new Date(at)};afterSql=async sql=>{if(sql.includes('FROM ls_fishing_billing.obligations')){c.tx={query:async()=>{redirected=true;return [];}};c.workspaceId=other;}};expect(await readHistoricalFinancialOriginalV3(c,f.current,ring,historicalCommandDigest)).toEqual(f.accepted.result.quote);});expect(redirected).toBe(false);
 });

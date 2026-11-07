@@ -76,7 +76,7 @@ const canonical=(value:unknown):string=>{
  return '{'+Object.keys(value).sort().map(k=>JSON.stringify(k)+':'+canonical((value as Record<string,unknown>)[k])).join(',')+'}';
 };
 const quoteResult=z.object({quote:familyOfferSchema,balance:operationReceiptSchema.shape.result.shape.balance,receiptId:billingId.nullable()}).strict();
-const commandRecordSchema=z.object({
+export const commandRecordSchema=z.object({
  version:z.literal('JLFA-BILLING-JOURNAL-v1'),workspaceId:billingId,operationId:billingId,actorId:billingId,
  action:z.string().min(1).max(40),quoteId:billingId.nullable(),digest:z.string().regex(/^[a-f0-9]{64}$/),result:z.unknown(),
 }).strict();
