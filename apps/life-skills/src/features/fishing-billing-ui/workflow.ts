@@ -119,15 +119,21 @@ export class BillingWorkflow{
   }catch{this.setCard({...reserved,phase:'unknown'});}finally{this.finishCard();}
   return true;
  }
- async readCard(input:BillingData,existingAttemptId?:string){
-  if(this.busy||!this.cardClient)return false;
-  let context=this.state.card;
+ canReadCard(input:BillingData,existingAttemptId?:string):boolean{
+  if(this.busy||!this.cardClient||['submitting','unknown','checking','refreshing','refresh_required'].includes(this.state.phase))return false;
+  const context=this.state.card;
   if(existingAttemptId){
    if(this.unresolved()||!input.balance.pendingAttemptIds.includes(existingAttemptId))return false;
    if(context&&context.attemptId!==existingAttemptId&&(!context.projection||!['paid','failed','expired','stale'].includes(context.projection.attempt.state)))return false;
-   if(!context||context.attemptId!==existingAttemptId)context={scope:dataScope(input),operationId:existingAttemptId,attemptId:existingAttemptId,command:null,phase:'reading',lookup:'attempt',checkoutInvoked:false,fresh:false};
+   if(!context||context.attemptId!==existingAttemptId)return true;
   }
-  if(!context||context.scope.quoteId!==input.quote.id||context.scope.familyId!==input.quote.familyId||context.scope.workspaceId!==input.quote.workspaceId||['submitting','unknown','checking','refreshing','refresh_required'].includes(this.state.phase))return false;
+  return Boolean(context&&context.scope.quoteId===input.quote.id&&context.scope.familyId===input.quote.familyId&&context.scope.workspaceId===input.quote.workspaceId);
+ }
+ async readCard(input:BillingData,existingAttemptId?:string){
+  if(!this.canReadCard(input,existingAttemptId)||!this.cardClient)return false;
+  let context=this.state.card;
+  if(existingAttemptId&&(!context||context.attemptId!==existingAttemptId))context={scope:dataScope(input),operationId:existingAttemptId,attemptId:existingAttemptId,command:null,phase:'reading',lookup:'attempt',checkoutInvoked:false,fresh:false};
+  if(!context)return false;
   this.latest=this.currentFor(scopedData(input,context.scope));
   const pending={...context,phase:'reading' as const,fresh:false};this.busy=true;this.set(idle);this.setCard(pending);
   try{

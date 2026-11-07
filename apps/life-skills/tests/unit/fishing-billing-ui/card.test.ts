@@ -42,6 +42,38 @@ function setup(){
  return {base,command,attempt,prepared,current,cards,store,deps,requests,transport,client,money,workflow,cash};
 }
 function render(f:ReturnType<typeof setup>,data:BillingData=f.workflow.currentFor(f.base),allowed=true){return renderToStaticMarkup(createElement(CardControls,{locale:'en',data,workflow:f.workflow,allowed,onPrepare:()=>{},onCheckout:()=>{}}));}
+function pendingAfter(f:ReturnType<typeof setup>){
+ const id=syntheticId(899),quote={...f.current.quote,revision:7},command={...f.command,operationId:id,expectedVersion:6};
+ const preparation={...f.prepared,operationId:id,entityVersion:7,result:{...f.prepared.result,attemptId:id}};
+ const attempt=cardAttemptSchema.parse({...f.attempt,id,command,preparation,revision:1,balanceVersion:7,state:'prepared',dispatchId:null,sessionId:null,checkoutUrl:null,paymentIntentId:null});
+ f.current.quote=quote;f.current.balance=projectBalanceV2(quote,f.current.balance.receipts,[id]);
+ f.cards.readAttempt.mockImplementation(async(_actor,_quoteId,attemptId)=>attemptId===id?attempt:f.attempt);
+ return id;
+}
+
+describe('current pending lookup reachability',()=>{
+ it('keeps a different current pending ID reachable after a retained terminal attempt',async()=>{
+  const f=setup();await f.workflow.prepareCard(f.command,f.base);f.attempt.state='failed';f.current.balance=projectBalanceV2(f.current.quote,f.current.balance.receipts);await f.workflow.readCard(f.current);
+  const id=pendingAfter(f),html=render(f,f.current),lookup=html.match(/<button[^>]*>Check existing attempt<\/button>/)?.[0];
+  expect(html).toContain(id);expect(lookup).toBeDefined();expect(lookup).not.toContain('disabled');
+  expect(await f.workflow.readCard(f.current,id)).toBe(true);expect(f.workflow.getSnapshot().card?.attemptId).toBe(id);
+  expect(f.requests.map(r=>r.method)).toEqual(['POST','GET','GET']);expect(new URL(f.requests.at(-1)!.url).searchParams.get('id')).toBe(id);expect(f.cards.prepare).toHaveBeenCalledTimes(1);expect(f.cards.createCheckout).not.toHaveBeenCalled();expect(f.money.nextOperationId).not.toHaveBeenCalled();
+ });
+ it('shows only current pending references when the retained terminal context is foreign',async()=>{
+  const f=setup();await f.workflow.prepareCard(f.command,f.base);f.attempt.state='expired';await f.workflow.readCard(f.current);
+  const id=pendingAfter(f),other=structuredClone(f.current);other.quote.id=syntheticId(990);other.quote.familyId=syntheticId(991);other.balance=projectBalanceV2(other.quote,other.balance.receipts.map(r=>({...r,quoteId:other.quote.id,familyId:other.quote.familyId})),[id]);
+  const html=render(f,other),lookup=html.match(/<button[^>]*>Check existing attempt<\/button>/)?.[0];
+  expect(html).toContain(id);expect(html).not.toContain(op);expect(lookup).toBeDefined();expect(lookup).not.toContain('disabled');
+  // Availability only: the actual injected client/server still owns scope.
+  expect(f.cards.createCheckout).not.toHaveBeenCalled();
+ });
+ it('shows a current pending ID but cannot replace an unresolved original context',async()=>{
+  const f=setup();f.store.readBalanceV2.mockRejectedValueOnce(new AppError('UNAVAILABLE'));await f.workflow.prepareCard(f.command,f.base);
+  const id=pendingAfter(f),html=render(f,f.current),lookup=html.match(/<button[^>]*>Check existing attempt<\/button>/)?.[0];
+  expect(html).toContain(id);expect(lookup).toBeDefined();expect(lookup).toContain('disabled');
+  expect(await f.workflow.readCard(f.current,id)).toBe(false);expect(f.workflow.getSnapshot().card?.operationId).toBe(op);expect(f.workflow.clear()).toBe(false);expect(f.requests).toHaveLength(1);expect(f.cards.prepare).toHaveBeenCalledTimes(1);expect(f.cards.createCheckout).not.toHaveBeenCalled();
+ });
+});
 
 describe('retained card workflow with actual Root client and HTTP / synthetic native ports',()=>{
  it('prepares the supplied operation once and never dispatches Checkout on preparation or GET',async()=>{
