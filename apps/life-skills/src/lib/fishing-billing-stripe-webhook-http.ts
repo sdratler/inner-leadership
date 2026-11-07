@@ -25,12 +25,16 @@ const maxBytes=131072,deadlineMs=10000;
 export async function fishingBillingTestWebhookHttp(request:Request,load:()=>Promise<FishingBillingTestWebhookDeps>):Promise<Response>{
  const requestId=randomUUID(),end=Date.now()+deadlineMs;
  let response:Response,reader:ReadableStreamDefaultReader<Uint8Array>|undefined;
- const bounded=async<T>(promise:Promise<T>):Promise<T>=>{
+ const bounded=async<T>(work:()=>Promise<T>):Promise<T>=>{
   const remaining=end-Date.now();if(remaining<=0||request.signal.aborted)throw new AppError('UNAVAILABLE');
   let timer:ReturnType<typeof setTimeout>|undefined,abort:(()=>void)|undefined;
-  try{return await Promise.race([promise,new Promise<never>((_,reject)=>{
+  try{
+   const deadline=new Promise<never>((_,reject)=>{
    const fail=()=>reject(new AppError('UNAVAILABLE'));timer=setTimeout(fail,remaining);abort=fail;request.signal.addEventListener('abort',fail,{once:true});
-  })]);}finally{if(timer)clearTimeout(timer);if(abort)request.signal.removeEventListener('abort',abort);}
+   });
+   const result=await Promise.race([work(),deadline]);
+   if(Date.now()>=end||request.signal.aborted)throw new AppError('UNAVAILABLE');return result;
+  }finally{if(timer)clearTimeout(timer);if(abort)request.signal.removeEventListener('abort',abort);}
  };
  try{
   if(request.method!=='POST')throw new AppError('INVALID_REQUEST');
@@ -42,20 +46,20 @@ export async function fishingBillingTestWebhookHttp(request:Request,load:()=>Pro
   if(declared!==null&&(!/^(0|[1-9][0-9]{0,8})$/.test(declared)||Number(declared)>maxBytes))throw new AppError('PAYLOAD_TOO_LARGE');
   const signature=request.headers.get('stripe-signature');
   if(!signature||signature.length>2048||!request.body)throw new AppError('INVALID_REQUEST');
-  const supplied=await bounded(load());
+  const supplied=await bounded(load);
   const binding=billingStripeBindingSchema.parse(supplied.binding);
   const d={origin:supplied.origin,endpointSecret:supplied.endpointSecret,now:supplied.now,admit:supplied.admit,
    limits:supplied.limits,rateLimitKey:supplied.rateLimitKey,ingest:supplied.inbox.ingest.bind(supplied.inbox)};
   const canonical=canonicalForwardedRequest(request,d.origin),url=new URL(canonical.url);
   if(url.origin!==d.origin||url.pathname!==FISHING_BILLING_TEST_WEBHOOK_PATH||url.search)throw new AppError('NOT_FOUND');
   if(!/^whsec_[A-Za-z0-9_]{16,250}$/.test(d.endpointSecret))throw new AppError('UNAVAILABLE');
-  await bounded(d.admit());
+  await bounded(()=>d.admit());
   // One bounded service counter. Caller-controlled forwarded addresses cannot
   // create unlimited buckets; a later mount must retain edge request limits.
-  await bounded(enforceRateLimit(d.limits,opaqueRateLimitKey('fishing-billing-test-webhook:'+binding.verifiedBindingId,d.rateLimitKey),120,60000));
+  await bounded(()=>enforceRateLimit(d.limits,opaqueRateLimitKey('fishing-billing-test-webhook:'+binding.verifiedBindingId,d.rateLimitKey),120,60000));
   reader=request.body.getReader();const chunks:Uint8Array[]=[];let size=0,reads=0;
   while(true){
-   const part=await bounded(reader.read());if(part.done)break;
+   const part=await bounded(()=>reader!.read());if(part.done)break;
    if(++reads>4096||size+part.value.byteLength>maxBytes)throw new AppError('PAYLOAD_TOO_LARGE');
    chunks.push(Uint8Array.from(part.value));size+=part.value.byteLength;
   }
@@ -71,10 +75,10 @@ export async function fishingBillingTestWebhookHttp(request:Request,load:()=>Pro
     },
    }});
   }catch{throw new AppError('INVALID_REQUEST');}
-  await bounded(d.admit());
+  await bounded(()=>d.admit());
   // No automatic retry after timeout/unknown commit. A provider replay carries
   // the SAME signed event identity; the inbox owns atomic replay/conflict checks.
-  const saved=await bounded(d.ingest(capability));
+  const saved=await bounded(()=>d.ingest(capability));
   if(saved.received!==true||saved.processed!==false||typeof saved.replayed!=='boolean'||saved.eventId!==eventId)throw new AppError('UNAVAILABLE');
   response=successResponse({received:true,processed:false,replayed:saved.replayed},requestId,202);
  }catch(error){response=failureResponse(error instanceof AppError?error:new AppError('UNAVAILABLE'),requestId);}

@@ -100,6 +100,18 @@ describe('unmounted exact-byte TEST webhook intake',()=>{
   const pending=fishingBillingTestWebhookHttp(f.request(),()=>new Promise(resolve=>{release=resolve;}));
   await vi.advanceTimersByTimeAsync(10001);expect((await pending).status).toBe(503);release(f.deps);await Promise.resolve();expect(f.admit).not.toHaveBeenCalled();expect(f.ingest).not.toHaveBeenCalled();
  });
+ it('does not start ingestion when final admission finishes after the deadline',async()=>{
+  vi.useFakeTimers();const f=setup();f.admit.mockResolvedValueOnce().mockImplementationOnce(async()=>{vi.setSystemTime(Date.now()+10001);});
+  expect((await f.run(f.request())).status).toBe(503);expect(f.admit).toHaveBeenCalledTimes(2);expect(f.ingest).not.toHaveBeenCalled();
+ });
+ it('does not start ingestion when final admission observes an aborted request',async()=>{
+  const f=setup(),controller=new AbortController();f.admit.mockResolvedValueOnce().mockImplementationOnce(async()=>{controller.abort();});
+  const request=new Request(f.request(),{signal:controller.signal});expect((await f.run(request)).status).toBe(503);expect(f.ingest).not.toHaveBeenCalled();
+ });
+ it('withholds202 for an already-started native commit that finishes late',async()=>{
+  vi.useFakeTimers();const f=setup();f.ingest.mockImplementation(async()=>{vi.setSystemTime(Date.now()+10001);return {received:true,replayed:false,processed:false,eventId:f.event.id};});
+  expect((await f.run(f.request())).status).toBe(503);expect(f.ingest).toHaveBeenCalledOnce();
+ });
  it('stops a request aborted during body intake without ingesting',async()=>{
   const f=setup(),controller=new AbortController(),cancel=vi.fn(),body=new ReadableStream<Uint8Array>({cancel});
   const headers=Object.fromEntries(f.request().headers),r=new Request(origin+FISHING_BILLING_TEST_WEBHOOK_PATH,{method:'POST',headers,body,duplex:'half',signal:controller.signal} as RequestInit);
