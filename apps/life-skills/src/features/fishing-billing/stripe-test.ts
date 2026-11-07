@@ -74,7 +74,9 @@ export class FishingBillingStripeInbox{
    const aad='ls_fishing_billing/stripe_event/v1/'+this.workspaceId+'/'+binding.accountId+'/'+receipt.eventId;
    if(old){
     requireBilling(old.workspaceId===this.workspaceId&&old.digest===receipt.digest,'CONFLICT');
-    signedReceiptSchema.parse(JSON.parse(unseal(old.ciphertext,aad,this.ring)));
+    const stored=signedReceiptSchema.parse(JSON.parse(unseal(old.ciphertext,aad,this.ring)));
+    requireBilling(stored.providerAccountId===binding.accountId&&stored.livemode===binding.livemode&&
+     stored.eventId===receipt.eventId&&stored.digest===old.digest&&JSON.stringify(stored)===JSON.stringify(receipt),'CONFLICT');
     return {received:true as const,replayed:true,processed:false as const,eventId:receipt.eventId};
    }
    await tx.query('INSERT INTO ls_fishing_billing.stripe_events(account_id,livemode,event_id,workspace_id,body_digest,receipt_ciphertext,received_at,state) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',[...params,this.workspaceId,receipt.digest,seal(JSON.stringify(receipt),aad,this.ring),this.clock.now(),'pending']);

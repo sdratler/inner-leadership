@@ -266,3 +266,9 @@ it('does not acknowledge Stripe intake when durable storage failed',async()=>{
  await expect(inbox(broken).ingest(cap)).rejects.toThrow('SYNTHETIC_INBOX_FAILURE');
  expect((await db.query('SELECT event_id FROM ls_fishing_billing.stripe_events WHERE event_id=$1',[eventId])).rows).toHaveLength(0);
 });
+it('rejects a plaintext digest rewrite that disagrees with the encrypted stored Stripe receipt',async()=>{
+ const eventId='evt_'+randomUUID().replaceAll('-','');await inbox().ingest(signedTestEvent(eventId,'ORIGINAL_AUTHENTICATED_BYTES'));
+ const changedBody='CHANGED_AUTHENTICATED_BYTES',changedDigest=createHash('sha256').update(changedBody).digest('hex');
+ await db.query('UPDATE ls_fishing_billing.stripe_events SET body_digest=$2 WHERE event_id=$1',[eventId,changedDigest]);
+ await expect(inbox().ingest(signedTestEvent(eventId,changedBody))).rejects.toThrow('CONFLICT');
+});
