@@ -7,6 +7,8 @@ import {one,type IdentityStore,type SqlSession} from '../identity/store.ts';
 import type {WorkspaceId,IdentityClock} from '../identity/types.ts';
 import {billingId,billingAmount,billingInstant,type FamilyOffer,type BillingBalance} from './contracts.ts';
 import {requireBilling} from './domain.ts';
+import {billingStripeBindingSchema,type BillingStripeBinding} from './card-binding.ts';
+export type {BillingStripeBinding} from './card-binding.ts';
 
 /** Reuse PR189's reviewed SDK verifier through a server-created closure. This
  * interface performs no signature algorithm, credential lookup or fallback.
@@ -21,18 +23,13 @@ const signedReceiptSchema=z.object({
  apiVersion:z.literal('2026-09-30.endive'),digest:z.string().regex(/^[a-f0-9]{64}$/),createdAt:billingInstant,
 }).strict();
 export type BillingStripeSignedReceipt=z.infer<typeof signedReceiptSchema>;
+export const billingStripeSignedReceiptSchema=signedReceiptSchema;
 export interface BillingStripeSdkVerifier{
  verify(rawBody:Uint8Array,signatureHeader:string,now:Date):{
   kind:'stripe_test_signature_only';receipt:BillingStripeSignedReceipt;
  };
 }
-export type BillingStripeBinding={
- accountId:string;livemode:false;apiVersion:'2026-09-30.endive';verifiedBindingId:string;
-};
-const bindingSchema=z.object({
- accountId:z.string().regex(/^acct_[A-Za-z0-9_]{1,150}$/),livemode:z.literal(false),
- apiVersion:z.literal('2026-09-30.endive'),verifiedBindingId:z.string().min(1).max(200),
-}).strict();
+const bindingSchema=billingStripeBindingSchema;
 declare const verifiedEventBrand:unique symbol;
 export type VerifiedBillingStripeEvent={readonly [verifiedEventBrand]:true};
 const verifiedEvents=new WeakMap<object,{binding:BillingStripeBinding;receipt:BillingStripeSignedReceipt}>();

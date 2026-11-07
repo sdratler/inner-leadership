@@ -17,9 +17,13 @@ import {
  validateCashReceipt,validateReversal,
 } from './domain.ts';
 import {planPaymentReminders,checkReminderDispatch,type DispatchPermission} from './reminders.ts';
+import type {BillingStripeBinding} from './stripe-test.ts';
+import {LEDGER_HISTORY_VERSION,ledgerHistoryQuerySchema,ledgerHistoryPageSchema} from './history-contracts.ts';
+import {cardAttemptSchema,cardExceptionSchema} from './card-contracts.ts';
 
-export type BillingContext={tx:SqlSession;actor:AccountFacts;workspaceId:WorkspaceId;now:Date};
-export type BillingAction='publish'|'create'|'read'|'issue'|'accept'|'cash'|'reverse'|'state'|'reminders'|'dispatch';
+export type BillingLedgerContext={tx:SqlSession;workspaceId:WorkspaceId;now:Date};
+export type BillingContext=BillingLedgerContext&{actor:AccountFacts};
+export type BillingAction='publish'|'create'|'read'|'issue'|'accept'|'cash'|'reverse'|'state'|'reminders'|'dispatch'|'card';
 export type BillingScope={programKey:'fishing_monthly_club';familyId:string|null;childIds:string[];quoteId:string|null};
 /** Mandatory server port: freshly resolve actual native Academy program,
  * family/children/guardian access under this transaction. No network, caller
@@ -35,6 +39,16 @@ export interface BillingAuthority{
 export interface BillingOutboxReservation{
  reserve(context:BillingContext,input:{intent:ReminderIntent;amount:{currency:'USD';quoteId:string;familyId:string;revision:number;remainingMinor:number;lines:ReturnType<typeof projectBalance>['lines']}}):Promise<void>;
 }
+/** Root binds the actual service policy, database target, test account/mode and
+ * current native family/child/period scope. No session impersonation or default
+ * allow. The service capability is constructor-owned, never an HTTP DTO. */
+export interface BillingFinancialServiceAuthority{
+ authorize(context:BillingLedgerContext,binding:BillingStripeBinding,scope:BillingScope):Promise<void>;
+}
+export type BillingCardLedger={
+ context:BillingLedgerContext;quote:FamilyOffer;receipts:LedgerReceipt[];balance:ReturnType<typeof projectBalance>;
+ advance(receipts?:LedgerReceipt[]):Promise<FamilyOffer>;
+};
 type QuoteRow={id:string;familyId:string;revision:number;ciphertext:string};
 type CommandRow={actorId:string;action:string;quoteId:string|null;digest:string;ciphertext:string};
 type IntentRow={id:string;ciphertext:string;state:ReminderIntent['state']};
@@ -58,6 +72,7 @@ export class FishingBillingStore{
   readonly db:IdentityStore,readonly workspaceId:WorkspaceId,private readonly ring:Keyring,digestKey:Buffer,
   readonly authority:BillingAuthority,readonly clock:IdentityClock,
   private readonly outbox:BillingOutboxReservation|null=null,
+  private readonly financialService:BillingFinancialServiceAuthority|null=null,
  ){
   requireBilling(digestKey.length>=32,'UNAVAILABLE');this.key=Buffer.from(digestKey);
  }
@@ -72,7 +87,7 @@ export class FishingBillingStore{
   });
  }
  private owner(c:BillingContext){requireBilling(c.actor.role==='practitioner','FORBIDDEN');}
- private async quote(c:BillingContext,id:string,write=false):Promise<FamilyOffer>{
+ private async quote(c:BillingLedgerContext,id:string,write=false):Promise<FamilyOffer>{
   billingId.parse(id);
   const row=await one<QuoteRow>(c.tx,qSelect+' WHERE workspace_id=$1 AND id=$2'+(write?' FOR UPDATE':' FOR SHARE'),[c.workspaceId,id]);
   if(!row)throw new AppError('NOT_FOUND');
@@ -80,13 +95,30 @@ export class FishingBillingStore{
   requireBilling(q.id===row.id&&q.workspaceId===c.workspaceId&&q.familyId===row.familyId&&q.revision===row.revision,'UNAVAILABLE');
   return q;
  }
- private async receipts(c:BillingContext,quoteId:string){
+ private async receipts(c:BillingLedgerContext,quoteId:string){
   const rows=await c.tx.query<{id:string;ciphertext:string}>('SELECT id,payload_ciphertext AS ciphertext FROM ls_fishing_billing.receipts WHERE workspace_id=$1 AND quote_id=$2 ORDER BY id LIMIT 1001',[c.workspaceId,quoteId]);
   requireBilling(rows.length<=1000,'UNAVAILABLE');
   return rows.map(r=>ledgerReceiptSchema.parse(JSON.parse(unseal(r.ciphertext,aad('receipt',c.workspaceId,r.id),this.ring))));
  }
- private async result(c:BillingContext,q:FamilyOffer,receiptId:string|null=null){
-  const balance=projectBalance(q,await this.receipts(c,q.id));
+ private async balance(c:BillingLedgerContext,q:FamilyOffer){
+  const attempts=await c.tx.query<{id:string;state:string;revision:number;ciphertext:string}>('SELECT id,state,revision,payload_ciphertext AS ciphertext FROM ls_fishing_billing.card_attempts WHERE workspace_id=$1 AND quote_id=$2 ORDER BY id LIMIT 1001',[c.workspaceId,q.id]);
+  requireBilling(attempts.length<=1000,'UNAVAILABLE');
+  const pending=attempts.map(row=>{
+   const a=cardAttemptSchema.parse(JSON.parse(unseal(row.ciphertext,'ls_fishing_billing/card/v1/attempt/'+c.workspaceId+'/'+row.id,this.ring)));
+   requireBilling(a.id===row.id&&a.state===row.state&&a.revision===row.revision&&a.workspaceId===c.workspaceId&&a.quoteId===q.id&&a.familyId===q.familyId,'UNAVAILABLE');return a;
+  }).filter(a=>['prepared','unknown','open','pending'].includes(a.state));
+  const balance=projectBalance(q,await this.receipts(c,q.id),pending.map(a=>a.id));
+  const exceptions=await c.tx.query<{id:string;state:string;ciphertext:string}>('SELECT id,state,payload_ciphertext AS ciphertext FROM ls_fishing_billing.card_exceptions WHERE workspace_id=$1 AND quote_id=$2 LIMIT 1001',[c.workspaceId,q.id]);
+  requireBilling(exceptions.length<=1000,'UNAVAILABLE');let review=false;
+  for(const row of exceptions){
+   const e=cardExceptionSchema.parse(JSON.parse(unseal(row.ciphertext,'ls_fishing_billing/card/v1/exception/'+c.workspaceId+'/'+row.id,this.ring)));
+   requireBilling(e.id===row.id&&e.workspaceId===c.workspaceId&&e.quoteId===q.id&&e.familyId===q.familyId&&e.state===row.state,'UNAVAILABLE');if(e.state==='open')review=true;
+  }
+  if(review)balance.state='review_required';
+  return balance;
+ }
+ private async result(c:BillingLedgerContext,q:FamilyOffer,receiptId:string|null=null){
+  const balance=await this.balance(c,q);
   const rows=await c.tx.query<IntentRow>(iSelect+' WHERE workspace_id=$1 AND quote_id=$2 ORDER BY id LIMIT 1001',[c.workspaceId,q.id]);
   requireBilling(rows.length<=1000,'UNAVAILABLE');
   balance.reminders=rows.map(r=>({id:r.id,state:r.state}));
@@ -120,16 +152,16 @@ export class FishingBillingStore{
   const digest=this.digest(body),record=commandRecordSchema.parse({version:'JLFA-BILLING-JOURNAL-v1',workspaceId:c.workspaceId,operationId:id,actorId:c.actor.id,action,quoteId,digest,result});
   await c.tx.query('INSERT INTO ls_fishing_billing.commands(workspace_id,operation_id,actor_id,action,quote_id,request_digest,result_ciphertext,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',[c.workspaceId,id,c.actor.id,action,quoteId,digest,seal(JSON.stringify(record),aad('command',c.workspaceId,id),this.ring),c.now]);
  }
- private async saveQuote(c:BillingContext,before:FamilyOffer,after:FamilyOffer){
+ private async saveQuote(c:BillingLedgerContext,before:FamilyOffer,after:FamilyOffer){
   requireBilling(after.revision===before.revision+1,'UNAVAILABLE');
   const row=await one(c.tx,'UPDATE ls_fishing_billing.quotes SET revision=$4,payload_ciphertext=$5 WHERE workspace_id=$1 AND id=$2 AND revision=$3 RETURNING id',[c.workspaceId,before.id,before.revision,after.revision,seal(JSON.stringify(after),aad('quote',c.workspaceId,after.id),this.ring)]);
   requireBilling(row,'CONFLICT');
  }
- private async receipt(c:BillingContext,r:LedgerReceipt){
+ private async receipt(c:BillingLedgerContext,r:LedgerReceipt){
   await c.tx.query('INSERT INTO ls_fishing_billing.receipts(workspace_id,id,quote_id,operation_id,original_receipt_id,payload_ciphertext,recorded_at) VALUES($1,$2,$3,$4,$5,$6,$7)',[c.workspaceId,r.id,r.quoteId,r.operationId,r.originalReceiptId,seal(JSON.stringify(r),aad('receipt',c.workspaceId,r.id),this.ring),c.now]);
  }
- private async suppress(c:BillingContext,q:FamilyOffer){
-  const b=projectBalance(q,await this.receipts(c,q.id));
+ private async suppress(c:BillingLedgerContext,q:FamilyOffer){
+  const b=await this.balance(c,q);
   const reason=q.state==='cancelled'?'cancelled':q.paused?'owner_paused':b.remainingMinor===0?'paid':null;
   if(!reason)return;
   const rows=await c.tx.query<IntentRow>(iSelect+" WHERE workspace_id=$1 AND quote_id=$2 AND state='queued' FOR UPDATE",[c.workspaceId,q.id]);
@@ -137,11 +169,11 @@ export class FishingBillingStore{
    const intent=this.decodeIntent(c,row);await this.saveIntent(c,{...intent,state:'suppressed',reason});
   }
  }
- private decodeIntent(c:BillingContext,row:IntentRow){
+ private decodeIntent(c:BillingLedgerContext,row:IntentRow){
   const intent=reminderIntentSchema.parse(JSON.parse(unseal(row.ciphertext,aad('reminder',c.workspaceId,row.id),this.ring)));
   requireBilling(intent.id===row.id&&intent.state===row.state,'UNAVAILABLE');return intent;
  }
- private async saveIntent(c:BillingContext,intent:ReminderIntent){
+ private async saveIntent(c:BillingLedgerContext,intent:ReminderIntent){
   await c.tx.query('UPDATE ls_fishing_billing.reminders SET state=$3,payload_ciphertext=$4 WHERE workspace_id=$1 AND id=$2',[c.workspaceId,intent.id,intent.state,seal(JSON.stringify(intent),aad('reminder',c.workspaceId,intent.id),this.ring)]);
  }
  async publishOffer(actor:Actor,raw:unknown){
@@ -226,6 +258,62 @@ export class FishingBillingStore{
    const q=await this.quote(c,quoteId);await this.authority.authorize(c,'read',scope(q));return this.result(c,q);
   });
  }
+ /** Owner-only immutable entries, not values inferred from payment totals.
+  * Cursor is opaque but never authority: every page refreshes session/scope.
+  * A new aggregate version conflicts so the reader restarts a coherent view. */
+ async readLedgerHistory(actor:Actor,raw:unknown){
+  const query=ledgerHistoryQuerySchema.parse(raw);
+  return this.context(actor,false,async c=>{
+   this.owner(c);const q=await this.quote(c,query.quoteId);await this.authority.authorize(c,'read',scope(q));
+   const cursorSchema=z.object({workspaceId:billingId,quoteId:billingId,familyId:billingId,revision:z.number().int().positive(),recordedAt:z.string().datetime(),id:billingId}).strict();
+   const cursorAad=aad('history_cursor',c.workspaceId,q.id);let cursor:z.infer<typeof cursorSchema>|null=null;
+   if(query.cursor){
+    try{
+     const bytes=Buffer.from(query.cursor,'base64url');requireBilling(bytes.toString('base64url')===query.cursor);
+     cursor=cursorSchema.parse(JSON.parse(unseal(bytes.toString('utf8'),cursorAad,this.ring)));
+    }catch{throw new AppError('INVALID_REQUEST');}
+    requireBilling(cursor.workspaceId===c.workspaceId&&cursor.quoteId===q.id&&cursor.familyId===q.familyId,'FORBIDDEN');
+    requireBilling(cursor.revision===q.revision,'CONFLICT');
+   }
+   const rows=await c.tx.query<{id:string;ciphertext:string;recordedAt:Date}>('SELECT id,payload_ciphertext AS ciphertext,recorded_at AS "recordedAt" FROM ls_fishing_billing.receipts WHERE workspace_id=$1 AND quote_id=$2 AND ($3::timestamptz IS NULL OR recorded_at>$3::timestamptz OR (recorded_at=$3::timestamptz AND id>$4::uuid)) ORDER BY recorded_at,id LIMIT $5',[c.workspaceId,q.id,cursor?.recordedAt??null,cursor?.id??null,query.limit+1]);
+   const selected=rows.slice(0,query.limit),items=selected.map(row=>{
+    const item=ledgerReceiptSchema.parse(JSON.parse(unseal(row.ciphertext,aad('receipt',c.workspaceId,row.id),this.ring)));
+    requireBilling(item.id===row.id&&item.quoteId===q.id&&item.familyId===q.familyId&&Date.parse(item.recordedAt)===row.recordedAt.valueOf(),'UNAVAILABLE');return item;
+   });
+   const last=selected.at(-1),next=rows.length>query.limit&&last?{workspaceId:c.workspaceId,quoteId:q.id,familyId:q.familyId,revision:q.revision,recordedAt:last.recordedAt.toISOString(),id:last.id}:null;
+   return ledgerHistoryPageSchema.parse({version:LEDGER_HISTORY_VERSION,quoteId:q.id,familyId:q.familyId,asOfVersion:q.revision,items,nextCursor:next?Buffer.from(seal(JSON.stringify(next),cursorAad,this.ring)).toString('base64url'):null});
+  });
+ }
+ private async cardLedger(c:BillingLedgerContext,q:FamilyOffer):Promise<BillingCardLedger>{
+  const receipts=await this.receipts(c,q.id);let advanced=false;
+  return {context:c,quote:q,receipts,balance:await this.balance(c,q),advance:async(additions=[])=>{
+   requireBilling(!advanced,'CONFLICT');
+   requireBilling(additions.every(r=>r.kind!=='cash'&&r.kind!=='cash_reversal'));
+   projectBalance(q,[...receipts,...additions]);
+   for(const receipt of additions)await this.receipt(c,ledgerReceiptSchema.parse(receipt));
+   const updated=familyOfferSchema.parse({...q,revision:q.revision+1});
+   await this.saveQuote(c,q,updated);await this.suppress(c,updated);advanced=true;return updated;
+  }};
+ }
+ /** Transaction-bound extension port for this feature's card coordinator.
+  * Callbacks are trusted server code; routes never deserialize callbacks or
+  * authorization ports. No slow provider request may run under this lock. */
+ async withCardActor<T>(actor:Actor,quoteId:string,work:(ledger:BillingCardLedger&{actor:AccountFacts})=>Promise<T>):Promise<T>{
+  return this.context(actor,true,async c=>{
+   requireBilling(c.actor.role==='practitioner'||c.actor.role==='parent','FORBIDDEN');
+   const q=await this.quote(c,quoteId,true);await this.authority.authorize(c,'card',scope(q));
+   return work({...await this.cardLedger(c,q),actor:c.actor});
+  });
+ }
+ async withCardService<T>(binding:BillingStripeBinding,quoteId:string,work:(ledger:BillingCardLedger)=>Promise<T>):Promise<T>{
+  requireBilling(this.financialService,'UNAVAILABLE');
+  return this.db.transaction(async tx=>{
+   await lockWorkspace(tx,this.workspaceId);
+   const c:BillingLedgerContext={tx,workspaceId:this.workspaceId,now:this.clock.now()},q=await this.quote(c,quoteId,true);
+   await this.financialService!.authorize(c,binding,scope(q));
+   return work(await this.cardLedger(c,q));
+  });
+ }
  /** The original result is replay evidence, not the present-day balance. UI must
   * readBalance after resolving UNKNOWN rather than reuse a new operation ID. */
  async readOperationReceipt(actor:Actor,operationId:string):Promise<BillingOperationReceipt|null>{
@@ -267,7 +355,7 @@ export class FishingBillingStore{
    if(!permission.ownerEnabled)return previous;
    // An uncertain earlier send blocks cross-channel or new-policy fallback.
    if(previous.some(i=>i.guardianId===input.guardianId&&i.state==='unknown'))return previous;
-   const planned=planPaymentReminders({balance:projectBalance(q,await this.receipts(c,q.id)),policy,audience:permission.audience,newId:randomUUID});
+   const planned=planPaymentReminders({balance:await this.balance(c,q),policy,audience:permission.audience,newId:randomUUID});
    for(const intent of planned){
     const key=this.digest({key:intent.key});
     await c.tx.query('INSERT INTO ls_fishing_billing.reminders(workspace_id,id,quote_id,intent_key,state,payload_ciphertext,policy_ciphertext) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(workspace_id,intent_key) DO NOTHING',[c.workspaceId,intent.id,q.id,key,intent.state,seal(JSON.stringify(intent),aad('reminder',c.workspaceId,intent.id),this.ring),seal(JSON.stringify(policy),aad('reminder_policy',c.workspaceId,intent.id),this.ring)]);
@@ -287,7 +375,7 @@ export class FishingBillingStore{
    if(unresolved.some(r=>this.decodeIntent(c,r).guardianId===intent.guardianId))return {reserved:false as const,reason:'unresolved_dispatch'};
    const policy=reminderPolicySchema.parse(JSON.parse(unseal(row.policyCiphertext,aad('reminder_policy',c.workspaceId,id),this.ring)));
    const permission=await this.authority.reminderPermission(c,q,policy,intent.guardianId,intent.channel);
-   const balance=projectBalance(q,await this.receipts(c,q.id)),eligibility=checkReminderDispatch(intent,balance,permission,c.now.toISOString());
+   const balance=await this.balance(c,q),eligibility=checkReminderDispatch(intent,balance,permission,c.now.toISOString());
    if(!eligibility.eligible){
     if(!['not_due','already_reserved','send_window_closed'].includes(eligibility.reason)&&intent.state==='queued')await this.saveIntent(c,{...intent,state:'suppressed',reason:eligibility.reason});
     return {reserved:false as const,reason:eligibility.reason};

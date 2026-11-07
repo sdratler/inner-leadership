@@ -161,6 +161,25 @@ it('rejects a null quote relink and recovers a confirmed publication under the s
  await expect(store().readPublicationReceipt(parent,operationId)).rejects.toThrow('FORBIDDEN');
  expect(await store().readPublicationReceipt(owner,randomUUID())).toBeNull();
 });
+it('reads immutable original/correction history through bounded stable owner-only pages',async()=>{
+ const f=await scenario(),first=await store().recordCash(owner,cash(f.quote));
+ const second=await store().recordCash(owner,cash(first.result.quote,15000,1));
+ await store().reverseCash(owner,{operationId:randomUUID(),expectedVersion:second.entityVersion,quoteId:f.quote.id,originalReceiptId:first.result.receiptId!,amountMinor:10000,allocations:[{lineId:f.quote.lines[0]!.id,amountMinor:10000}],reason:'SYNTHETIC correction'});
+ const items=[];let cursor:string|null=null;
+ do{const page=await store().readLedgerHistory(owner,{quoteId:f.quote.id,cursor,limit:1});expect(page.asOfVersion).toBe(6);items.push(...page.items);cursor=page.nextCursor;}while(cursor);
+ expect(items).toHaveLength(3);expect(new Set(items.map(i=>i.id)).size).toBe(3);
+ expect(items.find(i=>i.kind==='cash_reversal')!.originalReceiptId).toBe(first.result.receiptId);
+ expect(items.find(i=>i.id===first.result.receiptId)).toEqual(first.result.balance.receipts[0]);
+ await expect(store().readLedgerHistory(parent,{quoteId:f.quote.id,cursor:null,limit:10})).rejects.toThrow('FORBIDDEN');
+});
+it('rejects altered, cross-quote and stale history cursors after refreshing session/authority',async()=>{
+ const f=await scenario(),p=await store().recordCash(owner,cash(f.quote));await store().recordCash(owner,cash(p.result.quote,10000,1));
+ const page=await store().readLedgerHistory(owner,{quoteId:f.quote.id,cursor:null,limit:1});expect(page.nextCursor).not.toBeNull();
+ await expect(store().readLedgerHistory(owner,{quoteId:f.quote.id,cursor:page.nextCursor!.slice(0,-5)+'abcde',limit:1})).rejects.toThrow('INVALID_REQUEST');
+ const other=await scenario();await expect(store().readLedgerHistory(owner,{quoteId:other.quote.id,cursor:page.nextCursor,limit:1})).rejects.toThrow('INVALID_REQUEST');
+ const current=await store().readBalance(owner,f.quote.id);await store().setState(owner,{operationId:randomUUID(),expectedVersion:current.quote.revision,quoteId:f.quote.id,paused:true});
+ await expect(store().readLedgerHistory(owner,{quoteId:f.quote.id,cursor:page.nextCursor,limit:1})).rejects.toThrow('CONFLICT');
+});
 it('encrypts quote, money, command and intent payloads with record-bound AAD',async()=>{
  const f=await scenario();await store().recordCash(owner,cash(f.quote));await queue(f.quote);
  const quote=(await db.query<{payload_ciphertext:string}>('SELECT payload_ciphertext FROM ls_fishing_billing.quotes WHERE id=$1',[f.quote.id])).rows[0]!.payload_ciphertext;
