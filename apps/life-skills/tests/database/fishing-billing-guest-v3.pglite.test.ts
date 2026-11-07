@@ -6,6 +6,7 @@ import {asId} from '../../src/lib/ids.ts';
 import {AppError} from '../../src/lib/errors.ts';
 import {seal,unseal,tokenDigest} from '../../src/features/identity/crypto.ts';
 import type {IdentityStore,SqlSession} from '../../src/features/identity/store.ts';
+import type {BillingLedgerContext} from '../../src/features/fishing-billing/native.ts';
 import {syntheticDefinition,syntheticDraft,syntheticAccepted,syntheticId,syntheticOwner,syntheticWorkspace} from '../../src/features/fishing-billing/fixtures.ts';
 import {createGuestFamilyOffer,issueGuestFamilyOffer,changeGuestBillingState,projectGuestBalanceV3} from '../../src/features/fishing-billing/guest-domain-v3.ts';
 import {FishingBillingGuestNativeV3,guestFinancialEvidenceEnvelopeSchema} from '../../src/features/fishing-billing/guest-native-v3.ts';
@@ -26,6 +27,9 @@ let finalMutation:''|'assurance'|'display'|'expire'|'expireAfterCheck'|'revoke'=
 let failStage='',zeroStage='',alterGrantIndex=false,alterQuoteIndex=false,dropResult=false;
 let failSecondObligation=false,obligationWrites=0,alterGrantCipher=false;
 let corruptReplay:''|'journal'|'evidence'|'statement'='';
+let retainedContext:BillingLedgerContext|null=null,replacementQueries=0;
+let swapAtRead:''|'quote'|'operation'|'evidence'|'obligations'='';
+let expireAtRead:''|'evidence'|'obligations'='',revokeAtRead:''|'evidence'|'obligations'='';
 const trace:{sql:string;values:readonly unknown[]}[]=[];
 const clock={now:()=>{clockCalls++;return new Date(clockCalls>=expireOnRead?'2035-01-03T15:00:00.000Z':currentTime);}};
 const query=async<T extends object=Record<string,unknown>>(sql:string,values:unknown[]=[])=> (await db.query<T>(sql,values)).rows;
@@ -42,6 +46,13 @@ const binder:IdentityStore={transaction:async work=>{
   if(s==='grant'&&alterGrantCipher)await raw.query('UPDATE ls_fishing_billing.guest_grants SET payload_ciphertext=$1 WHERE workspace_id=$2 AND id=$3',[seal(JSON.stringify(seeded.lifecycle),grantAad(seeded.grant.id),ring),ws,seeded.grant.id]);
   if(s==='quote'&&alterQuoteIndex)await raw.query('UPDATE ls_fishing_billing.quotes SET family_id=$1 WHERE workspace_id=$2 AND id=$3',[syntheticId(1999),ws,seeded.quote.id]);
   const rows=(await raw.query<T>(sql,[...values])).rows;
+  const read=sql.startsWith('SELECT id,family_id AS')?'quote':sql.startsWith('SELECT operation_id AS')?'operation':sql.startsWith('SELECT id,quote_id AS "quoteId",grant_id AS')?'evidence':sql.startsWith('SELECT line_id AS')?'obligations':'';
+  if(read&&read===swapAtRead){
+   swapAtRead='';if(!retainedContext)throw Error('SYNTHETIC_NO_RETAINED_CONTEXT');
+   retainedContext.tx={query:async<U extends object>(statement:string,parameters:readonly unknown[]=[])=>{replacementQueries++;return (await raw.query<U>(statement,[...parameters])).rows;}};
+  }
+  if(read&&read===expireAtRead){expireAtRead='';currentTime=Date.parse(seeded.grant.expiresAt);}
+  if(read&&read===revokeAtRead){revokeAtRead='';denyCurrent=true;}
   // Deliberately corrupt a SQL read result after real persisted acceptance;
   // no production trigger is weakened and the underlying rows stay intact.
   if(corruptReplay==='journal'&&sql.startsWith('SELECT operation_id AS'))return rows.map(row=>({...row,ciphertext:'SYNTHETIC CORRUPT JOURNAL'}));
@@ -60,7 +71,7 @@ const binder:IdentityStore={transaction:async work=>{
 }};
 
 const authority:BillingGuestGrantAuthority={
- target:async c=>{if(denyTarget||c.workspaceId!==ws)throw new AppError('UNAVAILABLE');const rows=await c.tx.query('SELECT id FROM ls_identity.workspaces WHERE id=$1',[ws]);if(rows.length!==1)throw new AppError('UNAVAILABLE');},
+ target:async c=>{retainedContext=c;if(denyTarget||c.workspaceId!==ws)throw new AppError('UNAVAILABLE');const rows=await c.tx.query('SELECT id FROM ls_identity.workspaces WHERE id=$1',[ws]);if(rows.length!==1)throw new AppError('UNAVAILABLE');},
  current:async(c,g,mode)=>{
   if(denyCurrent)throw new AppError('FORBIDDEN');
   const records=await c.tx.query<{recipient:string;assurance:string}>('SELECT recipient_id AS recipient,assurance_id AS assurance FROM synthetic_guest.admissions WHERE workspace_id=$1 AND family_id=$2 AND active=true',[ws,g.offer.material.familyId]);
@@ -126,7 +137,7 @@ beforeAll(async()=>{
 },20000);
 beforeEach(async()=>{
  await db.exec('TRUNCATE ls_fishing_billing.definitions CASCADE;TRUNCATE synthetic_guest.admissions,synthetic_guest.presentations;');
- currentTime=Date.parse(initial);denyTarget=false;denyCurrent=false;displayCalls=0;clockCalls=0;expireOnRead=Infinity;finalMutation='';failStage='';zeroStage='';alterGrantIndex=false;alterQuoteIndex=false;dropResult=false;trace.length=0;failSecondObligation=false;obligationWrites=0;alterGrantCipher=false;corruptReplay='';
+ currentTime=Date.parse(initial);denyTarget=false;denyCurrent=false;displayCalls=0;clockCalls=0;expireOnRead=Infinity;finalMutation='';failStage='';zeroStage='';alterGrantIndex=false;alterQuoteIndex=false;dropResult=false;trace.length=0;failSecondObligation=false;obligationWrites=0;alterGrantCipher=false;corruptReplay='';retainedContext=null;replacementQueries=0;swapAtRead='';expireAtRead='';revokeAtRead='';
  seeded=await seed();
 });
 afterAll(async()=>{await db.close();});
@@ -240,4 +251,23 @@ it('preserves and denies a historical V1 account quote rather than converting it
  const old=syntheticAccepted(),cipher=seal(JSON.stringify(old),'ls_fishing_billing/v1/quote/'+ws+'/'+old.id,ring);
  await query('UPDATE ls_fishing_billing.quotes SET payload_ciphertext=$1,revision=$2',[cipher,old.revision]);const before=await snapshot();
  await expect(accept()).rejects.toThrow();expect(await snapshot()).toEqual(before);expect((await query<{ciphertext:string}>('SELECT payload_ciphertext AS ciphertext FROM ls_fishing_billing.quotes'))[0]!.ciphertext).toBe(cipher);
+});
+
+async function durable(){return {base:await snapshot(),operations:await query('SELECT * FROM ls_fishing_billing.guest_operations ORDER BY operation_id'),evidence:await query('SELECT * FROM ls_fishing_billing.guest_financial_acceptances ORDER BY id'),obligations:await query('SELECT * FROM ls_fishing_billing.obligations ORDER BY line_id')};}
+it.each(['quote','operation'] as const)('Native review R01 refuses a retained-context swap during fresh %s read before another transaction can query',async read=>{
+ const before=await durable();swapAtRead=read;
+ await expect(accept()).rejects.toMatchObject({code:'UNAVAILABLE'});expect(replacementQueries).toBe(0);expect(await durable()).toEqual(before);
+});
+it.each(['operation','evidence','quote','obligations'] as const)('Native review R01 refuses a retained-context swap during replay %s read',async read=>{
+ await accept();const before=await durable();trace.length=0;swapAtRead=read;
+ await expect(accept()).rejects.toMatchObject({code:'UNAVAILABLE'});expect(replacementQueries).toBe(0);expect(await durable()).toEqual(before);
+ expect(trace.every(t=>t.sql.startsWith('SELECT'))).toBe(true);
+});
+it.each(['evidence','obligations'] as const)('Native review R02 refuses clock expiry during replay %s read with original state intact',async read=>{
+ await accept();const before=await durable();trace.length=0;expireAtRead=read;
+ await expect(accept()).rejects.toMatchObject({code:'UNAVAILABLE'});expect(await durable()).toEqual(before);expect(trace.every(t=>t.sql.startsWith('SELECT'))).toBe(true);
+});
+it.each(['evidence','obligations'] as const)('Native review R02 refuses current-access expiry during replay %s read with original state intact',async read=>{
+ await accept();const before=await durable();trace.length=0;revokeAtRead=read;
+ await expect(accept()).rejects.toMatchObject({code:'UNAVAILABLE'});expect(await durable()).toEqual(before);expect(trace.every(t=>t.sql.startsWith('SELECT'))).toBe(true);
 });

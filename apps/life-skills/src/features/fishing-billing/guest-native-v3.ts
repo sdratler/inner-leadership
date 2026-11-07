@@ -110,10 +110,17 @@ export class FishingBillingGuestNativeV3{
 
  async acceptFinancialOffer(rawToken:string,rawCommand:unknown):Promise<Receipt>{
   try{return await this.db.transaction(async tx=>{
-   const c:BillingLedgerContext={tx,workspaceId:this.workspaceId,now:this.clock.now()};
+   // Retained authority hooks cannot replace the transaction or workspace
+   // while an awaited native read is in flight. Fresh writes keep closure tx.
+   const c:BillingLedgerContext=Object.freeze({tx,workspaceId:this.workspaceId,now:this.clock.now()});
    const cap=await this.resolver.resolve(c,rawToken,action,rawCommand),first=await this.resolver.current(c,cap,action);
    if(first.kind==='replay'){
-    const final=await this.resolver.current(c,cap,action);stored(final.kind==='replay');return this.replay(c,final);
+    const final=await this.resolver.current(c,cap,action);stored(final.kind==='replay');
+    const receipt=await this.replay(c,final);
+    // Replay has no own mutations, so check current access/expiry again after
+    // all awaited original-evidence reads, immediately before releasing it.
+    const after=await this.resolver.current(c,cap,action);stored(after.kind==='replay'&&same(after,final));
+    return receipt;
    }
    const command=guestAcceptCommandSchema.parse(first.command),g=first.grant,{row:before,quote}=await this.quote(c,g.offer.material.quoteId),original=await this.grant(c,first);
    stored(quote.state==='issued'&&quote.revision===command.expectedVersion&&quote.acceptance===null&&quote.familyId===g.offer.material.familyId&&original.lifecycle.state==='active'&&!original.lifecycle.use);
