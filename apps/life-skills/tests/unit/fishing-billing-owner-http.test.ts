@@ -70,11 +70,16 @@ it('rejects caller-supplied authority and accepts only the business command',asy
  expect(r.status).toBe(200);expect(s.store.recordCash).toHaveBeenCalledExactlyOnceWith(actor,cash.command);
  expect((await r.json()).data.current.balance.remainingMinor).toBe(45000);
 });
-it('keeps a committed mutation uncertain when its current readback fails',async()=>{
- const s=setup();s.store.readBalance.mockRejectedValue(new AppError('UNAVAILABLE'));
+it.each(['UNAVAILABLE','FORBIDDEN','UNAUTHENTICATED','NOT_FOUND'] as const)('keeps a confirmed operation uncertain when current readback fails with %s',async code=>{
+ const s=setup();s.store.readBalance.mockRejectedValue(new AppError(code));
  const r=await fishingBillingOwnerHttp(req('',cash),s.load),body=await r.json();
  expect(s.store.recordCash).toHaveBeenCalledOnce();expect(r.status).toBe(503);
  expect(body).toMatchObject({ok:false,error:{code:'UNAVAILABLE'}});expect(body).not.toHaveProperty('data');
+ const recovered=setup();recovered.store.readOperationReceipt.mockResolvedValue(receipt);
+ recovered.store.readBalance.mockRejectedValue(new AppError(code));
+ const lookup=await fishingBillingOwnerHttp(req('?kind=operation&id='+operationId),recovered.load);
+ expect(lookup.status).toBe(503);expect(await lookup.json()).toMatchObject({ok:false,error:{code:'UNAVAILABLE'}});
+ expect(recovered.store.recordCash).not.toHaveBeenCalled();
 });
 it('fails closed on mismatched operation or family readback',async()=>{
  const s=setup();s.store.readOperationReceipt.mockResolvedValue({...receipt,operationId:syntheticId(602)} as BillingOperationReceipt);

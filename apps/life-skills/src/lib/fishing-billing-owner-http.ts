@@ -23,6 +23,15 @@ function snapshot(value:unknown,actor:Actor,quoteId:string,familyId?:string,mini
   b.revision!==q.revision||q.revision<minimumVersion||familyId!==undefined&&q.familyId!==familyId)throw new AppError('UNAVAILABLE');
  return current;
 }
+async function currentAfterReceipt(d:FishingBillingOwnerHttpDeps,actor:Actor,receipt:ReturnType<typeof operationReceiptSchema.parse>){
+ try{
+  return snapshot(await d.store.readBalance(actor,receipt.entityId),actor,receipt.entityId,receipt.result.quote.familyId,receipt.entityVersion);
+ }catch{
+  // Authorization still fails closed. Once the operation receipt exists, an
+  // unsuccessful current read must not be presented as a failed money save.
+  throw new AppError('UNAVAILABLE');
+ }
+}
 /** Unmounted owner-only adapter. The mandatory store must resolve fresh native
  * Academy authority in its transaction. No provider, parent acceptance, reminder
  * dispatch, publication, migration or default runtime factory is supplied here. */
@@ -54,7 +63,7 @@ export async function fishingBillingOwnerHttp(request:Request,load:()=>Promise<F
     }else{
      const receipt=operationReceiptSchema.parse(found);
      if(receipt.operationId!==id.data||receipt.entityId!==receipt.result.quote.id||receipt.result.quote.workspaceId!==actor.workspaceId)throw new AppError('UNAVAILABLE');
-     const current=snapshot(await d.store.readBalance(actor,receipt.entityId),actor,receipt.entityId,receipt.result.quote.familyId,receipt.entityVersion);
+     const current=await currentAfterReceipt(d,actor,receipt);
      response=successResponse(billingOwnerReadSchema.parse({version:BILLING_DTO_VERSION,state:'confirmed',receipt,current}),requestId);
     }
    }
@@ -69,7 +78,7 @@ export async function fishingBillingOwnerHttp(request:Request,load:()=>Promise<F
    if(receipt.operationId!==input.command.operationId||receipt.entityId!==input.command.quoteId||receipt.result.quote.id!==input.command.quoteId||receipt.result.quote.workspaceId!==actor.workspaceId)throw new AppError('UNAVAILABLE');
    // Even a replay returns its original receipt. Refresh now; failure here is
    // uncertain to the caller, never a claim that the mutation was rolled back.
-   const current=snapshot(await d.store.readBalance(actor,receipt.entityId),actor,receipt.entityId,receipt.result.quote.familyId,receipt.entityVersion);
+   const current=await currentAfterReceipt(d,actor,receipt);
    response=successResponse(billingOwnerReadSchema.parse({version:BILLING_DTO_VERSION,state:'confirmed',receipt,current}),requestId);
   }
  }catch(error){response=failureResponse(error instanceof AppError?error:new AppError('UNAVAILABLE'),requestId);}
