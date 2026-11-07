@@ -119,6 +119,9 @@ describe('payment reminder intent eligibility',()=>{
   expect(scannedAgain[0]!.id).not.toBe(intents()[0]!.id);
   expect(scannedAgain.map(i=>i.key)).toEqual(intents().map(i=>i.key));
  });
+ it('does not relabel a group audience or truthy unverified binding as individual',()=>{
+  for(const bad of [{...audience,audience:'group'},{...audience,verified:'true'}])expect(planPaymentReminders({balance:projectBalance(syntheticAccepted(),[]),policy,audience:bad as typeof audience,newId:()=>syntheticId(206)})).toEqual([]);
+ });
  it('uses approved offsets and exact due instants, including Florida DST offsets',()=>{
   const q=syntheticAccepted();q.lines[0]!.dueAt='2035-03-11T17:00:00-04:00';q.lines[1]!.dueAt=q.lines[0]!.dueAt;
   const plans=planPaymentReminders({balance:projectBalance(q,[]),policy,audience,newId:()=>syntheticId(201)});

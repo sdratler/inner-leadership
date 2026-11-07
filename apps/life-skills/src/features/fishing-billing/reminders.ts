@@ -25,7 +25,7 @@ export function reminderSuppression(balance:BillingBalance,permission:DispatchPe
  if(balance.remainingMinor===0)return 'paid';
  if(balance.state==='review_required'||balance.excessMinor>0)return 'financial_review';
  const a=permission.audience;
- if(!a.active||!a.verified||!a.consented)return 'audience_not_permitted';
+ if(a.audience!=='individual'||a.active!==true||a.verified!==true||a.consented!==true)return 'audience_not_permitted';
  if(!permission.policyCurrent)return 'policy_changed';
  if(!permission.sendWindowOpen)return 'send_window_closed';
  return null;

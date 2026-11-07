@@ -42,3 +42,11 @@ CREATE TABLE ls_fishing_billing.reminders(
  PRIMARY KEY(workspace_id,id),UNIQUE(workspace_id,intent_key),
  FOREIGN KEY(workspace_id,quote_id) REFERENCES ls_fishing_billing.quotes(workspace_id,id)
 );
+-- Signed minimal durable intake; not settlement or provider acknowledgment.
+CREATE TABLE ls_fishing_billing.stripe_events(
+ account_id text NOT NULL,livemode boolean NOT NULL CHECK(livemode=false),event_id text NOT NULL,
+ workspace_id uuid NOT NULL REFERENCES ls_identity.workspaces(id),body_digest text NOT NULL CHECK(body_digest~'^[a-f0-9]{64}$'),
+ receipt_ciphertext text NOT NULL,received_at timestamptz NOT NULL,
+ state text NOT NULL CHECK(state IN('pending','processed','review_required')),
+ PRIMARY KEY(account_id,livemode,event_id)
+);

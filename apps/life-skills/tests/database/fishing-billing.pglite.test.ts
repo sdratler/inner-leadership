@@ -1,4 +1,4 @@
-import {randomUUID} from 'node:crypto';
+import {randomUUID,createHash} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
 import {PGlite} from '@electric-sql/pglite';
 import {beforeAll,afterAll,it,expect,vi} from 'vitest';
@@ -9,6 +9,7 @@ import type {IdentityStore,SqlSession} from '../../src/features/identity/store.t
 import {FishingBillingStore,type BillingAuthority,type BillingOutboxReservation} from '../../src/features/fishing-billing/native.ts';
 import {syntheticDefinition} from '../../src/features/fishing-billing/fixtures.ts';
 import type {CreateFamilyOffer,FamilyOffer,ReminderPolicy} from '../../src/features/fishing-billing/contracts.ts';
+import {FishingBillingStripeInbox,verifyBillingStripeTestEvent,type VerifiedBillingStripeEvent} from '../../src/features/fishing-billing/stripe-test.ts';
 vi.mock('server-only',()=>({}));
 
 // Explicit in-memory DB only. No URL, credentials, .env, port, migration runner,
@@ -190,6 +191,13 @@ it('UNKNOWN survives worker restart, payment and channel fallback; late genuine 
  expect(await store().recordReminderOutcome(owner,{id:i.id,dispatchId,state:'delivered',providerId:'SYNTHETIC_PROVIDER'})).toMatchObject({state:'delivered'});
  await expect(store().recordReminderOutcome(owner,{id:i.id,dispatchId,state:'failed',providerId:'SYNTHETIC_PROVIDER'})).rejects.toThrow('CONFLICT');
 });
+it('does not bypass an UNKNOWN send through an already queued later reminder sequence',async()=>{
+ const f=await scenario(),plans=await queue(f.quote),first=plans.find(i=>i.sequence===0)!,later=plans.find(i=>i.sequence===1)!;
+ await store().reserveReminder(owner,first.id,randomUUID());
+ const resumed=new FishingBillingStore(binder,workspace,ring,Buffer.alloc(32,9),authority,{now:()=>new Date('2035-01-08T15:00:00Z')},outbox);
+ expect(await resumed.reserveReminder(owner,later.id,randomUUID())).toEqual({reserved:false,reason:'unresolved_dispatch'});
+ expect((await db.query('SELECT * FROM synthetic_billing.existing_outbox WHERE intent_id=$1',[later.id])).rows).toHaveLength(0);
+});
 it('outbox reservation failure rolls back UNKNOWN and leaves retryable unattempted intent',async()=>{
  const f=await scenario(),i=(await queue(f.quote)).find(x=>x.sequence===0)!;outboxFails=true;
  try{await expect(store().reserveReminder(owner,i.id,randomUUID())).rejects.toThrow('SYNTHETIC_EXISTING_OUTBOX_FAILURE');}finally{outboxFails=false;}
@@ -203,4 +211,31 @@ it('missing policy/provider integration fails honestly without accepting or disp
  const noOutbox=new FishingBillingStore(binder,workspace,ring,Buffer.alloc(32,9),authority,{now:()=>now});
  await expect(noOutbox.reserveReminder(owner,i.id,randomUUID())).rejects.toThrow('UNAVAILABLE');
  expect((await store().readBalance(owner,g.quote.id)).balance.reminders.find(x=>x.id===i.id)!.state).toBe('queued');
+});
+// Adapter/inbox tests only. Actual SDK cryptographic proof is separately
+// retained privately against the recovered PR189 verifier; no mock is labeled
+// a Stripe sandbox event, financial settlement or production provider proof.
+function signedTestEvent(eventId:string,body='SYNTHETIC_SIGNED_ADAPTER_BYTES'){
+ const raw=Buffer.from(body),binding={accountId:'acct_SYNTHETIC',livemode:false as const,apiVersion:'2026-09-30.endive' as const,verifiedBindingId:'SYNTHETIC_POLICY'};
+ return verifyBillingStripeTestEvent({rawBody:raw,signatureHeader:'SYNTHETIC',binding,now,sdk:{verify:()=>({kind:'stripe_test_signature_only',receipt:{eventId,eventType:'checkout.session.completed',objectId:'cs_SYNTHETIC',providerAccountId:binding.accountId,livemode:false,apiVersion:binding.apiVersion,digest:createHash('sha256').update(raw).digest('hex'),createdAt:now.toISOString()}})}});
+}
+const inbox=(dbinder=binder)=>new FishingBillingStripeInbox(dbinder,workspace,ring,{now:()=>now},{authorize:async(_tx,w,b)=>{if(w!==workspace||b.verifiedBindingId!=='SYNTHETIC_POLICY'||authorityRevoked)throw new AppError('FORBIDDEN');}});
+it('durably ingests a minimal event once before acknowledging and retains unprocessed status',async()=>{
+ const eventId='evt_'+randomUUID().replaceAll('-',''),cap=signedTestEvent(eventId);
+ expect(await inbox().ingest(cap)).toEqual({received:true,replayed:false,processed:false,eventId});
+ expect(await inbox().ingest(cap)).toEqual({received:true,replayed:true,processed:false,eventId});
+ const rows=(await db.query<{state:string;receipt_ciphertext:string}>('SELECT state,receipt_ciphertext FROM ls_fishing_billing.stripe_events WHERE event_id=$1',[eventId])).rows;
+ expect(rows).toHaveLength(1);expect(rows[0]!.state).toBe('pending');expect(rows[0]!.receipt_ciphertext).not.toContain(eventId);
+ await expect(inbox().ingest(signedTestEvent(eventId,'DIFFERENT_AUTHENTICATED_ADAPTER_BYTES'))).rejects.toThrow('CONFLICT');
+});
+it('rejects a serialized/forged signature capability and rechecks current worker admission on replay',async()=>{
+ await expect(inbox().ingest({} as VerifiedBillingStripeEvent)).rejects.toThrow('FORBIDDEN');
+ const cap=signedTestEvent('evt_'+randomUUID().replaceAll('-',''));await inbox().ingest(cap);authorityRevoked=true;
+ try{await expect(inbox().ingest(cap)).rejects.toThrow('FORBIDDEN');}finally{authorityRevoked=false;}
+});
+it('does not acknowledge Stripe intake when durable storage failed',async()=>{
+ const eventId='evt_'+randomUUID().replaceAll('-',''),cap=signedTestEvent(eventId);
+ const broken:IdentityStore={transaction:work=>binder.transaction(tx=>work({query:(sql,v)=>{if(sql.startsWith('INSERT INTO ls_fishing_billing.stripe_events'))throw new Error('SYNTHETIC_INBOX_FAILURE');return tx.query(sql,v);}}))};
+ await expect(inbox(broken).ingest(cap)).rejects.toThrow('SYNTHETIC_INBOX_FAILURE');
+ expect((await db.query('SELECT event_id FROM ls_fishing_billing.stripe_events WHERE event_id=$1',[eventId])).rows).toHaveLength(0);
 });

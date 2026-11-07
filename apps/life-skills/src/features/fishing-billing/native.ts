@@ -219,10 +219,12 @@ export class FishingBillingStore{
   return this.context(actor,true,async c=>{
    this.owner(c);const q=await this.quote(c,input.quoteId,true);await this.authority.authorize(c,'reminders',scope(q));
    const permission=await this.authority.reminderPermission(c,q,policy,input.guardianId,input.channel);
+   requireBilling(permission.audience.guardianId===input.guardianId&&permission.audience.channel===input.channel&&permission.audience.audience==='individual','FORBIDDEN');
    requireBilling(permission.policyCurrent,'UNAVAILABLE');
    const existing=await c.tx.query<IntentRow>(iSelect+' WHERE workspace_id=$1 AND quote_id=$2 ORDER BY id LIMIT 1001',[c.workspaceId,q.id]);
    requireBilling(existing.length<=1000,'UNAVAILABLE');
    const previous=existing.map(r=>this.decodeIntent(c,r));
+   if(!permission.ownerEnabled)return previous;
    // An uncertain earlier send blocks cross-channel or new-policy fallback.
    if(previous.some(i=>i.guardianId===input.guardianId&&i.state==='unknown'))return previous;
    const planned=planPaymentReminders({balance:projectBalance(q,await this.receipts(c,q.id)),policy,audience:permission.audience,newId:randomUUID});
@@ -241,6 +243,8 @@ export class FishingBillingStore{
    if(!row)throw new AppError('NOT_FOUND');
    const intent=this.decodeIntent(c,row),q=await this.quote(c,intent.quoteId,true);
    await this.authority.authorize(c,'dispatch',scope(q));
+   const unresolved=await c.tx.query<IntentRow>(iSelect+" WHERE workspace_id=$1 AND quote_id=$2 AND state='unknown' AND id<>$3 FOR UPDATE",[c.workspaceId,q.id,intent.id]);
+   if(unresolved.some(r=>this.decodeIntent(c,r).guardianId===intent.guardianId))return {reserved:false as const,reason:'unresolved_dispatch'};
    const policy=reminderPolicySchema.parse(JSON.parse(unseal(row.policyCiphertext,aad('reminder_policy',c.workspaceId,id),this.ring)));
    const permission=await this.authority.reminderPermission(c,q,policy,intent.guardianId,intent.channel);
    const balance=projectBalance(q,await this.receipts(c,q.id)),eligibility=checkReminderDispatch(intent,balance,permission,c.now.toISOString());
