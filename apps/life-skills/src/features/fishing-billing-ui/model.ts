@@ -2,6 +2,7 @@ import {z} from 'zod';
 import {billingId,billingInstant,familyOfferSchema,type FamilyOffer} from '../fishing-billing/contracts.ts';
 import {BILLING_DTO_V2,balanceV2Schema,cashDateCommandSchema,reversalCommandV2Schema,operationReceiptV2Schema,calendarDateSchema,type BillingBalanceV2,type LedgerReceiptV2} from '../fishing-billing/contracts-v2.ts';
 import {billingOwnerReadV2Schema,type BillingOwnerCommandV2,type BillingOwnerOperationReceiptV2} from '../../lib/fishing-billing-owner-contract-v2.ts';
+import {billingStateCommandV2Schema} from '../fishing-billing/state-contracts-v2.ts';
 
 export type BillingData={quote:FamilyOffer;balance:BillingBalanceV2};
 export type BillingReceipt=LedgerReceiptV2;
@@ -15,8 +16,12 @@ export type BillingView=
  | {state:'ready';data:BillingData;cardState?:'pending'|'failed'};
 export type CashCommand=Extract<BillingOwnerCommandV2,{action:'cash_date'}>['command'];
 export type ReversalCommand=Extract<BillingOwnerCommandV2,{action:'reverse_cash'}>['command'];
-export type BillingCommand=CashCommand|ReversalCommand;
-export type CommandKind='cash'|'reversal';
+export type StateCommand=Extract<BillingOwnerCommandV2,{action:'state'}>['command'];
+export type MoneyCommand=CashCommand|ReversalCommand;
+export type BillingCommand=MoneyCommand|StateCommand;
+export type MoneyKind='cash'|'reversal';
+export type CommandKind=MoneyKind|'state';
+export type StateAction='pause'|'resume'|'cancel';
 export type Scope={quoteId:string;familyId:string;workspaceId:string};
 export type PreparationTicket={readonly scope:Scope;readonly revision:number;readonly context:object;readonly generation:symbol};
 export function preparationTicket(scope:Scope,revision:number,context:object):PreparationTicket{return {scope:{...scope},revision,context,generation:Symbol('billing-dialog')};}
@@ -32,13 +37,15 @@ export type CommandOutcome=
 export interface BillingUiPorts{
  recordCashDate(command:CashCommand):Promise<CommandOutcome>;
  reverseCash(command:ReversalCommand):Promise<CommandOutcome>;
+ /** Absent means unavailable, independently of the default-off UI capability. */
+ setState?(command:StateCommand):Promise<CommandOutcome>;
  readOperation(operationId:string):Promise<{receipt:BillingOperationReceipt;current:BillingData}|null>;
  readBalance(quoteId:string):Promise<BillingData>;
  nextOperationId():string;
 }
 export function decodeData(raw:unknown):BillingData{
  const {quote,balance}=z.object({quote:familyOfferSchema,balance:balanceV2Schema}).parse(raw);
- if(quote.id!==balance.quoteId||quote.familyId!==balance.familyId||quote.revision!==balance.revision||
+ if(quote.id!==balance.quoteId||quote.familyId!==balance.familyId||quote.revision!==balance.revision||quote.paused!==balance.paused||balance.cancelled!==(quote.state==='cancelled')||
   quote.lines.length!==balance.lines.length||quote.lines.some(l=>!balance.lines.some(b=>b.lineId===l.id&&b.childId===l.childId&&b.period.id===l.period.id)))throw Error('INVALID_BILLING_SNAPSHOT');
  return {quote,balance};
 }
@@ -74,13 +81,25 @@ export const receivedDate=(value:string)=>calendarDateSchema.parse(value);
 export function confirmedReceipt(raw:unknown,scope:Scope,command:BillingCommand,kind:CommandKind){
  const r=operationReceiptV2Schema.parse(raw),d=scopedData(r.result,scope);
  if(r.version!==BILLING_DTO_V2||r.operationId!==command.operationId||r.entityId!==scope.quoteId||
-  r.entityVersion!==d.quote.revision||r.entityVersion<=command.expectedVersion||!r.result.receiptId)throw Error('INVALID_OPERATION_RECEIPT');
+  r.entityVersion!==d.quote.revision||r.entityVersion<=command.expectedVersion)throw Error('INVALID_OPERATION_RECEIPT');
+ if(kind==='state'){
+  const state=billingStateCommandV2Schema.parse(command);
+  if(r.result.receiptId!==null||(state.paused!==undefined&&d.quote.paused!==state.paused)||(state.cancel&&d.quote.state!=='cancelled'))throw Error('INVALID_STATE_RECEIPT');
+ }else if(!r.result.receiptId)throw Error('INVALID_OPERATION_RECEIPT');
  // A command receipt is not an authenticated complete ledger-history port.
  if(kind==='reversal'&&!('originalReceiptId' in command))throw Error('INVALID_OPERATION_RECEIPT');
  return r;
 }
+export function commandFor(kind:'cash',raw:unknown):CashCommand;
+export function commandFor(kind:'reversal',raw:unknown):ReversalCommand;
+export function commandFor(kind:'state',raw:unknown):StateCommand;
+export function commandFor(kind:CommandKind,raw:unknown):BillingCommand;
 export function commandFor(kind:CommandKind,raw:unknown):BillingCommand{
- const c=kind==='cash'?cashDateCommandSchema.parse(raw):reversalCommandV2Schema.parse(raw);billingId.parse(c.operationId);return c;
+ const c=kind==='cash'?cashDateCommandSchema.parse(raw):kind==='reversal'?reversalCommandV2Schema.parse(raw):Object.freeze(billingStateCommandV2Schema.parse(raw));billingId.parse(c.operationId);return c;
+}
+export function prepareStateCommand(action:StateAction,data:BillingData,operationId:string):StateCommand{
+ if(data.balance.cancelled||(action==='pause'&&data.balance.paused)||(action==='resume'&&!data.balance.paused))throw Error('STATE_ACTION_UNAVAILABLE');
+ return commandFor('state',{version:BILLING_DTO_V2,operationId,quoteId:data.quote.id,expectedVersion:data.balance.revision,...(action==='cancel'?{cancel:true}:{paused:action==='pause'})});
 }
 /** Pure seam helpers only; Root owns authenticated transport and mounting. */
 export function ownerOperationResult(raw:unknown):{receipt:BillingOperationReceipt;current:BillingData}|null{

@@ -4,11 +4,13 @@ import type {FormEvent} from 'react';
 import {Button,Input,Textarea} from '../../ui/workspace/controls.tsx';
 import {BILLING_DTO_V2,ledgerReceiptV2Schema} from '../fishing-billing/contracts-v2.ts';
 import {BillingWorkflow,type BillingWorkflowState} from './workflow.ts';
-import {commandFor,decodeData,floridaDate,inputUsd,money,parseUsd,receivedDate,sameScope,dataScope,validateSubject,preparationTicket,editedPreparation,samePreparation,unallocatedAmount,type BillingReceipt,type PreparationTicket,type BillingCommand,type BillingData,type BillingSubject,type BillingView,type CommandKind} from './model.ts';
+import {commandFor,prepareStateCommand,decodeData,floridaDate,inputUsd,money,parseUsd,receivedDate,sameScope,dataScope,validateSubject,preparationTicket,editedPreparation,samePreparation,unallocatedAmount,type BillingReceipt,type PreparationTicket,type MoneyCommand,type StateCommand,type StateAction,type BillingData,type BillingSubject,type BillingView,type MoneyKind} from './model.ts';
 import styles from './panel.module.css';
 
-type Modal={ticket:PreparationTicket;kind:CommandKind;lineIds:string[];receipt:BillingReceipt|null;amount:string;allocations:Record<string,string>;date:string;reason:string;error:string;review:BillingCommand|null;preparing:boolean};
-export type OwnerBillingPanelProps={locale:'en'|'he';view:BillingView;subject:BillingSubject;workflow:BillingWorkflow;observedAt?:string;cashAllowed?:boolean;reversalAllowed?:boolean};
+type MoneyModal={mode:'money';ticket:PreparationTicket;kind:MoneyKind;lineIds:string[];receipt:BillingReceipt|null;amount:string;allocations:Record<string,string>;date:string;reason:string;error:string;review:MoneyCommand|null;preparing:boolean};
+type StateModal={mode:'state';ticket:PreparationTicket;action:StateAction;command:StateCommand};
+type Modal=MoneyModal|StateModal;
+export type OwnerBillingPanelProps={locale:'en'|'he';view:BillingView;subject:BillingSubject;workflow:BillingWorkflow;observedAt?:string;cashAllowed?:boolean;reversalAllowed?:boolean;stateAllowed?:boolean};
 const status:Record<BillingData['balance']['state'],readonly[string,string]>={no_debt:['No payment obligation','אין חובת תשלום'],unpaid:['Unpaid','טרם שולם'],partial:['Partially paid','שולם חלקית'],paid:['Paid','שולם'],overpaid:['Excess payment · review required','תשלום עודף · נדרשת בדיקה'],review_required:['Review required','נדרשת בדיקה']};
 const policy:Record<string,readonly[string,string]>={service_period:['Service period','תקופת השירות'],proration:['Partial-period policy','מדיניות לתקופה חלקית'],renewal:['Renewal policy','מדיניות חידוש'],cancellation:['Cancellation policy','מדיניות ביטול'],weather:['Weather policy','מדיניות מזג אוויר'],payment_due:['Approved payment date','מועד תשלום מאושר']};
 const reminder:Record<string,readonly[string,string]>={queued:['Queued · not sent','בתור · לא נשלחה'],unknown:['Delivery unknown · reconcile','מצב מסירה לא ידוע · נדרשת בדיקה'],provider_accepted:['Accepted by provider · delivery unverified','התקבלה אצל הספק · המסירה טרם אומתה'],delivered:['Delivered','נמסרה'],suppressed:['Suppressed','השליחה נחסמה'],failed:['Failed','נכשלה']};
@@ -26,7 +28,7 @@ const zero=(v:string)=>/^0(?:\.0{1,2})?$/.test(v.trim());
 
 /** Unmounted owner presentation. Parent supplies authorized data, labels and a
  * retained workflow instance; absent ports/capabilities keep money actions off. */
-export function OwnerBillingPanel({locale,view,subject,workflow,observedAt,cashAllowed=false,reversalAllowed=false}:OwnerBillingPanelProps){
+export function OwnerBillingPanel({locale,view,subject,workflow,observedAt,cashAllowed=false,reversalAllowed=false,stateAllowed=false}:OwnerBillingPanelProps){
  const t=(en:string,he:string)=>locale==='he'?he:en;
  const id=useId(),flow=useSyncExternalStore(workflow.subscribe,workflow.getSnapshot,workflow.getServerSnapshot);
  const [modal,setModal]=useState<Modal|null>(null);
@@ -42,9 +44,10 @@ export function OwnerBillingPanel({locale,view,subject,workflow,observedAt,cashA
  const hiddenAmounts=Boolean(scopeMatches&&uncertain);
  const historyEntries=active&&!hiddenAmounts?historyFor(active):null;
  const canCash=Boolean(active&&cashAllowed&&workflow.ports&&!uncertain&&active.quote.state==='accepted'&&!active.balance.cancelled&&active.balance.remainingMinor>0&&!active.balance.excessMinor&&!active.balance.missingPolicy.length);
+ const canState=Boolean(active&&stateAllowed&&workflow.ports?.setState&&!uncertain&&!active.balance.cancelled);
  const childName=(childId:string)=>subject.children.find(c=>c.id===childId)?.name??t('Child details unavailable','פרטי הילד אינם זמינים');
  const cashAvailable=(receipt:BillingReceipt)=>Math.max(0,receipt.amountMinor-(historyEntries??[]).filter(r=>r.originalReceiptId===receipt.id).reduce((s,r)=>s+r.amountMinor,0));
- const start=(kind:CommandKind,lineIds:string[],receipt:BillingReceipt|null=null)=>{
+ const start=(kind:MoneyKind,lineIds:string[],receipt:BillingReceipt|null=null)=>{
   if(!active||uncertain)return;
   if(flow.phase!=='idle')workflow.clear();
   const allocations:Record<string,string>={};
@@ -55,12 +58,18 @@ export function OwnerBillingPanel({locale,view,subject,workflow,observedAt,cashA
   }
   const amount=receipt?cashAvailable(receipt):Object.values(allocations).reduce((s,v)=>s+(parseUsd(v)??0),0);
   let date='';try{if(observedAt)date=floridaDate(observedAt);}catch{/* No workstation-clock fallback. */}
-  setModal({ticket:preparationTicket(dataScope(active),active.balance.revision,preparationContext),kind,lineIds,receipt,allocations,amount:inputUsd(amount),date,reason:'',error:'',review:null,preparing:false});
+  setModal({mode:'money',ticket:preparationTicket(dataScope(active),active.balance.revision,preparationContext),kind,lineIds,receipt,allocations,amount:inputUsd(amount),date,reason:'',error:'',review:null,preparing:false});
  };
- const update=(patch:Partial<Modal>)=>setModal(m=>m?{...m,...patch,error:''}:null);
- const edit=(patch:Partial<Modal>)=>setModal(m=>m?{...m,...patch,ticket:editedPreparation(m.ticket),error:'',preparing:false,review:null}:null);
+ const update=(patch:Partial<MoneyModal>)=>setModal(m=>m?.mode==='money'?{...m,...patch,error:''}:m);
+ const edit=(patch:Partial<MoneyModal>)=>setModal(m=>m?.mode==='money'?{...m,...patch,ticket:editedPreparation(m.ticket),error:'',preparing:false,review:null}:m);
+ const startState=(action:StateAction)=>{
+  if(!active||!canState||!workflow.ports?.setState)return;
+  if(flow.phase!=='idle'&&!workflow.clear())return;
+  const command=prepareStateCommand(action,active,workflow.ports.nextOperationId());
+  setModal({mode:'state',ticket:preparationTicket(dataScope(active),active.balance.revision,preparationContext),action,command});
+ };
  async function review(event:FormEvent){
-  event.preventDefault();if(!modal||!active||!workflow.ports||modal.preparing||modal.ticket.context!==preparationContext||modal.ticket.revision!==active.balance.revision||!sameScope(modal.ticket.scope,dataScope(active)))return;
+  event.preventDefault();if(!modal||modal.mode!=='money'||!active||!workflow.ports||modal.preparing||modal.ticket.context!==preparationContext||modal.ticket.revision!==active.balance.revision||!sameScope(modal.ticket.scope,dataScope(active)))return;
   const draft=modal,current=active,amount=parseUsd(draft.amount);
   const allocations=draft.lineIds.map(lineId=>({lineId,amountMinor:zero(draft.allocations[lineId]??'')?0:parseUsd(draft.allocations[lineId]??'')}));
   if(amount===null||allocations.some(a=>a.amountMinor===null)||allocations.reduce((s,a)=>s+(a.amountMinor??0),0)>amount||draft.kind==='cash'&&!allocations.some(a=>(a.amountMinor??0)>0)){update({error:t('Enter a positive USD amount. Allocations cannot exceed it; cash recording requires at least one allocation.','יש להזין סכום חיובי בדולר. סכום החלוקה אינו יכול לעלות עליו; רישום מזומן דורש הקצאה אחת לפחות.')});return;}
@@ -68,18 +77,18 @@ export function OwnerBillingPanel({locale,view,subject,workflow,observedAt,cashA
   update({preparing:true});
   try{
    const common={version:BILLING_DTO_V2,operationId:workflow.ports.nextOperationId(),expectedVersion:current.balance.revision,quoteId:current.quote.id,amountMinor:amount,allocations:allocations.filter(a=>a.amountMinor!>0).map(a=>({lineId:a.lineId,amountMinor:a.amountMinor!}))};
-   let command:BillingCommand;
+   let command:MoneyCommand;
    if(draft.kind==='cash'){
     command=commandFor('cash',{...common,currency:'USD',receivedPrecision:'date',receivedDate:receivedDate(draft.date),timeZone:'America/New_York'});
    }else command=commandFor('reversal',{...common,originalReceiptId:draft.receipt!.id,reason:draft.reason.trim()});
    if(workflow.currentFor(current).balance.revision!==draft.ticket.revision)throw Error('STALE_PREPARATION');
-   setModal(m=>m&&samePreparation(m.ticket,draft.ticket)?{...m,review:command,preparing:false,error:''}:m);
-  }catch{setModal(m=>m&&samePreparation(m.ticket,draft.ticket)?{...m,preparing:false,error:t('This entry could not be prepared. Check the amount, allocation and received-date capability; nothing has been submitted.','לא ניתן להכין את הרישום. יש לבדוק את הסכום, החלוקה ואפשרות תאריך הקבלה; דבר לא נשלח.')}:m);}
+   setModal(m=>m?.mode==='money'&&samePreparation(m.ticket,draft.ticket)?{...m,review:command,preparing:false,error:''}:m);
+  }catch{setModal(m=>m?.mode==='money'&&samePreparation(m.ticket,draft.ticket)?{...m,preparing:false,error:t('This entry could not be prepared. Check the amount, allocation and received-date capability; nothing has been submitted.','לא ניתן להכין את הרישום. יש לבדוק את הסכום, החלוקה ואפשרות תאריך הקבלה; דבר לא נשלח.')}:m);}
  }
- const visibleModal=modal&&active&&sameScope(modal.ticket.scope,dataScope(active))&&(modal.ticket.context===preparationContext||flow.phase==='confirmed'&&modal.review?.operationId===flow.command.operationId)?modal:null;
+ const visibleModal=modal&&active&&sameScope(modal.ticket.scope,dataScope(active))&&(modal.ticket.context===preparationContext||flow.phase==='confirmed'&&(modal.mode==='money'?modal.review?.operationId:modal.command.operationId)===flow.command.operationId)?modal:null;
  const currentData=active;
  return <section className={styles.panel} lang={locale} dir={locale==='he'?'rtl':'ltr'} aria-labelledby={`${id}-title`} data-billing-owner-panel>
-  <header className={styles.heading}><div><p className={styles.eyebrow}>{t('Fishing Academy','אקדמיית הדיג')}</p><h1 id={`${id}-title`}>{t('Family billing','תשלומי המשפחה')}</h1>{active&&<p className={styles.family}><bdi>{subject.label}</bdi></p>}</div><span className={styles.test}>{t('Test environment · no live collection','סביבת בדיקה · ללא גבייה בפועל')}</span></header>
+  <header className={styles.heading}><div><p className={styles.eyebrow}>{t('Fishing Academy','אקדמיית הדיג')}</p><h1 id={`${id}-title`} tabIndex={-1}>{t('Family billing','תשלומי המשפחה')}</h1>{active&&<p className={styles.family}><bdi>{subject.label}</bdi></p>}</div><span className={styles.test}>{t('Test environment · no live collection','סביבת בדיקה · ללא גבייה בפועל')}</span></header>
   <WorkflowNotice flow={flow} workflow={workflow} locale={locale} showDetails={Boolean(scopeMatches)}/>
   {view.state==='conflict'&&flow.phase==='idle'&&<State title={t('Balance changed · review again','היתרה השתנתה · נדרשת בדיקה נוספת')} body={t('Review the refreshed amounts before making a new entry.','יש לבדוק את הסכומים המרועננים לפני רישום חדש.')}/>}
   {invalid?<State title={t('Billing data unavailable','נתוני התשלום אינם זמינים')} body={t('A complete authorized family snapshot is required. Amounts are not shown.','נדרשת תמונת מצב מלאה ומאושרת של המשפחה. הסכומים אינם מוצגים.')}/>:
@@ -94,6 +103,15 @@ export function OwnerBillingPanel({locale,view,subject,workflow,observedAt,cashA
     {active.balance.missingPolicy.length>0&&<aside className={styles.notice}><h2>{t('Offer not ready for acceptance or collection','ההצעה אינה מוכנה לאישור או לגבייה')}</h2><p>{t('Missing approved information:','חסר מידע מאושר:')}</p><ul>{active.balance.missingPolicy.map(k=><li key={k}>{t(...policy[k]!)}</li>)}</ul></aside>}
     {active.balance.paused&&<p className={styles.notice}>{t('Payment reminders are paused. Recorded balances remain visible.','תזכורות התשלום מושהות. היתרות הרשומות נשארות מוצגות.')}</p>}
     {active.balance.cancelled&&<p className={styles.notice}>{t('Offer cancelled. Reminders stop; no refund or debt write-off is inferred.','ההצעה בוטלה. התזכורות נעצרות; אין הסקה על החזר או מחיקת חוב.')}</p>}
+    <section className={styles.card} aria-labelledby={`${id}-offer-controls`}>
+     <h2 id={`${id}-offer-controls`}>{t('Offer follow-up controls','ניהול מעקב ההצעה')}</h2>
+     <p>{hiddenAmounts?t('Awaiting authoritative status.','ממתינים למצב מאומת.'):active.balance.cancelled?t('Offer cancelled · follow-up suppressed.','ההצעה בוטלה · המעקב חסום.'):active.balance.paused?t('Payment follow-up paused.','מעקב התשלום מושהה.'):t('Payment follow-up is not paused.','מעקב התשלום אינו מושהה.')}</p>
+     <div className={styles.actions}>
+      <Button variant="secondary" disabled={!canState} onClick={()=>startState(active.balance.paused?'resume':'pause')}>{active.balance.paused?t('Resume follow-up','חידוש המעקב'):t('Pause follow-up','השהיית המעקב')}</Button>
+      <Button variant="secondary" disabled={!canState} onClick={()=>startState('cancel')}>{t('Cancel offer','ביטול ההצעה')}</Button>
+     </div>
+     {(!stateAllowed||!workflow.ports?.setState)&&<p className={styles.help}>{t('Offer controls are unavailable until explicitly enabled with the authorized state integration.','ניהול ההצעה אינו זמין עד להפעלה מפורשת ולחיבור הממשק המורשה.')}</p>}
+    </section>
     <section className={styles.card} aria-labelledby={`${id}-children`}><div className={styles.sectionHeading}><div><h2 id={`${id}-children`}>{t('Children & service periods','ילדים ותקופות שירות')}</h2><p>{t('Amounts come from the saved offer and ledger.','הסכומים מגיעים מההצעה ומהרישומים שנשמרו.')}</p></div><Button disabled={!canCash} onClick={()=>start('cash',active.balance.lines.filter(l=>l.remainingMinor>0).map(l=>l.lineId))}>{t('Cash received','התקבל מזומן')}</Button></div>
      <div className={styles.lines}>{active.balance.lines.map(line=><article className={styles.line} key={line.lineId}><div><h3><bdi>{childName(line.childId)}</bdi></h3><p><time dateTime={line.period.startsAt}>{dateText(line.period.startsAt,locale)}</time> – <time dateTime={line.period.endsAt}>{dateText(line.period.endsAt,locale)}</time></p><small>{t('Service period · Florida time','תקופת שירות · שעון פלורידה')}</small></div><dl><div><dt>{t('Due','חיוב')}</dt><dd className={styles.money}>{hiddenAmounts?'—':money(line.dueMinor,locale)}</dd></div><div><dt>{t('Settled','שולם והוקצה')}</dt><dd className={styles.money}>{hiddenAmounts?'—':money(line.paidMinor,locale)}</dd></div><div><dt>{t('Remaining','יתרה')}</dt><dd className={styles.money}>{hiddenAmounts?'—':money(line.remainingMinor,locale)}</dd></div></dl><div><p className={styles.due}>{line.dueAt?t('Due: ','לתשלום עד: ')+dateText(line.dueAt,locale):t('Payment date not approved','מועד תשלום לא אושר')}</p><Button variant="secondary" disabled={!canCash||line.remainingMinor===0} onClick={()=>start('cash',[line.lineId])}>{t('Record cash for this child','רישום מזומן לילד זה')}</Button></div></article>)}</div>
      {!workflow.ports&&<p className={styles.help}>{t('Payment actions are unavailable until the authenticated integration is connected.','פעולות התשלום אינן זמינות עד לחיבור הממשק המורשה.')}</p>}
@@ -106,20 +124,53 @@ export function OwnerBillingPanel({locale,view,subject,workflow,observedAt,cashA
     </div>
     <details className={styles.references}><summary>{t('Saved offer & acceptance references','מזהי ההצעה והאישור שנשמרו')}</summary><dl><dt>{t('Offer','הצעה')}</dt><dd><bdi>{active.quote.id}</bdi></dd><dt>{t('Version','גרסה')}</dt><dd>{active.quote.revision}</dd><dt>{t('Terms','תנאים')}</dt><dd><bdi>{active.quote.definition.terms.id}</bdi></dd><dt>{t('Acceptance','אישור')}</dt><dd>{active.quote.acceptance?dateText(active.quote.acceptance.acceptedAt,locale,true):t('Not accepted · no debt','טרם אושרה · אין חוב')}</dd></dl></details>
    </>}
-  {visibleModal&&currentData&&<BillingDialog locale={locale} modal={visibleModal} update={update} edit={edit} close={()=>setModal(null)} review={review} flow={flow} workflow={workflow} data={currentData} childName={childName}/>}
+  {visibleModal&&currentData&&visibleModal.mode==='money'&&<BillingDialog locale={locale} modal={visibleModal} update={update} edit={edit} close={()=>setModal(null)} review={review} flow={flow} workflow={workflow} data={currentData} childName={childName}/>}
+  {visibleModal&&currentData&&visibleModal.mode==='state'&&<StateDialog locale={locale} modal={visibleModal} close={()=>setModal(null)} flow={flow} workflow={workflow} data={currentData} allowed={canState} familyLabel={subject.label}/>}
  </section>;
 }
 function State({title,body}:{title:string;body:string}){return <div className={styles.notice} role="status"><h2>{title}</h2><p>{body}</p></div>;}
+const stateTitles:Record<StateAction,readonly[string,string]>={pause:['Pause payment follow-up','השהיית מעקב התשלום'],resume:['Resume payment follow-up','חידוש מעקב התשלום'],cancel:['Cancel this offer','ביטול הצעה זו']};
+/** Confirmation content only; rendering never submits a state command. */
+export function StateActionConfirmation({locale,action,data,command,allowed,familyLabel,onConfirm,onBack}:{locale:'en'|'he';action:StateAction;data:BillingData;command:StateCommand;allowed:boolean;familyLabel:string;onConfirm:()=>void;onBack:()=>void}){
+ const t=(en:string,he:string)=>locale==='he'?he:en;
+ const matches=action==='cancel'?command.cancel===true&&command.paused===undefined:command.cancel===undefined&&command.paused===(action==='pause')&&data.balance.paused===(action==='resume');
+ const valid=allowed&&matches&&command.quoteId===data.quote.id&&data.balance.revision===command.expectedVersion&&!data.balance.cancelled;
+ return <>
+  <p><bdi>{familyLabel}</bdi></p>
+  <p>{action==='resume'?t('Resume eligibility for payment follow-up. This action sends or queues no messages.','חידוש הזכאות למעקב תשלום. פעולה זו אינה שולחת הודעות ואינה מוסיפה הודעות לתור.'):action==='cancel'?t('Cancel the saved offer and suppress further payment follow-up.','ביטול ההצעה השמורה וחסימת מעקב תשלום נוסף.'):t('Pause payment follow-up for this offer.','השהיית מעקב התשלום עבור הצעה זו.')}</p>
+  <p>{t('Recorded payments and the outstanding balance stay unchanged. This action issues no refund or balance write-off.','התשלומים הרשומים והיתרה לתשלום נשארים ללא שינוי. פעולה זו אינה מבצעת החזר ואינה מוחקת יתרה.')}</p>
+  <dl className={styles.confirmFacts}><div><dt>{t('Recorded allocation','הקצאת תשלום רשומה')}</dt><dd className={styles.money}>{money(data.balance.paidMinor,locale)}</dd></div><div><dt>{t('Outstanding balance','יתרה לתשלום')}</dt><dd className={styles.money}>{money(data.balance.remainingMinor,locale)}</dd></div></dl>
+  {!valid&&<p role="alert">{t('This confirmation is no longer current or authorized. Close it and review the refreshed offer.','אישור זה אינו עדכני או מורשה. יש לסגור אותו ולבדוק את ההצעה המרועננת.')}</p>}
+  <div className={styles.actions}><Button disabled={!valid} onClick={()=>{if(valid)onConfirm();}}>{action==='pause'?t('Confirm pause','אישור ההשהיה'):action==='resume'?t('Confirm resume','אישור החידוש'):t('Confirm offer cancellation','אישור ביטול ההצעה')}</Button><Button variant="secondary" onClick={onBack}>{t('Keep current state','השארת המצב הנוכחי')}</Button></div>
+ </>;
+}
+function useOwnerDialog(){
+ const ref=useRef<HTMLDialogElement>(null);
+ useEffect(()=>{
+  const d=ref.current;if(!d)return;const focused=document.activeElement;d.showModal();
+  return()=>{d.close();if(focused instanceof HTMLElement&&focused.isConnected&&!focused.hasAttribute('disabled'))focused.focus();else d.closest('[data-billing-owner-panel]')?.querySelector<HTMLElement>('h1')?.focus();};
+ },[]);
+ return ref;
+}
+function StateDialog({locale,modal,close,flow,workflow,data,allowed,familyLabel}:{locale:'en'|'he';modal:StateModal;close:()=>void;flow:BillingWorkflowState;workflow:BillingWorkflow;data:BillingData;allowed:boolean;familyLabel:string}){
+ const ref=useOwnerDialog(),id=useId(),t=(en:string,he:string)=>locale==='he'?he:en;
+ const related=flow.phase!=='idle'&&flow.command.operationId===modal.command.operationId&&sameScope(flow.scope,modal.ticket.scope);
+ const terminal=related&&['confirmed','conflict','rejected'].includes(flow.phase),busy=workflow.unresolved();
+ const valid=allowed&&sameScope(modal.ticket.scope,dataScope(data))&&modal.ticket.revision===data.balance.revision;
+ return <dialog ref={ref} className={styles.dialog} aria-labelledby={`${id}-title`} onCancel={e=>{e.preventDefault();close();}}><header className={styles.dialogHeader}><h2 id={`${id}-title`}>{t(...stateTitles[modal.action])}</h2><Button variant="quiet" aria-label={t('Close dialog','סגירת החלון')} onClick={close}>×</Button></header><div className={styles.dialogBody}>
+  {busy||terminal?<><WorkflowNotice locale={locale} flow={flow} workflow={workflow} showDetails={related}/><p>{busy?t('Closing does not cancel or resolve the original operation.','סגירת החלון אינה מבטלת או פותרת את הפעולה המקורית.'):t('Review the current authorized offer status before another action.','יש לבדוק את מצב ההצעה המורשה והעדכני לפני פעולה נוספת.')}</p>{terminal&&<Button onClick={close}>{t('Close','סגירה')}</Button>}</>:<StateActionConfirmation locale={locale} action={modal.action} data={data} command={modal.command} allowed={valid} familyLabel={familyLabel} onBack={close} onConfirm={()=>{if(valid&&!workflow.unresolved()&&workflow.ports?.setState)void workflow.submit('state',modal.command,data);}}/>}
+ </div></dialog>;
+}
 export function WorkflowNotice({flow,workflow,locale,showDetails}:{flow:BillingWorkflowState;workflow:BillingWorkflow;locale:'en'|'he';showDetails:boolean}){
  const t=(en:string,he:string)=>locale==='he'?he:en;
  if(flow.phase==='idle')return null;
  if(!showDetails)return workflow.unresolved()?<State title={t('Earlier operation needs verification','פעולה קודמת דורשת אימות')} body={t('Return to its original family context to check it. New billing entries remain unavailable until verification finishes.','יש לחזור למשפחה המקורית כדי לבדוק את הפעולה. רישומים חדשים אינם זמינים עד להשלמת האימות.')}/>:null;
+ if(flow.kind==='state')return <aside className={styles.operation} role="status" aria-live="polite"><h2>{flow.phase==='confirmed'?t('State change recorded · current status refreshed','שינוי המצב נרשם · המצב העדכני רוענן'):flow.phase==='conflict'?t('Offer changed · review again','ההצעה השתנתה · נדרשת בדיקה נוספת'):flow.phase==='rejected'?t('State change not accepted','שינוי המצב לא התקבל'):flow.phase==='refresh_required'?t('State operation confirmed · current status unavailable','פעולת המצב אושרה · המצב העדכני אינו זמין'):flow.phase==='unknown'?t('State operation outcome unknown','תוצאת פעולת המצב אינה ידועה'):t('Verifying offer status…','בדיקת מצב ההצעה…')}</h2><p>{flow.phase==='confirmed'?t('The displayed state and balances come from fresh authorized readback.','המצב והיתרות המוצגים מגיעים מקריאה מורשית ועדכנית.'):flow.phase==='conflict'?t('This action was not confirmed. Review the refreshed offer before another confirmation.','פעולה זו לא אושרה. יש לבדוק את ההצעה המרועננת לפני אישור נוסף.'):flow.phase==='unknown'?t('Do not submit a replacement or cash entry. Check the original operation; an absent result stays unresolved.','אין לשלוח פעולה חלופית או רישום מזומן. יש לבדוק את הפעולה המקורית; תוצאה חסרה נשארת לא פתורה.'):flow.phase==='refresh_required'?t('Do not repeat the change. Refresh the authorized offer status.','אין לחזור על השינוי. יש לרענן את מצב ההצעה המורשה.'):t('No state change is inferred from an unconfirmed result.','אין הסקה על שינוי מצב מתוצאה שלא אושרה.')}</p><small>{t('Operation','פעולה')}: <bdi>{flow.command.operationId}</bdi></small>{flow.phase==='unknown'&&<Button variant="secondary" onClick={()=>void workflow.recover()}>{t('Check operation status','בדיקת מצב הפעולה')}</Button>}{flow.phase==='refresh_required'&&<Button variant="secondary" onClick={()=>void workflow.refresh()}>{t('Refresh status','רענון המצב')}</Button>}{(flow.phase==='conflict'||flow.phase==='rejected')&&<Button variant="secondary" onClick={()=>workflow.clear()}>{t('Review offer','בדיקת ההצעה')}</Button>}</aside>;
  const title=flow.phase==='confirmed'?t('Recorded · balance refreshed','נרשם · היתרה רועננה'):flow.phase==='conflict'?t('Balance changed · review again','היתרה השתנתה · נדרשת בדיקה נוספת'):flow.phase==='rejected'?t('Entry not accepted','הרישום לא התקבל'):flow.phase==='refresh_required'?t('Receipt confirmed · current balance unavailable','הקבלה אושרה · היתרה העדכנית אינה זמינה'):flow.phase==='unknown'?t('Operation outcome unknown','תוצאת הפעולה אינה ידועה'):t('Verifying payment state…','בודק את מצב התשלום…');
  return <aside className={styles.operation} role="status" aria-live="polite"><h2>{title}</h2><p>{flow.phase==='unknown'?t('Do not record it again. Check the same operation reference; an absent result remains unresolved.','אין לרשום שוב. יש לבדוק את אותו מזהה פעולה; תוצאה חסרה נשארת לא פתורה.'):flow.phase==='refresh_required'?t('No additional entry is needed. Refresh the authoritative balance.','אין צורך ברישום נוסף. יש לרענן את היתרה המוסמכת.'):flow.phase==='confirmed'?t('The displayed balance comes from fresh authorized readback.','היתרה המוצגת מגיעה מקריאה מורשית ועדכנית.'):flow.phase==='conflict'?t('Nothing was confirmed from the stale form. Review the refreshed balance before a new entry.','לא אושר דבר מהטופס הישן. יש לבדוק את היתרה המרועננת לפני רישום חדש.'):t('No optimistic payment result is shown.','לא מוצגת תוצאת תשלום משוערת.')}</p>{showDetails&&<small>{t('Operation','פעולה')}: <bdi>{flow.command.operationId}</bdi></small>}{showDetails&&flow.phase==='unknown'&&<Button variant="secondary" onClick={()=>void workflow.recover()}>{t('Check operation status','בדיקת מצב הפעולה')}</Button>}{showDetails&&flow.phase==='refresh_required'&&<Button variant="secondary" onClick={()=>void workflow.refresh()}>{t('Refresh balance','רענון יתרה')}</Button>}{(flow.phase==='conflict'||flow.phase==='rejected')&&<Button variant="secondary" onClick={()=>workflow.clear()}>{t('Review details','בדיקת פרטים')}</Button>}</aside>;
 }
-function BillingDialog({locale,modal,update,edit,close,review,flow,workflow,data,childName}:{locale:'en'|'he';modal:Modal;update:(p:Partial<Modal>)=>void;edit:(p:Partial<Modal>)=>void;close:()=>void;review:(e:FormEvent)=>Promise<void>;flow:BillingWorkflowState;workflow:BillingWorkflow;data:BillingData;childName:(id:string)=>string}){
- const ref=useRef<HTMLDialogElement>(null),id=useId(),t=(en:string,he:string)=>locale==='he'?he:en;
- useEffect(()=>{const d=ref.current;if(!d)return;const focused=document.activeElement;d.showModal();return()=>{d.close();if(focused instanceof HTMLElement&&focused.isConnected)focused.focus();};},[]);
+function BillingDialog({locale,modal,update,edit,close,review,flow,workflow,data,childName}:{locale:'en'|'he';modal:MoneyModal;update:(p:Partial<MoneyModal>)=>void;edit:(p:Partial<MoneyModal>)=>void;close:()=>void;review:(e:FormEvent)=>Promise<void>;flow:BillingWorkflowState;workflow:BillingWorkflow;data:BillingData;childName:(id:string)=>string}){
+ const ref=useOwnerDialog(),id=useId(),t=(en:string,he:string)=>locale==='he'?he:en;
  const busy=workflow.unresolved(),done=flow.phase==='confirmed',reviewing=modal.review!==null;
  return <dialog ref={ref} className={styles.dialog} aria-labelledby={`${id}-title`} onCancel={e=>{e.preventDefault();close();}}><header className={styles.dialogHeader}><h2 id={`${id}-title`}>{modal.kind==='cash'?t('Record cash received','רישום מזומן שהתקבל'):t('Correct cash entry','תיקון רישום מזומן')}</h2><Button variant="quiet" aria-label={t('Close dialog','סגירת החלון')} onClick={close}>×</Button></header><div className={styles.dialogBody}>
   {done?<><p role="status">{t('Receipt confirmed and balance refreshed.','הקבלה אושרה והיתרה רועננה.')}</p><Button onClick={close}>{t('Done','סיום')}</Button></>:busy?<><WorkflowNotice flow={flow} workflow={workflow} locale={locale} showDetails/><p>{t('Closing this dialog does not cancel or resolve the operation.','סגירת החלון אינה מבטלת או פותרת את הפעולה.')}</p></>:reviewing?<>
