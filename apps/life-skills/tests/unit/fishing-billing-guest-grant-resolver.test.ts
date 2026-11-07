@@ -47,6 +47,22 @@ describe('native guest grant resolution, unmounted and no write effects',()=>{
   await expect(f.resolver.current({...f.context},cap,'accept_financial_offer')).rejects.toMatchObject({code:'UNAVAILABLE'});
   const other=new FishingBillingGuestGrantResolver(f.workspace,f.ring,f.key,{now:()=>f.context.now},f.authority);await expect(other.current(f.context,cap,'accept_financial_offer')).rejects.toMatchObject({code:'UNAVAILABLE'});
  });
+ it('denies a replaced SQL transaction on the same mutable context object',async()=>{
+  const f=setup(),cap=await f.resolve();f.context.tx={query:f.context.tx.query};await expect(f.resolver.current(f.context,cap,'accept_financial_offer')).rejects.toMatchObject({code:'UNAVAILABLE'});expect(f.authority.target).toHaveBeenCalledOnce();
+ });
+ it.each(['current','display'] as const)('does not expose mutable authenticated grant facts to the %s authority hook',async hook=>{
+  const f=setup();
+  if(hook==='current')f.authority.current.mockImplementation(async(_,g)=>{g.offer.material.lines[0]!.amountMinor--;});
+  else f.authority.display.mockImplementation(async(_,g)=>{g.offer.material.lines[0]!.amountMinor--;});
+  await expect(f.resolve()).rejects.toMatchObject({code:'UNAVAILABLE'});
+ });
+ it.each(['resolve','current'] as const)('rejects a transaction replacement inside target admission during %s',async stage=>{
+  const f=setup(),cap=stage==='current'?await f.resolve():null,before=f.query.mock.calls.length;
+  f.authority.target.mockImplementation(async c=>{c.tx={query:c.tx.query};});
+  if(cap)await expect(f.resolver.current(f.context,cap,'accept_financial_offer')).rejects.toMatchObject({code:'UNAVAILABLE'});
+  else await expect(f.resolve()).rejects.toMatchObject({code:'UNAVAILABLE'});
+  expect(f.query.mock.calls).toHaveLength(before);
+ });
  it('denies wrong workspace before data lookup and wrong purpose before family/display authority',async()=>{
   const f=setup();await expect(f.resolver.resolve({...f.context,workspaceId:asId(syntheticId(999),'workspace')},f.token,'accept_financial_offer',f.command)).rejects.toMatchObject({code:'UNAVAILABLE'});expect(f.query).not.toHaveBeenCalled();
   const completion={operationId:f.command.operationId,displayBundleId:f.command.displayBundleId,displayBundleSha256:f.command.displayBundleSha256,displayChallenge:f.command.displayChallenge,privateSubmissionEvidenceId:syntheticId(985)};
