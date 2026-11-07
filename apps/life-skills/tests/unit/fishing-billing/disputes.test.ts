@@ -115,3 +115,32 @@ it('does not over-restore or redirect the original native withdrawal allocation'
  const amount=21000,movement:DisputeMovement={...f.reinstatement,principalMinor:amount,grossMinor:amount,netMinor:amount-f.reinstatement.feeMinor!};
  expect(await planDisputeReconciliation({...f,history:r.additions,facts:{...f.facts,disputedMinor:amount,movements:[f.withdrawal,movement]}},allocations)).toMatchObject({state:'review_required',reason:'allocation_or_movement_conflict',additions:[]});
 });
+it('holds per-dispute aggregate principal above the current disputed amount, including existing replayed movements',async()=>{
+ const f=scenario(),first={...f.withdrawal,principalMinor:15000,grossMinor:-15000,feeMinor:0,netMinor:-15000};
+ const second={...first,balanceTransactionId:'txn_SECOND_WITHDRAWAL',occurredAt:'2035-01-05T15:00:00Z'};
+ const facts={...f.facts,disputedMinor:20000,movements:[second,first]};
+ expect(await planDisputeReconciliation({...f,facts},allocations)).toMatchObject({state:'review_required',reason:'dispute_principal_total_conflict',additions:[]});
+ const old=await planDisputeReconciliation({...f,facts:{...facts,disputedMinor:30000}},allocations);expect(old.state).toBe('ready');
+ const replay=await planDisputeReconciliation({...f,history:old.additions,facts},allocations);
+ expect(replay).toMatchObject({state:'review_required',reason:'dispute_principal_total_conflict',additions:[]});
+ expect(replay.balance.paidMinor).toBe(55000);expect(replay.balance.history).toHaveLength(2);
+});
+it('holds an inconsistent current amount even when a larger existing withdrawal was fully reinstated',async()=>{
+ const f=scenario(),facts={...f.facts,status:'won' as const,movements:[f.withdrawal,f.reinstatement]};
+ const old=await planDisputeReconciliation({...f,facts},allocations);expect(old.state).toBe('ready');
+ expect(await planDisputeReconciliation({...f,history:old.additions,facts:{...facts,disputedMinor:15000}},allocations))
+  .toMatchObject({state:'review_required',reason:'principal_exceeds_payment',additions:[],balance:{paidMinor:85000}});
+});
+it('allows a valid withdrawal-reinstatement-withdrawal cycle without capping cumulative historical turnover',async()=>{
+ const f=scenario(),amount=40000;
+ const first={...f.withdrawal,principalMinor:amount,grossMinor:-amount,feeMinor:0,netMinor:-amount};
+ const restored={...f.reinstatement,principalMinor:amount,grossMinor:amount,feeMinor:0,netMinor:amount};
+ const second={...first,balanceTransactionId:'txn_CYCLE_WITHDRAWAL',occurredAt:'2035-01-06T12:00:00Z'};
+ const facts={...f.facts,disputedMinor:amount,movements:[second,restored,first]};
+ const r=await planDisputeReconciliation({...f,facts},allocations);expect(r.state).toBe('ready');
+ expect(r.additions.map(a=>a.kind)).toEqual(['dispute_withdrawal','dispute_reinstatement','dispute_withdrawal']);
+ expect(r.balance).toMatchObject({paidMinor:45000,remainingMinor:85000});
+ const prior=await planDisputeReconciliation({...f,facts:{...facts,movements:[restored,first]}},allocations);
+ const later=await planDisputeReconciliation({...f,history:prior.additions,facts},allocations);
+ expect(later.state).toBe('ready');expect(later.additions).toHaveLength(1);expect(later.balance.paidMinor).toBe(45000);
+});

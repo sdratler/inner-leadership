@@ -96,21 +96,23 @@ export async function planDisputeReconciliation(input:PlanInput,authority:Billin
  if(related.some(a=>!f.movements.some(m=>m.balanceTransactionId===a.movement.balanceTransactionId)))return hold('provider_history_missing');
  if(new Set(f.movements.map(m=>m.balanceTransactionId)).size!==f.movements.length)return hold('duplicate_movement_fact');
  const additions:DisputeAdjustment[]=[];
- // A complete current read may deliver reinstatement first. Withdrawals are
- // planned first by actual occurrence, never by webhook arrival order.
- const ordered=[...f.movements].sort((a,b)=>a.direction===b.direction?Date.parse(a.occurredAt)-Date.parse(b.occurredAt):a.direction==='withdrawal'?-1:1);
+ // Use actual occurrence, not event/array arrival order. In a valid cycle an
+ // earlier reinstatement can precede a later withdrawal of the same principal.
+ // At equal provider instants a withdrawal precedes its linked reinstatement.
+ const ordered=[...f.movements].sort((a,b)=>Date.parse(a.occurredAt)-Date.parse(b.occurredAt)||(a.direction===b.direction?0:a.direction==='withdrawal'?-1:1));
  for(const movement of ordered){
   if(movement.sourceDisputeId!==f.disputeId||movement.principalMinor===null||movement.feeMinor===null||
    Math.abs(movement.grossMinor)!==movement.principalMinor||movement.netMinor!==movement.grossMinor-movement.feeMinor||
    (movement.direction==='withdrawal'?movement.grossMinor>=0:movement.grossMinor<=0))return hold('principal_fee_fact_unresolved');
   if(Date.parse(movement.occurredAt)<Date.parse(f.createdAt)||Date.parse(movement.occurredAt)>Date.parse(f.observedAt))return hold('movement_chronology_mismatch');
+  // Replayed movements must still agree with the current disputed amount.
+  if(movement.principalMinor>payment.amountMinor||movement.principalMinor>f.disputedMinor)return hold('principal_exceeds_payment');
   const existing=history.find(a=>key(a)===p.binding.accountId+'/test/'+movement.balanceTransactionId);
   if(existing){
    if(existing.originalReceiptId!==p.originalReceiptId||existing.disputeId!==f.disputeId||existing.attemptId!==p.attemptId||
     existing.chargeId!==p.chargeId||!same(existing.binding,p.binding)||!same(existing.movement,movement))return hold('movement_identity_conflict');
    continue;
   }
-  if(movement.principalMinor>payment.amountMinor||movement.principalMinor>f.disputedMinor)return hold('principal_exceeds_payment');
   if(movement.direction==='reinstatement'&&![...history,...additions].some(a=>a.kind==='dispute_withdrawal'&&a.disputeId===f.disputeId&&
    a.originalReceiptId===p.originalReceiptId&&a.chargeId===p.chargeId&&same(a.binding,p.binding)))return hold('withdrawal_not_observed');
   const approval=authority?await authority.resolve({payment,movement,history:[...history,...additions]}):null;
@@ -124,6 +126,9 @@ export async function planDisputeReconciliation(input:PlanInput,authority:Billin
   additions.push(candidate.data);
   try{projectDisputeBalance(q,input.receipts,[...history,...additions]);}catch{return hold('allocation_or_movement_conflict');}
  }
+ const outstanding=[...history,...additions].filter(a=>a.binding.accountId===p.binding.accountId&&a.disputeId===f.disputeId)
+  .reduce((sum,a)=>sum+(a.kind==='dispute_withdrawal'?1:-1)*principal(a),0);
+ if(outstanding<0||outstanding>f.disputedMinor)return hold('dispute_principal_total_conflict');
  const balance=projectDisputeBalance(q,input.receipts,[...history,...additions]);
  return disputeReconciliationPlanSchema.parse({state:'ready',reason:null,additions,balance,statusEvidence:f});
 }
