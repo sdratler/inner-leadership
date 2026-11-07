@@ -204,6 +204,28 @@ it('full date-only cash suppresses payment chasers while a future NY date or rev
  await db.query('UPDATE ls_identity.sessions SET revoked_at=$2 WHERE token_digest=$1',[owner.sessionDigest,now]);
  try{await expect(store().recordCashDate(owner,cmd)).rejects.toThrow('UNAUTHENTICATED');}finally{await db.query('UPDATE ls_identity.sessions SET revoked_at=NULL WHERE token_digest=$1',[owner.sessionDigest]);}
 });
+it.each(['pause','cancel'] as const)('retains date cash and safely journals %s without a legacy instant result',async action=>{
+ const f=await scenario(),planned=await queue(f.quote);
+ const cashResult=await store().recordCashDate(owner,{version:BILLING_DTO_V2,operationId:randomUUID(),expectedVersion:3,quoteId:f.quote.id,
+  amountMinor:20000,currency:'USD',allocations:[{lineId:f.quote.lines[0]!.id,amountMinor:20000}],receivedPrecision:'date',receivedDate:'2035-01-05',timeZone:'America/New_York'});
+ const original=JSON.stringify(cashResult.result.balance.receipts),cmd={version:BILLING_DTO_V2,operationId:randomUUID(),expectedVersion:4,quoteId:f.quote.id,...(action==='pause'?{paused:true}:{cancel:true as const})};
+ await expect(store().setStateV2(parent,cmd)).rejects.toThrow('FORBIDDEN');
+ const result=await store().setStateV2(owner,cmd);
+ expect(result).toMatchObject({version:BILLING_DTO_V2,sourceVersion:BILLING_DTO_V2,entityVersion:5,result:{receiptId:null,balance:{paidMinor:20000,remainingMinor:110000,...(action==='pause'?{paused:true}:{cancelled:true})}}});
+ expect(JSON.stringify(result.result.balance.receipts)).toBe(original);
+ expect(result.result.balance.reminders).toHaveLength(planned.length);expect(result.result.balance.reminders.every(i=>i.state==='suppressed')).toBe(true);
+ expect((await store().reserveReminder(owner,planned[0]!.id,randomUUID())).reserved).toBe(false);
+ expect((await store().setStateV2(owner,cmd)).replayed).toBe(true);
+ expect((await store().readOperationReceiptV2(owner,cmd.operationId))!.result).toEqual(result.result);
+ await expect(store().setStateV2(owner,{...cmd,operationId:randomUUID()})).rejects.toThrow('CONFLICT');
+ await expect(store().setStateV2(owner,{...cmd,paused:false})).rejects.toThrow('CONFLICT');
+ if(action==='pause'){
+  const resumed=await store().setStateV2(owner,{version:BILLING_DTO_V2,operationId:randomUUID(),expectedVersion:5,quoteId:f.quote.id,paused:false});
+  expect(resumed.result.balance.paused).toBe(false);expect(JSON.stringify(resumed.result.balance.receipts)).toBe(original);
+  expect((await store().setStateV2(owner,cmd)).result.balance.paused).toBe(true);
+  expect((await store().readBalanceV2(owner,f.quote.id)).balance.paused).toBe(false);
+ }
+});
 it('encrypts quote, money, command and intent payloads with record-bound AAD',async()=>{
  const f=await scenario();await store().recordCash(owner,cash(f.quote));await queue(f.quote);
  const quote=(await db.query<{payload_ciphertext:string}>('SELECT payload_ciphertext FROM ls_fishing_billing.quotes WHERE id=$1',[f.quote.id])).rows[0]!.payload_ciphertext;

@@ -20,6 +20,7 @@ import {planPaymentReminders,checkReminderDispatch,type DispatchPermission} from
 import type {BillingStripeBinding} from './stripe-test.ts';
 import {LEDGER_HISTORY_VERSION,ledgerHistoryQuerySchema,ledgerHistoryPageSchema} from './history-contracts.ts';
 import {cardAttemptSchema,cardExceptionSchema} from './card-contracts.ts';
+import {billingStateCommandV2Schema} from './state-contracts-v2.ts';
 import {
  BILLING_DTO_V2,ledgerReceiptV2Schema,cashDateCommandSchema,dateCashReceiptSchema,validateDateCash,
  projectBalanceV2,operationReceiptV2Schema,upgradeOperationReceipt,reversalCommandV2Schema,ledgerHistoryV2Schema,
@@ -288,33 +289,40 @@ export class FishingBillingStore{
    r.quote.workspaceId===c.workspaceId&&r.quote.familyId===q.familyId&&r.quote.definition.id===q.definition.id&&
    r.balance.quoteId===q.id&&r.balance.familyId===q.familyId&&r.balance.revision===receipt.entityVersion,'UNAVAILABLE');return receipt;
  }
- private async mutateV2(actor:Actor,action:'cash_date_v2'|'reverse_v2',cmd:{operationId:string;expectedVersion:number;quoteId:string},work:(c:BillingContext,q:FamilyOffer,receipts:LedgerReceiptV2[])=>LedgerReceiptV2){
+ private async mutateV2(actor:Actor,action:'cash_date_v2'|'reverse_v2'|'state_v2',cmd:{operationId:string;expectedVersion:number;quoteId:string},work:(c:BillingContext,q:FamilyOffer,receipts:LedgerReceiptV2[])=>{quote:FamilyOffer;receipt:LedgerReceiptV2|null}){
   return this.context(actor,true,async c=>{
-   this.owner(c);const q=await this.quote(c,cmd.quoteId,true);await this.authority.authorize(c,action==='cash_date_v2'?'cash':'reverse',scope(q));
+   this.owner(c);const q=await this.quote(c,cmd.quoteId,true);await this.authority.authorize(c,action==='cash_date_v2'?'cash':action==='reverse_v2'?'reverse':'state',scope(q));
    const old=await one<CommandRow>(c.tx,'SELECT actor_id AS "actorId",action,quote_id AS "quoteId",request_digest AS digest,result_ciphertext AS ciphertext FROM ls_fishing_billing.commands WHERE workspace_id=$1 AND operation_id=$2',[c.workspaceId,cmd.operationId]);
    if(old){const record=this.decodeCommand(c,cmd.operationId,old);requireBilling(record.actorId===c.actor.id&&record.action===action&&record.quoteId===q.id&&record.digest===this.digest(cmd),'CONFLICT');return {...this.validateV2Result(c,cmd.operationId,q,record.result),replayed:true};}
    requireBilling(q.revision===cmd.expectedVersion,'CONFLICT');
-   const receipts=await this.receiptsV2(c,q.id),r=work(c,q,receipts);projectBalanceV2(q,[...receipts,r]);
-   await this.receipt(c,r);const updated=familyOfferSchema.parse({...q,revision:q.revision+1});await this.saveQuote(c,q,updated);await this.suppress(c,updated);
-   const result=operationReceiptV2Schema.parse({version:BILLING_DTO_V2,sourceVersion:BILLING_DTO_V2,operationId:cmd.operationId,entityId:q.id,entityVersion:updated.revision,replayed:false,result:await this.resultV2(c,updated,r.id)});
+   const receipts=await this.receiptsV2(c,q.id),changed=work(c,q,receipts),r=changed.receipt,updated=familyOfferSchema.parse(changed.quote);
+   projectBalanceV2(updated,[...receipts,...(r?[r]:[])]);
+   if(r)await this.receipt(c,r);await this.saveQuote(c,q,updated);await this.suppress(c,updated);
+   const result=operationReceiptV2Schema.parse({version:BILLING_DTO_V2,sourceVersion:BILLING_DTO_V2,operationId:cmd.operationId,entityId:q.id,entityVersion:updated.revision,replayed:false,result:await this.resultV2(c,updated,r?.id??null)});
    await this.journal(c,cmd.operationId,action,q.id,cmd,result);return result;
   });
  }
  async recordCashDate(actor:Actor,raw:unknown){
   const cmd=cashDateCommandSchema.parse(raw);
-  return this.mutateV2(actor,'cash_date_v2',cmd,(c,q,receipts)=>validateDateCash(q,receipts,dateCashReceiptSchema.parse({
+  return this.mutateV2(actor,'cash_date_v2',cmd,(c,q,receipts)=>({quote:{...q,revision:q.revision+1},receipt:validateDateCash(q,receipts,dateCashReceiptSchema.parse({
    id:randomUUID(),operationId:cmd.operationId,quoteId:q.id,familyId:q.familyId,kind:'cash',currency:'USD',
    amountMinor:cmd.amountMinor,allocations:cmd.allocations,originalReceiptId:null,actorId:c.actor.id,
    receivedPrecision:'date',receivedDate:cmd.receivedDate,timeZone:cmd.timeZone,recordedAt:c.now.toISOString(),reason:null,provider:null,
-  })));
+  }))}));
  }
  async reverseCashV2(actor:Actor,raw:unknown){
   const cmd=reversalCommandV2Schema.parse(raw);
-  return this.mutateV2(actor,'reverse_v2',cmd,(c,q)=>ledgerReceiptSchema.parse({
+  return this.mutateV2(actor,'reverse_v2',cmd,(c,q)=>({quote:{...q,revision:q.revision+1},receipt:ledgerReceiptSchema.parse({
    id:randomUUID(),operationId:cmd.operationId,quoteId:q.id,familyId:q.familyId,kind:'cash_reversal',currency:'USD',
    amountMinor:cmd.amountMinor,allocations:cmd.allocations,originalReceiptId:cmd.originalReceiptId,actorId:c.actor.id,
    receivedAt:c.now.toISOString(),recordedAt:c.now.toISOString(),reason:cmd.reason,provider:null,
-  }));
+  })}));
+ }
+ async setStateV2(actor:Actor,raw:unknown){
+  const cmd=billingStateCommandV2Schema.parse(raw);
+  return this.mutateV2(actor,'state_v2',cmd,(_c,q)=>({receipt:null,quote:changeBillingState(q,cmd.expectedVersion,{
+   ...(cmd.paused!==undefined?{paused:cmd.paused}:{}),...(cmd.cancel?{cancel:true}:{}),
+  })}));
  }
  async readOperationReceiptV2(actor:Actor,operationId:string){
   billingId.parse(operationId);
