@@ -57,7 +57,14 @@ export class FishingBillingGuestOwnerStore{
   requireFact(fresh.workspaceId===this.workspaceId&&fresh.role==='practitioner'&&fresh.state==='active');c.actor=fresh;
  }
  private async current(c:BillingContext,actor:Actor,action:'create'|'issue'|'read',s:BillingScope){
-  await this.owner(c,actor);await this.authority.authorize(c,action,s);await this.owner(c,actor);
+  await this.owner(c,actor);
+  // Authority receives the SAME real SQL transaction through a frozen value
+  // snapshot, never our mutable owner/clock context or caller's scope array.
+  // Retaining the view cannot replace the journal owner/time or shrink the
+  // child set used by the final authorization. Date is copied independently.
+  const view={...c,actor:{...c.actor},now:new Date(c.now)},scopeView={...s,childIds:[...s.childIds]};
+  Object.freeze(view.actor);Object.freeze(view);Object.freeze(scopeView.childIds);Object.freeze(scopeView);
+  await this.authority.authorize(view,action,scopeView);await this.owner(c,actor);
  }
  private async context<T>(actor:Actor,work:(c:BillingContext)=>Promise<T>):Promise<T>{
   try{

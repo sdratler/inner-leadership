@@ -22,7 +22,8 @@ const db=new PGlite(),ws=asId(randomUUID(),'workspace'),other=asId(randomUUID(),
 const ring={activeKeyId:'synthetic',keys:{synthetic:Buffer.alloc(32,7)}},key=Buffer.alloc(32,9),at=new Date('2035-01-02T15:00:00.000Z');
 let owner:Actor,parent:Actor,foreign:Actor,fault:string|null=null;
 let onAuthority:((c:BillingContext,a:BillingAction,s:BillingScope)=>Promise<void>)|null=null;
-const binder:IdentityStore={transaction:work=>db.transaction(tx=>work({query:async<T extends object>(sql:string,v:readonly unknown[]=[])=>{if(fault&&sql.startsWith(fault))throw Error('SYNTHETIC_SQL_FAILURE');return (await tx.query<T>(sql,[...v])).rows;}} as SqlSession))};
+let afterSql:((sql:string)=>Promise<void>)|null=null;
+const binder:IdentityStore={transaction:work=>db.transaction(tx=>work({query:async<T extends object>(sql:string,v:readonly unknown[]=[])=>{if(fault&&sql.startsWith(fault))throw Error('SYNTHETIC_SQL_FAILURE');const rows=(await tx.query<T>(sql,[...v])).rows;await afterSql?.(sql);return rows;}} as SqlSession))};
 const authority:BillingAuthority={authorize:async(c,a,s)=>{
  if(s.programKey!=='fishing_monthly_club'||!s.familyId)throw new AppError('FORBIDDEN');
  const rows=await c.tx.query<{id:string}>("SELECT person_id AS id FROM ls_cases.family_members WHERE workspace_id=$1 AND family_id=$2 AND role='child'",[ws,s.familyId]);
@@ -49,7 +50,7 @@ beforeAll(async()=>{
  for(const id of [ws,other])await db.query('INSERT INTO ls_identity.workspaces(id,created_at) VALUES($1,$2)',[id,at]);
  owner=await actor('practitioner');parent=await actor('parent');foreign=await actor('practitioner',other);
 },20000);
-afterEach(()=>{onAuthority=null;fault=null;});afterAll(async()=>{await db.close();});
+afterEach(()=>{onAuthority=null;fault=null;afterSql=null;});afterAll(async()=>{await db.close();});
 async function scenario(){
  const family=randomUUID(),children=[randomUUID(),randomUUID()],d={...syntheticDefinition(),id:randomUUID(),publishedBy:owner.id};
  await db.query('INSERT INTO ls_cases.families(id,workspace_id,label_ciphertext,created_at) VALUES($1,$2,$3,$4)',[family,ws,'SYNTHETIC',at]);
@@ -114,4 +115,20 @@ it('does not convert an existing account quote or grant readback after family ac
  const decoded=JSON.parse(unseal(raw,'ls_fishing_billing/guest/v3/quote/'+ws+'/'+f.command.id,ring)),payload=familyOfferSchema.parse({...decoded,version:BILLING_DTO_VERSION});const legacy=seal(JSON.stringify(payload),'ls_fishing_billing/v1/quote/'+ws+'/'+payload.id,ring);await db.query('UPDATE ls_fishing_billing.quotes SET payload_ciphertext=$2 WHERE id=$1',[payload.id,legacy]);
  await expect(store().readQuote(owner,payload.id)).rejects.toMatchObject({code:'UNAVAILABLE'});expect((await row(payload.id)).rows[0]!.ciphertext).toBe(legacy);
  const g=await scenario();await store().createOffer(owner,g.command);onAuthority=async()=>{throw new AppError('FORBIDDEN');};await expect(store().createOffer(owner,g.command)).rejects.toMatchObject({code:'UNAVAILABLE'});expect(created.quote.acceptance).toBeNull();
+});
+it('does not let a retained authority context replace the actual owner or trusted journal time',async()=>{
+ const f=await scenario();let retained:BillingContext|null=null,changed=false;
+ onAuthority=async c=>{retained=c;};
+ afterSql=async sql=>{if(sql.startsWith('INSERT INTO ls_fishing_billing.quotes')&&retained){
+  try{retained.actor={...retained.actor,id:parent.id};changed=true;}catch{}
+  retained.now.setUTCFullYear(2099);
+ }};
+ await store().createOffer(owner,f.command);
+ const journal=await db.query<{actor_id:string;created_at:Date}>('SELECT actor_id,created_at FROM ls_fishing_billing.commands WHERE operation_id=$1',[f.command.operationId]);
+ expect(changed).toBe(false);expect(journal.rows[0]!.actor_id).toBe(owner.id);expect(journal.rows[0]!.created_at.valueOf()).toBe(at.valueOf());
+});
+it('cannot shrink the final authorized child scope after one membership is withdrawn',async()=>{
+ const f=await scenario();let calls=0;
+ onAuthority=async(c,_,s)=>{if(++calls===1){try{s.childIds.pop();}catch{}await c.tx.query("DELETE FROM ls_cases.family_members WHERE workspace_id=$1 AND family_id=$2 AND person_id=$3",[ws,f.family,f.children[1]]);}};
+ await expect(store().createOffer(owner,f.command)).rejects.toMatchObject({code:'UNAVAILABLE'});expect((await row(f.command.id)).rows).toHaveLength(0);
 });
