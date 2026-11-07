@@ -1,6 +1,5 @@
-import type {BillingCommand,BillingData,BillingUiPorts,CommandKind,Scope} from './model.ts';
+import type {BillingCommand,BillingData,BillingUiPorts,CommandKind,Scope,BillingOperationReceipt} from './model.ts';
 import {commandFor,confirmedReceipt,dataScope,scopedData} from './model.ts';
-import type {BillingOperationReceipt} from '../fishing-billing/contracts.ts';
 
 type Operation={scope:Scope;kind:CommandKind;command:BillingCommand};
 export type BillingWorkflowState=
@@ -32,7 +31,7 @@ export class BillingWorkflow{
   if(command.expectedVersion!==data.balance.revision){this.set({...operation,phase:'conflict',data});return false;}
   this.busy=true;this.set({...operation,phase:'submitting'});
   try{
-   const result=await (kind==='cash'?this.ports.recordCash(command as Parameters<BillingUiPorts['recordCash']>[0]):this.ports.reverseCash(command as Parameters<BillingUiPorts['reverseCash']>[0]));
+   const result=await (kind==='cash'?this.ports.recordCashDate(command as Parameters<BillingUiPorts['recordCashDate']>[0]):this.ports.reverseCash(command as Parameters<BillingUiPorts['reverseCash']>[0]));
    if(result.kind==='confirmed')await this.accept(operation,result.receipt,result.current);
    else if(result.kind==='conflict'){
     const current=scopedData(result.current,scope);

@@ -1,8 +1,11 @@
 import {z} from 'zod';
-import {BILLING_DTO_VERSION,billingId,billingInstant,familyOfferSchema,balanceSchema,cashCommandSchema,reversalCommandSchema,operationReceiptSchema,type FamilyOffer,type BillingBalance,type BillingOperationReceipt} from '../fishing-billing/contracts.ts';
-import {billingOwnerReadSchema,type BillingOwnerCommand} from '../../lib/fishing-billing-owner-contract.ts';
+import {billingId,billingInstant,familyOfferSchema,type FamilyOffer} from '../fishing-billing/contracts.ts';
+import {BILLING_DTO_V2,balanceV2Schema,cashDateCommandSchema,reversalCommandV2Schema,operationReceiptV2Schema,calendarDateSchema,type BillingBalanceV2,type LedgerReceiptV2} from '../fishing-billing/contracts-v2.ts';
+import {billingOwnerReadV2Schema,type BillingOwnerCommandV2,type BillingOwnerOperationReceiptV2} from '../../lib/fishing-billing-owner-contract-v2.ts';
 
-export type BillingData={quote:FamilyOffer;balance:BillingBalance};
+export type BillingData={quote:FamilyOffer;balance:BillingBalanceV2};
+export type BillingReceipt=LedgerReceiptV2;
+export type BillingOperationReceipt=BillingOwnerOperationReceiptV2;
 export type BillingSubject={familyId:string;label:string;children:readonly {id:string;name:string}[]};
 export type BillingView=
  | {state:'loading'} | {state:'forbidden'}
@@ -10,8 +13,8 @@ export type BillingView=
  | {state:'unknown';operationId:string;nextAction:'read_operation_then_refresh_balance'}
  | {state:'conflict';current:BillingData}
  | {state:'ready';data:BillingData;cardState?:'pending'|'failed'};
-export type CashCommand=Extract<BillingOwnerCommand,{action:'cash'}>['command'];
-export type ReversalCommand=Extract<BillingOwnerCommand,{action:'reverse_cash'}>['command'];
+export type CashCommand=Extract<BillingOwnerCommandV2,{action:'cash_date'}>['command'];
+export type ReversalCommand=Extract<BillingOwnerCommandV2,{action:'reverse_cash'}>['command'];
 export type BillingCommand=CashCommand|ReversalCommand;
 export type CommandKind='cash'|'reversal';
 export type Scope={quoteId:string;familyId:string;workspaceId:string};
@@ -27,17 +30,14 @@ export type CommandOutcome=
 /** Root supplies the authenticated HTTP adapter. No URL, fetch, provider or
  * storage implementation belongs to this unmounted presentation slice. */
 export interface BillingUiPorts{
- recordCash(command:CashCommand):Promise<CommandOutcome>;
+ recordCashDate(command:CashCommand):Promise<CommandOutcome>;
  reverseCash(command:ReversalCommand):Promise<CommandOutcome>;
  readOperation(operationId:string):Promise<{receipt:BillingOperationReceipt;current:BillingData}|null>;
  readBalance(quoteId:string):Promise<BillingData>;
  nextOperationId():string;
- /** v1 bridge may return a KNOWN exact instant only. A date alone cannot be
-  * converted to a guessed midnight/noon/now. Return null until admitted. */
- resolveReceivedDate(date:string):Promise<{receivedAt:string;observedAt:string}|null>;
 }
 export function decodeData(raw:unknown):BillingData{
- const {quote,balance}=z.object({quote:familyOfferSchema,balance:balanceSchema}).parse(raw);
+ const {quote,balance}=z.object({quote:familyOfferSchema,balance:balanceV2Schema}).parse(raw);
  if(quote.id!==balance.quoteId||quote.familyId!==balance.familyId||quote.revision!==balance.revision||
   quote.lines.length!==balance.lines.length||quote.lines.some(l=>!balance.lines.some(b=>b.lineId===l.id&&b.childId===l.childId&&b.period.id===l.period.id)))throw Error('INVALID_BILLING_SNAPSHOT');
  return {quote,balance};
@@ -69,24 +69,21 @@ export function floridaDate(instant:string):string{
  billingInstant.parse(instant);const p=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date(instant));
  return ['year','month','day'].map(k=>p.find(x=>x.type===k)!.value).join('-');
 }
-export function resolvedReceivedDate(date:string,raw:{receivedAt:string;observedAt:string}):string{
- billingInstant.parse(raw.receivedAt);billingInstant.parse(raw.observedAt);
- if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||floridaDate(raw.receivedAt)!==date||Date.parse(raw.receivedAt)>Date.parse(raw.observedAt))throw Error('INVALID_RECEIVED_DATE');
- return raw.receivedAt;
-}
+/** Calendar validation only. Never manufacture an instant from an owner date. */
+export const receivedDate=(value:string)=>calendarDateSchema.parse(value);
 export function confirmedReceipt(raw:unknown,scope:Scope,command:BillingCommand,kind:CommandKind){
- const r=operationReceiptSchema.parse(raw),d=scopedData(r.result,scope);
- if(r.version!==BILLING_DTO_VERSION||r.operationId!==command.operationId||r.entityId!==scope.quoteId||
+ const r=operationReceiptV2Schema.parse(raw),d=scopedData(r.result,scope);
+ if(r.version!==BILLING_DTO_V2||r.operationId!==command.operationId||r.entityId!==scope.quoteId||
   r.entityVersion!==d.quote.revision||r.entityVersion<=command.expectedVersion||!r.result.receiptId)throw Error('INVALID_OPERATION_RECEIPT');
  // A command receipt is not an authenticated complete ledger-history port.
  if(kind==='reversal'&&!('originalReceiptId' in command))throw Error('INVALID_OPERATION_RECEIPT');
  return r;
 }
 export function commandFor(kind:CommandKind,raw:unknown):BillingCommand{
- const c=kind==='cash'?cashCommandSchema.parse(raw):reversalCommandSchema.parse(raw);billingId.parse(c.operationId);return c;
+ const c=kind==='cash'?cashDateCommandSchema.parse(raw):reversalCommandV2Schema.parse(raw);billingId.parse(c.operationId);return c;
 }
 /** Pure seam helpers only; Root owns authenticated transport and mounting. */
 export function ownerOperationResult(raw:unknown):{receipt:BillingOperationReceipt;current:BillingData}|null{
- const read=billingOwnerReadSchema.parse(raw);
+ const read=billingOwnerReadV2Schema.parse(raw);
  return read.state==='confirmed'?{receipt:read.receipt,current:decodeData(read.current)}:null;
 }
