@@ -276,6 +276,13 @@ it('owner-money recovers a committed lost response through the same operation an
  const lost:IdentityStore={transaction:async work=>{const r=await binder.transaction(work);if(lose){lose=false;throw Error('SYNTHETIC_COMMITTED_RESULT_LOST');}return r;}};
  await expect(store(at,lost).recordCashDate(owner,cmd)).rejects.toMatchObject({code:'UNAVAILABLE'});const found=await store().readMoneyOperationReceipt(owner,cmd.operationId);expect(found?.result.balance.paidMinor).toBe(20000);expect(found?.replayed).toBe(true);expect(await store().recordCashDate(owner,cmd)).toEqual(found);expect((await db.query('SELECT id FROM ls_fishing_billing.receipts WHERE quote_id=$1',[q.id])).rows).toHaveLength(1);
 });
+it.each(['CONFLICT','INVALID_REQUEST'] as const)('owner-money keeps a typed %s raised AFTER actual COMMIT uncertain',async code=>{
+ const f=await nativeAccepted(),q=await store().readQuote(owner,f.command.id),cmd=cashDate(q);let lose=true,observed:unknown;
+ const lost:IdentityStore={transaction:async work=>{const r=await binder.transaction(work);if(lose){lose=false;throw new AppError(code);}return r;}};
+ try{await store(at,lost).recordCashDate(owner,cmd);}catch(error){observed=error;}
+ const saved=await store().readMoneyOperationReceipt(owner,cmd.operationId);expect(saved?.result.balance.paidMinor).toBe(20000);
+ expect(observed).toMatchObject({code:'UNAVAILABLE'});expect(await store().recordCashDate(owner,cmd)).toEqual(saved);expect((await db.query('SELECT id FROM ls_fishing_billing.receipts WHERE quote_id=$1',[q.id])).rows).toHaveLength(1);
+});
 it('owner-money recovery still requires current owner access while a closed collection gate cannot duplicate history',async()=>{
  const f=await nativeAccepted(),q=await store().readQuote(owner,f.command.id),cmd=cashDate(q),first=await store().recordCashDate(owner,cmd);onAuthority=async(_,a)=>{if(a==='cash')throw new AppError('FORBIDDEN');};
  expect(await store().recordCashDate(owner,cmd)).toEqual({...first,replayed:true});await expect(store().recordCashDate(owner,cashDate(first.result.quote,1000))).rejects.toMatchObject({code:'UNAVAILABLE'});await expect(store().readMoneyOperationReceipt(parent,cmd.operationId)).rejects.toMatchObject({code:'UNAVAILABLE'});

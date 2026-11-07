@@ -79,15 +79,22 @@ export class FishingBillingGuestOwnerStore{
   await this.authority.authorize(view,action,scopeView);await this.owner(c,actor);
  }
  private async context<T>(actor:Actor,work:(c:BillingContext)=>Promise<T>,moneyErrors=false):Promise<T>{
+  let callbackError:unknown;
   try{
    requireFact(actor.workspaceId===this.workspaceId);
    return await this.db.transaction(async tx=>{
+    callbackError=undefined;
     await lockWorkspace(tx,this.workspaceId);
     const c:BillingContext={tx,workspaceId:this.workspaceId,now:this.now(),actor:await freshActor(tx,actor,this.now())};
     this.transactions.set(c,tx);
-    try{await this.owner(c,actor);return await work(c);}finally{this.transactions.delete(c);}
+    try{await this.owner(c,actor);return await work(c);}catch(error){callbackError=error;throw error;}finally{this.transactions.delete(c);}
    });
-  }catch(error){if(moneyErrors&&error instanceof AppError&&['CONFLICT','INVALID_REQUEST'].includes(error.code))throw error;throw unavailable();}
+  }catch(error){
+   // Only a known error actually raised by the transaction callback denotes a
+   // rejected work/rollback path. A driver may throw an identically coded error
+   // AFTER COMMIT: that outcome must stay uncertain and recover the same op.
+   if(moneyErrors&&callbackError===error&&error instanceof AppError&&['CONFLICT','INVALID_REQUEST'].includes(error.code))throw error;throw unavailable();
+  }
  }
  private async quoteRecord(c:BillingContext,id:string){
   this.contextCurrent(c);
