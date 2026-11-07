@@ -28,6 +28,7 @@ import {currentLedgerFrameV3Schema,type CurrentLedgerSourceV3} from '../../src/l
 import {projectBillingCurrentLedgerV3} from '../../src/lib/fishing-billing-current-ledger-v3.ts';
 import {projectHistoricalAccountPayableBasis} from '../../src/lib/fishing-billing-guest-material-v3.ts';
 import {decodeBillingCurrentQuoteV3,readHistoricalFinancialOriginalV3,type CurrentBillingQuoteRowV3} from '../../src/lib/fishing-billing-current-readback-v3.ts';
+import {syntheticGuestOwnerMoneyFixturesV3} from '../fixtures/fishing-billing-owner-v3.ts';
 
 // Actual memory-only SQL/IdentityStore/fresh session/AEAD/pure-domain/journal.
 // Family authority is synthetic; no actual program/legal/native target, account
@@ -487,4 +488,10 @@ it('current-native-read returns no acceptance for an actual unanswered account q
 it('current-native-read captures its actual transaction and workspace before asynchronous historical reads',async()=>{
  const f=await historicalAccepted();let redirected=false;
  await binder.transaction(async tx=>{const c={tx,workspaceId:ws,now:new Date(at)};afterSql=async sql=>{if(sql.includes('FROM ls_fishing_billing.obligations')){c.tx={query:async()=>{redirected=true;return [];}};c.workspaceId=other;}};expect(await readHistoricalFinancialOriginalV3(c,f.current,ring,historicalCommandDigest)).toEqual(f.accepted.result.quote);});expect(redirected).toBe(false);
+});
+it('owner-ui-fixtures preserve exact V3 commands, compact originals, later current and synthetic provenance',()=>{
+ const f=syntheticGuestOwnerMoneyFixturesV3();expect(f.syntheticOnly).toBe(true);expect(f.evidenceKind).toBe('PURE_DATA_NOT_NATIVE_OR_LIVE');expect(JSON.parse(JSON.stringify(f))).toEqual(f);
+ for(const [action,command] of [['cash_date',f.cashCommand],['reverse_cash',f.correctionCommand],['state',f.pauseCommand]] as const)expect(billingOwnerCommandV3Schema.parse({action,command})).toEqual({action,command});
+ expect(f.unanswered.balance.state).toBe('no_debt');expect(f.unanswered.quote.acceptance).toBeNull();expect(f.original.result.balance.paidMinor).toBe(20000);expect(f.recovered.state).toBe('confirmed');if(f.recovered.state!=='confirmed')throw Error('SYNTHETIC_FIXTURE_STATE');expect(f.recovered.current.balance.paidMinor).toBe(25000);expect(f.recovered.receipt.result.relatedReceipts).toHaveLength(1);expect(f.recovered.current.balance.receipts).toHaveLength(2);
+ expect(f.correction.result.relatedReceipts).toHaveLength(2);expect(f.corrected.balance.receipts).toHaveLength(3);expect(f.corrected.balance.paidMinor).toBe(20000);expect(f.paused.balance.paused).toBe(true);expect(f.cancelled.balance.cancelled).toBe(true);expect(f.cancelled.quote.acceptance).toEqual(f.accepted.quote.acceptance);expect(f.full.balance).toMatchObject({state:'paid',paidMinor:130000,remainingMinor:0});expect(f.pending.balance.pendingAttemptIds).toHaveLength(1);expect(f.unknownReminder.balance.reminders[0]?.state).toBe('unknown');expect(f.partial.quote.lines.map(l=>l.childId)).toEqual(f.accepted.quote.lines.map(l=>l.childId));expect(f.partial.quote.acceptance).not.toHaveProperty('actorId');expect(billingOwnerReadV2Schema.safeParse(f.recovered).success).toBe(false);
 });
