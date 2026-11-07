@@ -112,4 +112,3 @@ export function validateReversal(quote:FamilyOffer,receipts:readonly LedgerRecei
  const r=ledgerReceiptSchema.parse(receipt);
  requireBilling(r.kind==='cash_reversal');projectBalance(quote,[...receipts,r]);return r;
 }
-

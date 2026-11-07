@@ -49,4 +49,3 @@ export function syntheticBillingFixtures(){
   unknownReminder:{state:'unknown' as const,providerId:null,retryPermitted:false as const},
  };
 }
-

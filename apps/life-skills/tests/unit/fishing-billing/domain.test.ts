@@ -137,4 +137,3 @@ describe('payment reminder intent eligibility',()=>{
   expect(checkReminderDispatch(i,b,permission,'2035-01-06T00:00:00Z')).toMatchObject({eligible:false,reason:'obsolete_due_date'});
  });
 });
-
