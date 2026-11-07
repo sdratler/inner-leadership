@@ -19,12 +19,14 @@ import {guestGrantLifecycleSchema,FishingBillingGuestGrantResolver,type BillingG
 import {FishingBillingGuestNativeV3} from '../../src/features/fishing-billing/guest-native-v3.ts';
 import {changeGuestBillingState} from '../../src/features/fishing-billing/guest-domain-v3.ts';
 import {FishingBillingGuestOwnerStore} from '../../src/lib/fishing-billing-guest-owner-store.ts';
-import {OWNER_MONEY_V3,billingOwnerCommandV3Schema,billingOwnerReadV3Schema,ownerMoneyReceiptV3Schema} from '../../src/lib/fishing-billing-owner-contract-v3.ts';
+import {OWNER_MONEY_V3,OWNER_RESPONSE_MAX_BYTES,FISHING_BILLING_OWNER_V3_PATH,billingOwnerCommandV3Schema,billingOwnerReadV3Schema,ownerMoneyReceiptV3Schema} from '../../src/lib/fishing-billing-owner-contract-v3.ts';
 import {billingOwnerReadV2Schema} from '../../src/lib/fishing-billing-owner-contract-v2.ts';
+import {fishingBillingOwnerHttpV3,type FishingBillingOwnerHttpV3Deps} from '../../src/lib/fishing-billing-owner-http-v3.ts';
+import {createFishingBillingOwnerClientV3} from '../../src/lib/fishing-billing-owner-client-v3.ts';
 
 // Actual memory-only SQL/IdentityStore/fresh session/AEAD/pure-domain/journal.
 // Family authority is synthetic; no actual program/legal/native target, account
-// provisioning, grant, acceptance, HTTP, browser, provider or schema installation.
+// provisioning, grant, acceptance, real HTTP server/browser/provider or schema installation.
 const db=new PGlite(),ws=asId(randomUUID(),'workspace'),other=asId(randomUUID(),'workspace');
 const ring={activeKeyId:'synthetic',keys:{synthetic:Buffer.alloc(32,7)}},key=Buffer.alloc(32,9),at=new Date('2035-01-02T15:00:00.000Z');
 let owner:Actor,parent:Actor,foreign:Actor,fault:string|null=null;
@@ -307,4 +309,72 @@ it('owner-money bounds the original operation snapshot despite a large valid cur
  const cmd=cashDate(q,1,1),saved=await store().recordCashDate(owner,cmd);expect(saved.result.balance.paidMinor).toBe(29931);expect(saved.result.kind).toBe('operation_snapshot');expect(saved.result.relatedReceipts).toHaveLength(1);expect(saved.result.balance).not.toHaveProperty('receipts');expect(saved.result.balance).not.toHaveProperty('reminders');expect(saved.result.balance).not.toHaveProperty('pendingAttemptIds');
  const row=await db.query<{result_ciphertext:string}>('SELECT result_ciphertext FROM ls_fishing_billing.commands WHERE operation_id=$1',[cmd.operationId]),plain=unseal(row.rows[0]!.result_ciphertext,'ls_fishing_billing/v1/command/'+ws+'/'+cmd.operationId,ring);expect(Buffer.byteLength(plain)).toBeLessThanOrEqual(65536);
  expect((await store().readSnapshot(owner,q.id)).balance.receipts).toHaveLength(73);expect((await store().readMoneyOperationReceipt(owner,cmd.operationId))?.result.balance.paidMinor).toBe(29931);
+});
+
+// Actual in-process client -> HTTP adapter -> Native SQL. The cookie/CSRF,
+// identity lookup, reverse proxy and rate adapter below are SYNTHETIC; this is
+// not a live login, listener, browser, TLS, source/legal or provider admission.
+const ownerOrigin='https://fishing-owner-v3.example.invalid',ownerToken='a'.repeat(43),ownerCsrf='b'.repeat(43);
+function ownerRequest(query='',body?:unknown,extra:Record<string,string>={}){
+ return new Request(ownerOrigin+FISHING_BILLING_OWNER_V3_PATH+query,{method:body===undefined?'GET':'POST',headers:{
+  host:'fishing-owner-v3.example.invalid','x-forwarded-host':'fishing-owner-v3.example.invalid','x-forwarded-proto':'https',cookie:'__Host-ls-session='+ownerToken,
+  ...(body===undefined?{}:{origin:ownerOrigin,'sec-fetch-site':'same-origin','content-type':'application/json','x-csrf-token':ownerCsrf}),...extra,
+ },...(body===undefined?{}:{body:JSON.stringify(body)})});
+}
+function ownerPipeline(q:GuestFamilyOffer,dbinder:IdentityStore=binder){
+ const native=store(at,dbinder),ports={readSnapshot:vi.fn(native.readSnapshot.bind(native)),readMoneyOperationReceipt:vi.fn(native.readMoneyOperationReceipt.bind(native)),recordCashDate:vi.fn(native.recordCashDate.bind(native)),reverseCash:vi.fn(native.reverseCash.bind(native)),setState:vi.fn(native.setState.bind(native))};
+ const deps:FishingBillingOwnerHttpV3Deps={origin:ownerOrigin,actor:async token=>{if(token!==ownerToken)throw new AppError('UNAUTHENTICATED');return owner;},csrf:()=>ownerCsrf,limits:{consume:async()=>({count:1,retryAfterMs:0})},rateLimitKey:'d'.repeat(32),store:ports},load=async()=>deps;
+ const transport=vi.fn(async(request:Request)=>{
+  const headers=new Headers(request.headers);for(const [key,value] of Object.entries({host:'fishing-owner-v3.example.invalid','x-forwarded-host':'fishing-owner-v3.example.invalid','x-forwarded-proto':'https',cookie:'__Host-ls-session='+ownerToken,...(request.method==='POST'?{origin:ownerOrigin,'sec-fetch-site':'same-origin'}:{})}))headers.set(key,value);
+  return fishingBillingOwnerHttpV3(new Request(request,{headers}),load);
+ });
+ const options={origin:ownerOrigin,scope:{quoteId:q.id,familyId:q.familyId,workspaceId:q.workspaceId},csrf:async()=>ownerCsrf,transport};
+ return {native,ports,deps,load,transport,options,client:createFishingBillingOwnerClientV3(options)};
+}
+it('owner-transport connects actual cash, linked correction, state and original/current recovery',async()=>{
+ const f=await nativeAccepted(),q=await store().readQuote(owner,f.command.id),p=ownerPipeline(q),cmd=cashDate(q),saved=await p.client.recordCashDate(cmd);expect(saved.kind).toBe('confirmed');if(saved.kind!=='confirmed')throw Error('EXPECTED_CONFIRMATION');
+ expect(saved.current.balance.paidMinor).toBe(20000);expect(saved.receipt.result.relatedReceipts[0]).toMatchObject({receivedPrecision:'date',receivedDate:'2035-01-02',actorId:owner.id,provider:null});
+ const correction=await p.client.reverseCash({version:OWNER_MONEY_V3,operationId:randomUUID(),expectedVersion:saved.current.quote.revision,quoteId:q.id,originalReceiptId:saved.receipt.result.receiptId,amountMinor:5000,allocations:[{lineId:q.lines[0]!.id,amountMinor:5000}],reason:'SYNTHETIC transport correction'});expect(correction.kind).toBe('confirmed');if(correction.kind!=='confirmed')throw Error('EXPECTED_CORRECTION');
+ expect(correction.current.balance.paidMinor).toBe(15000);expect(correction.receipt.result.relatedReceipts).toHaveLength(2);
+ const paused=await p.client.setState({version:OWNER_MONEY_V3,operationId:randomUUID(),expectedVersion:correction.current.quote.revision,quoteId:q.id,paused:true});expect(paused.kind).toBe('confirmed');
+ const recovered=await p.client.readOperation(cmd.operationId);expect(recovered?.receipt.result.balance.paidMinor).toBe(20000);expect(recovered?.current.balance).toMatchObject({paidMinor:15000,paused:true});expect(recovered?.current.balance.receipts).toHaveLength(2);expect((await p.client.readBalance(q.id)).quote.revision).toBe(correction.current.quote.revision+1);
+ expect(p.ports.recordCashDate).toHaveBeenCalledOnce();expect(p.ports.reverseCash).toHaveBeenCalledOnce();expect(p.ports.setState).toHaveBeenCalledOnce();expect((await db.query('SELECT id FROM ls_fishing_billing.receipts WHERE quote_id=$1',[q.id])).rows).toHaveLength(2);
+});
+it.each(['FORBIDDEN','NOT_FOUND'] as const)('owner-transport keeps a saved operation UNKNOWN when current read is %s, then recovers without duplicate',async code=>{
+ const f=await nativeAccepted(),q=await store().readQuote(owner,f.command.id),p=ownerPipeline(q),cmd=cashDate(q);p.ports.readSnapshot.mockRejectedValueOnce(new AppError(code));
+ expect(await p.client.recordCashDate(cmd)).toEqual({kind:'unknown'});expect(p.transport).toHaveBeenCalledOnce();expect(p.ports.recordCashDate).toHaveBeenCalledOnce();expect((await db.query('SELECT id FROM ls_fishing_billing.receipts WHERE quote_id=$1',[q.id])).rows).toHaveLength(1);
+ const recovered=await p.client.readOperation(cmd.operationId);expect(recovered?.receipt.result.balance.paidMinor).toBe(20000);expect(recovered?.receipt.replayed).toBe(true);expect((await p.client.recordCashDate(cmd)).kind).toBe('confirmed');expect((await db.query('SELECT id FROM ls_fishing_billing.receipts WHERE quote_id=$1',[q.id])).rows).toHaveLength(1);
+});
+it.each(['CONFLICT','INVALID_REQUEST'] as const)('owner-transport keeps typed %s after real memory COMMIT UNKNOWN and recoverable',async code=>{
+ const f=await nativeAccepted(),q=await store().readQuote(owner,f.command.id);let lose=true;
+ const lost:IdentityStore={transaction:async work=>{const r=await binder.transaction(work);if(lose){lose=false;throw new AppError(code);}return r;}};
+ const p=ownerPipeline(q,lost),cmd=cashDate(q);expect(await p.client.recordCashDate(cmd)).toEqual({kind:'unknown'});expect(p.transport).toHaveBeenCalledOnce();expect((await p.client.readOperation(cmd.operationId))?.current.balance.paidMinor).toBe(20000);expect((await db.query('SELECT id FROM ls_fishing_billing.receipts WHERE quote_id=$1',[q.id])).rows).toHaveLength(1);
+});
+it.each(['session','duplicate-cookie','parent','csrf','origin','forwarding','rate','query'] as const)('owner-transport rejects %s before money mutation',async mode=>{
+ const f=await nativeAccepted(),q=await store().readQuote(owner,f.command.id),p=ownerPipeline(q),cmd=cashDate(q);
+ if(mode==='parent')p.deps.actor=async()=>parent;if(mode==='rate')p.deps.limits={consume:async()=>({count:21,retryAfterMs:1000})};
+ const extra:Record<string,string>=mode==='session'?{cookie:''}:mode==='duplicate-cookie'?{cookie:'__Host-ls-session='+ownerToken+'; __Host-ls-session='+ownerToken}:mode==='csrf'?{'x-csrf-token':'bad'}:mode==='origin'?{origin:'https://other.example.invalid'}:mode==='forwarding'?{'x-forwarded-host':'other.example.invalid'}:{};
+ const r=await fishingBillingOwnerHttpV3(ownerRequest(mode==='query'?'?kind=balance&kind=operation&id='+q.id:'',{action:'cash_date',command:cmd},extra),p.load);
+ expect(r.status).toBe(mode==='session'||mode==='duplicate-cookie'?401:mode==='rate'?429:mode==='forwarding'?503:mode==='query'?400:403);expect(p.ports.recordCashDate).not.toHaveBeenCalled();expect((await db.query('SELECT id FROM ls_fishing_billing.receipts WHERE quote_id=$1',[q.id])).rows).toHaveLength(0);
+ expect(r.headers.get('cache-control')).toBe('private, no-store');expect(r.headers.get('vary')).toBe('Cookie');
+ if(mode==='query')expect((await fishingBillingOwnerHttpV3(ownerRequest('?kind=balance&kind=operation&id='+q.id),p.load)).status).toBe(400);
+});
+it('owner-transport keeps unknown operation unresolved, rejects legacy/foreign input and refreshes real conflict without resaving',async()=>{
+ const f=await nativeAccepted(),q=await store().readQuote(owner,f.command.id),p=ownerPipeline(q),cmd=cashDate(q);expect(await p.client.readOperation(randomUUID())).toBeNull();const count=p.transport.mock.calls.length;
+ expect(await p.client.recordCashDate({...cmd,version:BILLING_GUEST_V3})).toEqual({kind:'rejected',code:'INVALID_REQUEST'});expect(await p.client.recordCashDate({...cmd,quoteId:randomUUID()})).toEqual({kind:'rejected',code:'FORBIDDEN'});expect(p.transport).toHaveBeenCalledTimes(count);
+ const first=await p.native.recordCashDate(owner,cmd);const conflict=await p.client.recordCashDate(cashDate(q));expect(conflict.kind).toBe('conflict');if(conflict.kind!=='conflict')throw Error('EXPECTED_CONFLICT');expect(conflict.current.quote.revision).toBe(first.entityVersion);expect(conflict.current.balance.paidMinor).toBe(20000);expect(p.ports.recordCashDate).toHaveBeenCalledOnce();expect(p.ports.readSnapshot).toHaveBeenCalledOnce();expect((await db.query('SELECT id FROM ls_fishing_billing.receipts WHERE quote_id=$1',[q.id])).rows).toHaveLength(1);
+});
+it('owner-transport rejects a well-formed foreign original/current envelope with the same incoming operation ID',async()=>{
+ const f=await nativeAccepted(),q=await store().readQuote(owner,f.command.id),g=await nativeAccepted(),foreignQ=await store().readQuote(owner,g.command.id),id=randomUUID(),receipt=await store().recordCashDate(owner,{...cashDate(foreignQ),operationId:id}),current=await store().readSnapshot(owner,foreignQ.id),p=ownerPipeline(q);
+ p.transport.mockImplementationOnce(async()=>Response.json({ok:true,data:billingOwnerReadV3Schema.parse({version:OWNER_MONEY_V3,state:'confirmed',receipt,current}),requestId:randomUUID()}));
+ expect(await p.client.recordCashDate({...cashDate(q),operationId:id})).toEqual({kind:'unknown'});expect(p.ports.recordCashDate).not.toHaveBeenCalled();expect((await db.query('SELECT id FROM ls_fishing_billing.receipts WHERE quote_id=$1',[q.id])).rows).toHaveLength(0);
+});
+it('owner-transport times out a deferred CSRF lookup without a late POST or automatic retry',async()=>{
+ const f=await nativeAccepted(),q=await store().readQuote(owner,f.command.id),p=ownerPipeline(q);let release:(token:string)=>void=()=>{};
+ const csrf=new Promise<string>(resolve=>{release=resolve;}),client=createFishingBillingOwnerClientV3({...p.options,csrf:()=>csrf,timeoutMs:1});expect(await client.recordCashDate(cashDate(q))).toEqual({kind:'unknown'});release(ownerCsrf);await Promise.resolve();await Promise.resolve();expect(p.transport).not.toHaveBeenCalled();expect(p.ports.recordCashDate).not.toHaveBeenCalled();
+});
+it('owner-transport bounds response bytes and does not accept an oversized reply as a saved payment',async()=>{
+ const f=await nativeAccepted(),q=await store().readQuote(owner,f.command.id),p=ownerPipeline(q);let cancelled=false;
+ p.transport.mockImplementationOnce(async()=>new Response(new ReadableStream({start(c){c.enqueue(new Uint8Array(OWNER_RESPONSE_MAX_BYTES+1));},cancel(){cancelled=true;}}),{headers:{'content-type':'application/json'}}));
+ expect(await p.client.recordCashDate(cashDate(q))).toEqual({kind:'unknown'});expect(cancelled).toBe(true);expect(p.transport).toHaveBeenCalledOnce();expect(p.ports.recordCashDate).not.toHaveBeenCalled();
 });
