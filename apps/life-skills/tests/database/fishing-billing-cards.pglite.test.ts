@@ -6,11 +6,11 @@ import {asId} from '../../src/lib/ids.ts';
 import {AppError} from '../../src/lib/errors.ts';
 import type {Actor} from '../../src/features/identity/types.ts';
 import type {IdentityStore,SqlSession} from '../../src/features/identity/store.ts';
-import {FishingBillingStore,type BillingAuthority,type BillingFinancialServiceAuthority} from '../../src/features/fishing-billing/native.ts';
+import {FishingBillingStore,type BillingAuthority,type BillingFinancialServiceAuthority,type BillingOutboxReservation} from '../../src/features/fishing-billing/native.ts';
 import {FishingBillingCards,type BillingStripeTestProvider,type BillingRefundAllocationAuthority} from '../../src/features/fishing-billing/cards.ts';
 import {FishingBillingStripeInbox,verifyBillingStripeTestEvent,type BillingStripeInboxAuthority} from '../../src/features/fishing-billing/stripe-test.ts';
 import {syntheticDefinition} from '../../src/features/fishing-billing/fixtures.ts';
-import type {FamilyOffer,CreateFamilyOffer} from '../../src/features/fishing-billing/contracts.ts';
+import type {FamilyOffer,CreateFamilyOffer,ReminderPolicy} from '../../src/features/fishing-billing/contracts.ts';
 import type {ProviderPaymentSnapshot} from '../../src/features/fishing-billing/card-contracts.ts';
 import {BILLING_DTO_V2} from '../../src/features/fishing-billing/contracts-v2.ts';
 import {unseal} from '../../src/features/identity/crypto.ts';
@@ -35,14 +35,20 @@ const authority:BillingAuthority={
   if(c.actor.id!==owner.id&&c.actor.id!==parent.id)throw new AppError('FORBIDDEN');
   if(s.programKey!=='fishing_monthly_club')throw new AppError('FORBIDDEN');await admitted(c.tx,s.familyId,s.childIds);
  },
- reminderPermission:async()=>{throw new AppError('UNAVAILABLE');},
+ reminderPermission:async(_c,_q,p,guardianId,channel)=>({
+  audience:{guardianId,channel,audience:'individual',locale:'en',verified:true,consented:true,active:true},
+  sendWindowOpen:true,ownerEnabled:true,policyCurrent:p.id==='SYNTHETIC-FLOW-REMINDER'&&p.source.sha256==='a'.repeat(64),
+ }),
 };
 const financial:BillingFinancialServiceAuthority={authorize:async(c,b,s)=>{
  if(serviceRevoked||b.accountId!==binding.accountId||b.verifiedBindingId!==binding.verifiedBindingId||b.livemode!==false||c.workspaceId!==workspace||!s.familyId)throw new AppError('FORBIDDEN');
  await admitted(c.tx,s.familyId,s.childIds);
 }};
 const inboxAuthority:BillingStripeInboxAuthority={authorize:async(_tx,w,b)=>{if(serviceRevoked||w!==workspace||b.accountId!==binding.accountId||b.verifiedBindingId!==binding.verifiedBindingId)throw new AppError('FORBIDDEN');}};
-const native=(dbinder=binder,service:BillingFinancialServiceAuthority|null=financial)=>new FishingBillingStore(dbinder,workspace,ring,key,authority,clock,null,service);
+const outbox:BillingOutboxReservation={reserve:async(c,payload)=>{
+ await c.tx.query('INSERT INTO synthetic_cards.existing_outbox(dispatch_id,intent_id,payload) VALUES($1,$2,$3::jsonb)',[payload.intent.dispatchId,payload.intent.id,JSON.stringify(payload)]);
+}};
+const native=(dbinder=binder,service:BillingFinancialServiceAuthority|null=financial)=>new FishingBillingStore(dbinder,workspace,ring,key,authority,clock,outbox,service);
 const calls:{created:unknown[];reads:number}={created:[],reads:0};
 const snapshots=new Map<string,ProviderPaymentSnapshot>();
 let createHook:((request:Parameters<BillingStripeTestProvider['createCheckout']>[0])=>Promise<void>)|null=null;
@@ -70,7 +76,7 @@ beforeAll(async()=>{
  await db.exec('CREATE SCHEMA ls_control');
  for(const file of ['0001_ls_foundation.sql','0010_ls_identity_cases_20260906.sql'])await db.exec(await readFile('migrations/'+file,'utf8'));
  await db.exec(await readFile('tests/fixtures/fishing-billing.sql','utf8'));
- await db.exec('CREATE SCHEMA synthetic_cards;CREATE TABLE synthetic_cards.admission(family_id uuid PRIMARY KEY,revoked boolean DEFAULT false);CREATE TABLE synthetic_cards.refund_allocations(refund_id text PRIMARY KEY,allocations jsonb NOT NULL)');
+ await db.exec('CREATE SCHEMA synthetic_cards;CREATE TABLE synthetic_cards.admission(family_id uuid PRIMARY KEY,revoked boolean DEFAULT false);CREATE TABLE synthetic_cards.refund_allocations(refund_id text PRIMARY KEY,allocations jsonb NOT NULL);CREATE TABLE synthetic_cards.existing_outbox(dispatch_id uuid PRIMARY KEY,intent_id uuid UNIQUE,payload jsonb NOT NULL)');
  for(const w of [workspace,otherWorkspace])await db.query('INSERT INTO ls_identity.workspaces(id,created_at) VALUES($1,$2)',[w,now]);
  owner=await actor('practitioner');parent=await actor('parent');outsider=await actor('practitioner',otherWorkspace);
 },20000);
@@ -250,4 +256,35 @@ it('combines date-only partial cash and a verified card remainder for a two-chil
  const b=(await native().readBalanceV2(owner,q.id)).balance;expect(b).toMatchObject({state:'paid',paidMinor:130000,remainingMinor:0,revision:8});
  expect(b.receipts.find(r=>r.id===cash.result.receiptId)).toMatchObject({receivedDate:'2035-01-05',receivedPrecision:'date'});expect(b.receipts.find(r=>r.id===cash.result.receiptId)).not.toHaveProperty('receivedAt');
  expect(b.receipts.find(r=>r.kind==='card')).toMatchObject({receivedAt:now.toISOString(),amountMinor:110000});
+});
+it('runs one durable two-child card/cash/reminder journey with fresh balances, paid suppression and a truthful late delivery',async()=>{
+ const f=await opened(),quoteId=f.quote.id;
+ const policy:ReminderPolicy={id:'SYNTHETIC-FLOW-REMINDER',revision:1,source:{id:'SYNTHETIC',sha256:'a'.repeat(64)},timeZone:'America/New_York',offsetsMinutes:[0,1440]};
+ const queued=await native().queueReminders(owner,{quoteId,policy,guardianId:parent.id,channel:'email'});expect(queued).toHaveLength(2);
+ const before=await native().readBalanceV2(owner,quoteId);
+ const dateCash=await native().recordCashDate(owner,{version:BILLING_DTO_V2,operationId:randomUUID(),quoteId,expectedVersion:before.quote.revision,
+  currency:'USD',amountMinor:20000,allocations:[{lineId:f.quote.lines[1]!.id,amountMinor:20000}],receivedPrecision:'date',receivedDate:'2035-01-05',timeZone:'America/New_York'});
+ expect(dateCash.result.balance.remainingMinor).toBe(110000);
+ const eventId=await event(payment(f)),processed=await cards().processEvent(eventId);
+ expect(processed.receiptIds).toHaveLength(1);
+ const partial=await native().readBalanceV2(owner,quoteId);expect(partial.balance).toMatchObject({dueMinor:130000,paidMinor:85000,remainingMinor:45000,state:'partial'});
+ const target=queued.find(i=>i.sequence===0)!,dispatchId=randomUUID();
+ expect(await native().reserveReminder(owner,target.id,dispatchId)).toMatchObject({reserved:true,remainingMinor:45000});
+ const reserved=(await db.query<{payload:{intent:{audience:string};amount:{familyId:string;remainingMinor:number;lines:{childId:string;remainingMinor:number}[]}}}>('SELECT payload FROM synthetic_cards.existing_outbox WHERE dispatch_id=$1',[dispatchId])).rows[0]!.payload;
+ expect(reserved.intent.audience).toBe('individual');expect(reserved.amount).toMatchObject({familyId:f.quote.familyId,remainingMinor:45000});
+ expect(reserved.amount.lines).toHaveLength(1);expect(reserved.amount.lines[0]).toMatchObject({childId:f.quote.lines[1]!.childId,remainingMinor:45000});
+ const paid=await native().recordCashDate(owner,{version:BILLING_DTO_V2,operationId:randomUUID(),quoteId,expectedVersion:partial.quote.revision,
+  currency:'USD',amountMinor:45000,allocations:[{lineId:f.quote.lines[1]!.id,amountMinor:45000}],receivedPrecision:'date',receivedDate:'2035-01-06',timeZone:'America/New_York'});
+ expect(paid.result.balance).toMatchObject({paidMinor:130000,remainingMinor:0,state:'paid'});
+ expect(paid.result.balance.reminders.find(i=>i.id===target.id)!.state).toBe('unknown');
+ expect(paid.result.balance.reminders.filter(i=>i.id!==target.id).every(i=>i.state==='suppressed')).toBe(true);
+ for(const i of queued)expect((await native().reserveReminder(owner,i.id,randomUUID())).reserved).toBe(false);
+ expect((await db.query('SELECT dispatch_id FROM synthetic_cards.existing_outbox WHERE intent_id=$1',[target.id])).rows).toHaveLength(1);
+ expect(await cards().processEvent(eventId)).toEqual(processed);await cards().processEvent(await event(payment(f)));
+ const reloaded=await native().readBalanceV2(owner,quoteId);expect(reloaded.balance).toMatchObject({state:'paid',paidMinor:130000,remainingMinor:0});expect(reloaded.balance.receipts).toHaveLength(3);
+ expect((await native().readOperationReceiptV2(owner,paid.operationId))!.result).toEqual(paid.result);
+ expect((await native().readLedgerHistoryV2(owner,{quoteId,cursor:null,limit:100})).items).toHaveLength(3);
+ // Injected synthetic outcomes prove state handling, never real delivery.
+ expect((await native().recordReminderOutcome(owner,{id:target.id,dispatchId,state:'provider_accepted',providerId:'SYNTHETIC-ONLY'})).state).toBe('provider_accepted');
+ expect((await native().recordReminderOutcome(owner,{id:target.id,dispatchId,state:'delivered',providerId:'SYNTHETIC-ONLY'})).state).toBe('delivered');
 });
