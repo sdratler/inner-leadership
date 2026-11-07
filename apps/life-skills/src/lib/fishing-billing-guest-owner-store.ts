@@ -11,10 +11,10 @@ import {billingId,createFamilyOfferSchema,commandSchema,publishedOfferSchema,rem
 import {ledgerReceiptV2Schema,newYorkDate,type LedgerReceiptV2} from '../features/fishing-billing/contracts-v2.ts';
 import {cardAttemptSchema,cardExceptionSchema} from '../features/fishing-billing/card-contracts.ts';
 import {createGuestFamilyOffer,issueGuestFamilyOffer,projectGuestBalanceV3,validateGuestCashReceipt,validateGuestReversal,changeGuestBillingState} from '../features/fishing-billing/guest-domain-v3.ts';
-import {BILLING_GUEST_V3,guestFamilyOfferSchema,guestOwnerSnapshotV3Schema,type GuestFamilyOffer,type GuestOwnerSnapshotV3} from './fishing-billing-guest-contract-v3.ts';
+import {BILLING_GUEST_V3,guestFamilyOfferSchema,type GuestFamilyOffer,type GuestOwnerSnapshotV3} from './fishing-billing-guest-contract-v3.ts';
 import {verifyGuestFamilyOffer} from './fishing-billing-guest-material-v3.ts';
 import {verifyStoredGuestFinancialEvidence} from './fishing-billing-guest-evidence-readback.ts';
-import {billingOwnerCommandV3Schema,ownerMoneyReceiptV3Schema,sameGuestOwnerLineage,type BillingOwnerCommandV3,type OwnerMoneyReceiptV3} from './fishing-billing-owner-contract-v3.ts';
+import {OWNER_MONEY_V3,ownerCurrentV3Schema,compactOwnerOperationResultV3,billingOwnerCommandV3Schema,ownerMoneyReceiptV3Schema,sameGuestOwnerLineage,type BillingOwnerCommandV3,type OwnerMoneyReceiptV3} from './fishing-billing-owner-contract-v3.ts';
 
 const receiptSchema=z.object({
  version:z.literal(BILLING_GUEST_V3),operationId:billingId,action:z.enum(['create','issue']),
@@ -27,7 +27,7 @@ const quoteJournalSchema=z.object({
  digest:z.string().regex(/^[a-f0-9]{64}$/),receipt:receiptSchema,
 }).strict();
 const moneyJournalSchema=z.object({
- version:z.literal(BILLING_GUEST_V3),kind:z.literal('owner_money'),workspaceId:billingId,
+ version:z.literal(OWNER_MONEY_V3),kind:z.literal('owner_money'),workspaceId:billingId,
  operationId:billingId,actorId:billingId,action:z.enum(['cash_date','reverse_cash','state']),quoteId:billingId,
  digest:z.string().regex(/^[a-f0-9]{64}$/),receipt:ownerMoneyReceiptV3Schema,
 }).strict();
@@ -187,9 +187,9 @@ export class FishingBillingGuestOwnerStore{
     const i=reminderIntentSchema.parse(JSON.parse(unseal(row.ciphertext,'ls_fishing_billing/v1/reminder/'+this.workspaceId+'/'+row.id,this.ring)));
     requireFact(i.id===row.id&&i.state===row.state&&i.quoteId===q.id&&i.familyId===q.familyId&&this.hmac({key:i.key})===row.intentKey&&this.hmac({quoteId:i.quoteId,guardianId:i.guardianId})===row.audienceKey&&Date.parse(i.scheduledAt)===row.scheduledAt.valueOf());return {id:i.id,state:i.state};
    });
-   await this.current(c,actor,'read',scope(q));return guestOwnerSnapshotV3Schema.parse({quote:q,balance,receiptId:null});
+   await this.current(c,actor,'read',scope(q));return ownerCurrentV3Schema.parse({quote:q,balance,receiptId:null});
  }
- private moneyDigest(input:BillingOwnerCommandV3){return this.hmac({version:BILLING_GUEST_V3,kind:'owner_money',workspaceId:this.workspaceId,action:input.action,command:input.command});}
+ private moneyDigest(input:BillingOwnerCommandV3){return this.hmac({version:OWNER_MONEY_V3,kind:'owner_money',workspaceId:this.workspaceId,action:input.action,command:input.command});}
  private async previousMoney(c:BillingContext,input:BillingOwnerCommandV3,current:GuestOwnerSnapshotV3):Promise<OwnerMoneyReceiptV3|null>{
   const found=await this.commandRecord(c,input.command.operationId);if(!found)return null;
   const j=found.record;
@@ -228,8 +228,8 @@ export class FishingBillingGuestOwnerStore{
    if(receipt)await this.tx(c).query('INSERT INTO ls_fishing_billing.receipts(workspace_id,id,quote_id,operation_id,original_receipt_id,payload_ciphertext,recorded_at) VALUES($1,$2,$3,$4,$5,$6,$7)',[this.workspaceId,receipt.id,q.id,receipt.operationId,receipt.originalReceiptId,seal(JSON.stringify(receipt),'ls_fishing_billing/v1/receipt/'+this.workspaceId+'/'+receipt.id,this.ring),recordedAt]);
    const saved=await one(this.tx(c),'UPDATE ls_fishing_billing.quotes SET revision=$3,payload_ciphertext=$4 WHERE workspace_id=$1 AND id=$2 AND revision=$5 AND payload_ciphertext=$6 AND family_id=$7 AND definition_id=$8 AND created_at=$9 RETURNING id',[this.workspaceId,q.id,after.revision,seal(JSON.stringify(after),quoteAad(this.workspaceId,q.id),this.ring),row.revision,row.ciphertext,row.familyId,row.definitionId,row.createdAt]);if(!saved)throw new AppError('CONFLICT');
    const balance=projectGuestBalanceV3(after,receipt?[...before.balance.receipts,receipt]:before.balance.receipts,before.balance.pendingAttemptIds);await this.suppressQueued(c,after,balance);
-   const result=await this.snapshot(c,actor,after),operation=ownerMoneyReceiptV3Schema.parse({version:BILLING_GUEST_V3,operationId:cmd.operationId,action:input.action,entityId:q.id,entityVersion:after.revision,recordedAt,replayed:false,result:{...result,receiptId:receipt?.id??null}}),digest=this.moneyDigest(input);
-   const record=moneyJournalSchema.parse({version:BILLING_GUEST_V3,kind:'owner_money',workspaceId:this.workspaceId,operationId:cmd.operationId,actorId,action:input.action,quoteId:q.id,digest,receipt:operation});
+   const current=await this.snapshot(c,actor,after),result=compactOwnerOperationResultV3(current,receipt?.id??null),operation=ownerMoneyReceiptV3Schema.parse({version:OWNER_MONEY_V3,operationId:cmd.operationId,action:input.action,entityId:q.id,entityVersion:after.revision,recordedAt,replayed:false,result}),digest=this.moneyDigest(input);
+   const record=moneyJournalSchema.parse({version:OWNER_MONEY_V3,kind:'owner_money',workspaceId:this.workspaceId,operationId:cmd.operationId,actorId,action:input.action,quoteId:q.id,digest,receipt:operation});
    await this.tx(c).query('INSERT INTO ls_fishing_billing.commands(workspace_id,operation_id,actor_id,action,quote_id,request_digest,result_ciphertext,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',[this.workspaceId,cmd.operationId,actorId,'guest_'+input.action,q.id,digest,seal(JSON.stringify(record),commandAad(this.workspaceId,cmd.operationId),this.ring),recordedAt]);return operation;
   },true);
  }
