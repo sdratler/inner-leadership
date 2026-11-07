@@ -65,6 +65,12 @@ CREATE TABLE ls_fishing_billing.card_settlements(
  FOREIGN KEY(workspace_id,attempt_id) REFERENCES ls_fishing_billing.card_attempts(workspace_id,id),
  FOREIGN KEY(workspace_id,receipt_id) REFERENCES ls_fishing_billing.receipts(workspace_id,id)
 );
+CREATE TABLE ls_fishing_billing.card_attempt_requests(
+ workspace_id uuid NOT NULL,attempt_id uuid NOT NULL,quote_id uuid NOT NULL,payload_ciphertext text NOT NULL,
+ PRIMARY KEY(workspace_id,attempt_id),
+ FOREIGN KEY(workspace_id,attempt_id) REFERENCES ls_fishing_billing.card_attempts(workspace_id,id),
+ FOREIGN KEY(workspace_id,quote_id) REFERENCES ls_fishing_billing.quotes(workspace_id,id)
+);
 CREATE TABLE ls_fishing_billing.card_exceptions(
  workspace_id uuid NOT NULL,id uuid NOT NULL,quote_id uuid NOT NULL,event_id text NOT NULL,
  state text NOT NULL CHECK(state IN('open','resolved')),payload_ciphertext text NOT NULL,

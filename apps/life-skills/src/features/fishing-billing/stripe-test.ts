@@ -87,7 +87,7 @@ const selectionSchema=z.array(z.object({lineId:billingId,amountMinor:billingAmou
  * Actual amounts derive from an accepted order/current balance, never redirects.
  * Do not call this a working Checkout or enable a provider from this helper. */
 export function prepareBillingTestCheckout(input:{
- quote:FamilyOffer;balance:BillingBalance;operationId:string;
+ quote:FamilyOffer;balance:Pick<BillingBalance,'quoteId'|'familyId'|'revision'|'cancelled'|'missingPolicy'|'lines'>;operationId:string;
  selection:{lineId:string;amountMinor:number}[];
  binding:BillingStripeBinding;cardOnlyConfigurationId:string;approvedProductLabel:string;
 }){

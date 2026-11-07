@@ -13,11 +13,12 @@ export type ReminderAudience={
 export type DispatchPermission={
  audience:ReminderAudience;sendWindowOpen:boolean;ownerEnabled:boolean;policyCurrent:boolean;
 };
+type ReminderBalance=Pick<BillingBalance,'quoteId'|'familyId'|'missingPolicy'|'cancelled'|'paused'|'state'|'remainingMinor'|'excessMinor'|'lines'>;
 function instantKey(value:string):string{
  requireBilling(billingInstant.safeParse(value).success&&Number.isFinite(Date.parse(value)));
  return new Date(Date.parse(value)).toISOString();
 }
-export function reminderSuppression(balance:BillingBalance,permission:DispatchPermission):string|null{
+export function reminderSuppression(balance:ReminderBalance,permission:DispatchPermission):string|null{
  if(balance.missingPolicy.length)return 'policy_not_ready';
  if(balance.cancelled)return 'cancelled';
  if(balance.paused||!permission.ownerEnabled)return 'owner_paused';
@@ -33,7 +34,7 @@ export function reminderSuppression(balance:BillingBalance,permission:DispatchPe
 /** A family-level intent groups only this family's lines at the same approved
  * due instant. No defaults for due dates/offsets and no transport or group send. */
 export function planPaymentReminders(input:{
- balance:BillingBalance;policy:ReminderPolicy;audience:ReminderAudience;newId:()=>string;
+ balance:ReminderBalance;policy:ReminderPolicy;audience:ReminderAudience;newId:()=>string;
 }):ReminderIntent[]{
  const p=reminderPolicySchema.parse(input.policy),b=input.balance,a=input.audience;
  if(reminderSuppression(b,{audience:a,ownerEnabled:true,sendWindowOpen:true,policyCurrent:true}))return [];
@@ -54,7 +55,7 @@ export function planPaymentReminders(input:{
  }
  return intents;
 }
-export function checkReminderDispatch(intent:ReminderIntent,balance:BillingBalance,permission:DispatchPermission,now:string){
+export function checkReminderDispatch(intent:ReminderIntent,balance:ReminderBalance,permission:DispatchPermission,now:string){
  const i=reminderIntentSchema.parse(intent);
  const observedAt=instantKey(now);
  requireBilling(i.quoteId===balance.quoteId&&i.familyId===balance.familyId,'FORBIDDEN');

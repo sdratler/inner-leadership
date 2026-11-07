@@ -9,6 +9,7 @@ import type {IdentityStore,SqlSession} from '../../src/features/identity/store.t
 import {FishingBillingStore,type BillingAuthority,type BillingOutboxReservation} from '../../src/features/fishing-billing/native.ts';
 import {syntheticDefinition} from '../../src/features/fishing-billing/fixtures.ts';
 import type {CreateFamilyOffer,FamilyOffer,ReminderPolicy} from '../../src/features/fishing-billing/contracts.ts';
+import {BILLING_DTO_V2} from '../../src/features/fishing-billing/contracts-v2.ts';
 import {FishingBillingStripeInbox,verifyBillingStripeTestEvent,type VerifiedBillingStripeEvent} from '../../src/features/fishing-billing/stripe-test.ts';
 vi.mock('server-only',()=>({}));
 
@@ -179,6 +180,29 @@ it('rejects altered, cross-quote and stale history cursors after refreshing sess
  const other=await scenario();await expect(store().readLedgerHistory(owner,{quoteId:other.quote.id,cursor:page.nextCursor,limit:1})).rejects.toThrow('INVALID_REQUEST');
  const current=await store().readBalance(owner,f.quote.id);await store().setState(owner,{operationId:randomUUID(),expectedVersion:current.quote.revision,quoteId:f.quote.id,paused:true});
  await expect(store().readLedgerHistory(owner,{quoteId:f.quote.id,cursor:page.nextCursor,limit:1})).rejects.toThrow('CONFLICT');
+});
+it('records a real date-only cash amount once, preserves exact old receipts and returns authoritative V2 history/status',async()=>{
+ const f=await scenario(),old=await store().recordCash(owner,cash(f.quote,10000,1)),cmd={version:BILLING_DTO_V2,operationId:randomUUID(),expectedVersion:4,quoteId:f.quote.id,amountMinor:20000,currency:'USD',allocations:[{lineId:f.quote.lines[0]!.id,amountMinor:20000}],receivedPrecision:'date',receivedDate:'2035-01-05',timeZone:'America/New_York'};
+ const result=await store().recordCashDate(owner,cmd);expect(result).toMatchObject({entityVersion:5,result:{balance:{paidMinor:30000,remainingMinor:100000}}});
+ expect((await store().recordCashDate(owner,cmd)).replayed).toBe(true);expect((await store().readOperationReceiptV2(owner,cmd.operationId))!.result.receiptId).toBe(result.result.receiptId);
+ const current=await store().readBalanceV2(owner,f.quote.id),date=current.balance.receipts.find(r=>r.id===result.result.receiptId)!;
+ expect(date).toMatchObject({receivedPrecision:'date',receivedDate:'2035-01-05',timeZone:'America/New_York',recordedAt:now.toISOString(),actorId:owner.id});expect(date).not.toHaveProperty('receivedAt');
+ expect(current.balance.receipts.find(r=>r.id===old.result.receiptId)).toEqual(old.result.balance.receipts[0]);
+ const legacyReceipt=await store().readOperationReceiptV2(owner,old.operationId);expect(legacyReceipt!.sourceVersion).toBe('JLFA-FISHING-BILLING-DTO-v1');
+ await expect(store().readBalance(owner,f.quote.id)).rejects.toThrow('UNAVAILABLE');
+ await expect(store().recordCashDate(owner,{...cmd,amountMinor:20001})).rejects.toThrow('CONFLICT');
+ const reversed=await store().reverseCashV2(owner,{version:BILLING_DTO_V2,operationId:randomUUID(),expectedVersion:5,quoteId:f.quote.id,originalReceiptId:date.id,amountMinor:5000,allocations:[{lineId:f.quote.lines[0]!.id,amountMinor:5000}],reason:'Synthetic date cash correction'});
+ expect(reversed.result.balance).toMatchObject({paidMinor:25000,remainingMinor:105000,revision:6});
+ const history=await store().readLedgerHistoryV2(owner,{quoteId:f.quote.id,cursor:null,limit:100});expect(history.items).toHaveLength(3);expect(history.items.find(r=>r.id===date.id)).not.toHaveProperty('receivedAt');
+ await expect(store().readBalanceV2(parent,f.quote.id)).rejects.toThrow('FORBIDDEN');
+});
+it('full date-only cash suppresses payment chasers while a future NY date or revoked actor cannot write',async()=>{
+ const f=await scenario();await queue(f.quote);
+ const cmd={version:BILLING_DTO_V2,operationId:randomUUID(),expectedVersion:3,quoteId:f.quote.id,amountMinor:130000,currency:'USD',allocations:f.quote.lines.map(l=>({lineId:l.id,amountMinor:65000})),receivedPrecision:'date',receivedDate:'2035-01-06',timeZone:'America/New_York'};
+ await expect(store().recordCashDate(owner,{...cmd,receivedDate:'2035-01-07'})).rejects.toThrow();
+ const result=await store().recordCashDate(owner,cmd);expect(result.result.balance).toMatchObject({state:'paid',remainingMinor:0});expect(result.result.balance.reminders.every(i=>i.state==='suppressed')).toBe(true);
+ await db.query('UPDATE ls_identity.sessions SET revoked_at=$2 WHERE token_digest=$1',[owner.sessionDigest,now]);
+ try{await expect(store().recordCashDate(owner,cmd)).rejects.toThrow('UNAUTHENTICATED');}finally{await db.query('UPDATE ls_identity.sessions SET revoked_at=NULL WHERE token_digest=$1',[owner.sessionDigest]);}
 });
 it('encrypts quote, money, command and intent payloads with record-bound AAD',async()=>{
  const f=await scenario();await store().recordCash(owner,cash(f.quote));await queue(f.quote);

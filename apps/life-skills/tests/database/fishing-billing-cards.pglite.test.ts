@@ -12,6 +12,8 @@ import {FishingBillingStripeInbox,verifyBillingStripeTestEvent,type BillingStrip
 import {syntheticDefinition} from '../../src/features/fishing-billing/fixtures.ts';
 import type {FamilyOffer,CreateFamilyOffer} from '../../src/features/fishing-billing/contracts.ts';
 import type {ProviderPaymentSnapshot} from '../../src/features/fishing-billing/card-contracts.ts';
+import {BILLING_DTO_V2} from '../../src/features/fishing-billing/contracts-v2.ts';
+import {unseal} from '../../src/features/identity/crypto.ts';
 vi.mock('server-only',()=>({}));
 // Memory-only native SQL; test provider ports below never connect to Stripe.
 // PGlite queues transactions: real multi-connection contention remains separate.
@@ -44,12 +46,13 @@ const native=(dbinder=binder,service:BillingFinancialServiceAuthority|null=finan
 const calls:{created:unknown[];reads:number}={created:[],reads:0};
 const snapshots=new Map<string,ProviderPaymentSnapshot>();
 let createHook:((request:Parameters<BillingStripeTestProvider['createCheckout']>[0])=>Promise<void>)|null=null;
+let readHook:(()=>Promise<void>)|null=null;
 const provider:BillingStripeTestProvider={
  createCheckout:async request=>{
   calls.created.push(request);if(createHook)await createHook(request);
   return {accountId:binding.accountId,livemode:false,apiVersion:binding.apiVersion,quoteId:request.quoteId,attemptId:request.operationId,id:'cs_'+request.operationId.replaceAll('-',''),amountMinor:request.amountMinor,currency:'USD',url:'https://checkout.stripe.com/c/pay/SYNTHETIC',paymentStatus:'unpaid'};
  },
- readPayment:async receipt=>{calls.reads++;const snapshot=snapshots.get(receipt.eventId);if(!snapshot)throw new AppError('UNAVAILABLE');return snapshot;},
+ readPayment:async receipt=>{calls.reads++;if(readHook)await readHook();const snapshot=snapshots.get(receipt.eventId);if(!snapshot)throw new AppError('UNAVAILABLE');return snapshot;},
 };
 const refundAuthority:BillingRefundAllocationAuthority={allocations:async(c,_q,r)=>{
  const row=(await c.tx.query<{value:{lineId:string;amountMinor:number}[]}>('SELECT allocations AS value FROM synthetic_cards.refund_allocations WHERE refund_id=$1',[r.id]))[0];return row?.value??null;
@@ -205,4 +208,46 @@ it('revoked service/family, missing service and missing provider fail before an 
  expect(calls.created.length).toBe(start);
  const openedCase=await opened(),id=await event(payment(openedCase));await db.query('UPDATE synthetic_cards.admission SET revoked=true WHERE family_id=$1',[openedCase.quote.familyId]);
  await expect(cards().processEvent(id)).rejects.toThrow('FORBIDDEN');
+});
+it('two pre-lock handlers return the exact committed event result instead of replacing receiptIds',async()=>{
+ const f=await opened(),id=await event(payment(f));let arrivals=0,release!:()=>void;const barrier=new Promise<void>(resolve=>{release=resolve;});
+ readHook=async()=>{arrivals++;if(arrivals===2)release();await barrier;};
+ let results;try{results=await Promise.all([cards().processEvent(id),cards().processEvent(id)]);}finally{readHook=null;}
+ expect(arrivals).toBe(2);expect(results[0]).toEqual(results[1]);expect(results[0]!.receiptIds).toHaveLength(1);
+ expect(await cards().processEvent(id)).toEqual(results[0]);expect((await native().readBalance(owner,f.quote.id)).balance.receipts).toHaveLength(1);
+});
+it('never-dispatched prepared funds are retained for review without attaching a fabricated charge',async()=>{
+ const f=await prepared(),attempt=await cards().readAttempt(parent,f.quote.id,f.command.operationId);
+ const s=payment({...f,attempt},{sessionId:'cs_'+attempt.id.replaceAll('-','')});
+ const result=await cards().processEvent(await event(s));expect(result).toMatchObject({review:true,reason:'never_dispatched_funds'});
+ const b=(await native().readBalance(owner,f.quote.id)).balance;expect(b).toMatchObject({state:'review_required',paidMinor:0});expect(b.receipts).toHaveLength(0);
+ expect((await cards().readAttempt(parent,f.quote.id,attempt.id)).dispatchId).toBeNull();
+});
+it('a genuine UNKNOWN payment may settle before the create HTTP response without losing or downgrading it',async()=>{
+ const f=await prepared();
+ createHook=async()=>{
+  const attempt=await cards().readAttempt(parent,f.quote.id,f.command.operationId);expect(attempt.state).toBe('unknown');expect(attempt.dispatchId).not.toBeNull();
+  const s=payment({...f,attempt},{sessionId:'cs_'+attempt.id.replaceAll('-','')});await cards().processEvent(await event(s));
+ };
+ let result;try{result=await cards().createCheckout(parent,f.quote.id,f.command.operationId);}finally{createHook=null;}
+ expect(result.state).toBe('paid');expect((await native().readBalance(owner,f.quote.id)).balance).toMatchObject({paidMinor:65000,revision:6});
+});
+it('freezes the complete request and eight-letter identifier before dispatch, preserving identical parameters on recovery',async()=>{
+ const f=await prepared(),row=(await db.query<{payload_ciphertext:string}>('SELECT payload_ciphertext FROM ls_fishing_billing.card_attempt_requests WHERE attempt_id=$1',[f.command.operationId])).rows[0]!;
+ const frozen=JSON.parse(unseal(row.payload_ciphertext,'ls_fishing_billing/card/v1/checkout_request/'+workspace+'/'+f.command.operationId,ring)) as {request:Parameters<BillingStripeTestProvider['createCheckout']>[0]};
+ expect(frozen.request.params.integration_identifier).toMatch(/^jlfa_monthly_[a-z]{8}$/);
+ await cards().prepare(parent,f.command);expect((await db.query<{payload_ciphertext:string}>('SELECT payload_ciphertext FROM ls_fishing_billing.card_attempt_requests WHERE attempt_id=$1',[f.command.operationId])).rows[0]!.payload_ciphertext).toBe(row.payload_ciphertext);
+ createHook=async request=>{expect(request).toEqual(frozen.request);throw new Error('SYNTHETIC_TIMEOUT');};
+ try{await cards().createCheckout(parent,f.quote.id,f.command.operationId);}finally{createHook=null;}
+ expect((await cards().createCheckout(parent,f.quote.id,f.command.operationId)).state).toBe('unknown');
+ expect((await db.query<{payload_ciphertext:string}>('SELECT payload_ciphertext FROM ls_fishing_billing.card_attempt_requests WHERE attempt_id=$1',[f.command.operationId])).rows[0]!.payload_ciphertext).toBe(row.payload_ciphertext);
+});
+it('combines date-only partial cash and a verified card remainder for a two-child family without inventing a receipt instant',async()=>{
+ const q=await family(),cash=await native().recordCashDate(owner,{version:BILLING_DTO_V2,operationId:randomUUID(),expectedVersion:3,quoteId:q.id,currency:'USD',amountMinor:20000,allocations:[{lineId:q.lines[0]!.id,amountMinor:20000}],receivedPrecision:'date',receivedDate:'2035-01-05',timeZone:'America/New_York'});
+ const command={operationId:randomUUID(),expectedVersion:4,quoteId:q.id,selection:[{lineId:q.lines[0]!.id,amountMinor:45000},{lineId:q.lines[1]!.id,amountMinor:65000}]};
+ const preparation=await cards().prepare(parent,command),attempt=await cards().createCheckout(parent,q.id,command.operationId);
+ await cards().processEvent(await event(payment({quote:q,command,preparation,attempt},{amountMinor:110000,receivedMinor:110000})));
+ const b=(await native().readBalanceV2(owner,q.id)).balance;expect(b).toMatchObject({state:'paid',paidMinor:130000,remainingMinor:0,revision:8});
+ expect(b.receipts.find(r=>r.id===cash.result.receiptId)).toMatchObject({receivedDate:'2035-01-05',receivedPrecision:'date'});expect(b.receipts.find(r=>r.id===cash.result.receiptId)).not.toHaveProperty('receivedAt');
+ expect(b.receipts.find(r=>r.kind==='card')).toMatchObject({receivedAt:now.toISOString(),amountMinor:110000});
 });
