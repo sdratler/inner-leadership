@@ -7,10 +7,13 @@ import {seal,unseal,type Keyring} from '../features/identity/crypto.ts';
 import {one,type IdentityStore,type SqlSession} from '../features/identity/store.ts';
 import type {Actor,IdentityClock,WorkspaceId} from '../features/identity/types.ts';
 import type {BillingAuthority,BillingContext,BillingScope} from '../features/fishing-billing/native.ts';
-import {billingId,createFamilyOfferSchema,commandSchema,publishedOfferSchema} from '../features/fishing-billing/contracts.ts';
-import {createGuestFamilyOffer,issueGuestFamilyOffer} from '../features/fishing-billing/guest-domain-v3.ts';
-import {BILLING_GUEST_V3,guestFamilyOfferSchema,type GuestFamilyOffer} from './fishing-billing-guest-contract-v3.ts';
+import {billingId,createFamilyOfferSchema,commandSchema,publishedOfferSchema,reminderIntentSchema} from '../features/fishing-billing/contracts.ts';
+import {ledgerReceiptV2Schema} from '../features/fishing-billing/contracts-v2.ts';
+import {cardAttemptSchema,cardExceptionSchema} from '../features/fishing-billing/card-contracts.ts';
+import {createGuestFamilyOffer,issueGuestFamilyOffer,projectGuestBalanceV3} from '../features/fishing-billing/guest-domain-v3.ts';
+import {BILLING_GUEST_V3,guestFamilyOfferSchema,guestOwnerSnapshotV3Schema,type GuestFamilyOffer,type GuestOwnerSnapshotV3} from './fishing-billing-guest-contract-v3.ts';
 import {verifyGuestFamilyOffer} from './fishing-billing-guest-material-v3.ts';
+import {verifyStoredGuestFinancialEvidence} from './fishing-billing-guest-evidence-readback.ts';
 
 const receiptSchema=z.object({
  version:z.literal(BILLING_GUEST_V3),operationId:billingId,action:z.enum(['create','issue']),
@@ -49,7 +52,8 @@ export class FishingBillingGuestOwnerStore{
  private now(){const n=this.clock.now();requireFact(n instanceof Date&&Number.isFinite(n.valueOf()));return n;}
  private contextCurrent(c:BillingContext){requireFact(c.workspaceId===this.workspaceId&&this.transactions.get(c)===c.tx);}
  private tx(c:BillingContext){this.contextCurrent(c);return c.tx;}
- private digest(action:'create'|'issue',command:unknown){return createHmac('sha256',this.key).update(canonical({version:BILLING_GUEST_V3,kind:'owner_quote',workspaceId:this.workspaceId,action,command})).digest('hex');}
+ private hmac(v:unknown){return createHmac('sha256',this.key).update(canonical(v)).digest('hex');}
+ private digest(action:'create'|'issue',command:unknown){return this.hmac({version:BILLING_GUEST_V3,kind:'owner_quote',workspaceId:this.workspaceId,action,command});}
  private async owner(c:BillingContext,actor:Actor){
   this.contextCurrent(c);
   c.now=this.now();const fresh=await freshActor(c.tx,actor,c.now);
@@ -126,5 +130,38 @@ export class FishingBillingGuestOwnerStore{
  }
  async readQuote(actor:Actor,id:string):Promise<GuestFamilyOffer>{
   return this.context(actor,async c=>{const q=await this.quote(c,id);await this.current(c,actor,'read',scope(q));return q;});
+ }
+ /** Current OWNER read, separate from original immutable operation receipts.
+  * Uses actual Native evidence and one shared ledger; never a payment/consent
+  * upgrade, grant access, sender or HTTP/runtime mounting. */
+ async readSnapshot(actor:Actor,id:string):Promise<GuestOwnerSnapshotV3>{
+  return this.context(actor,async c=>{
+   const q=await this.quote(c,id);await this.current(c,actor,'read',scope(q));
+   requireFact(Date.parse(q.createdAt)<=c.now.valueOf()&&(!q.issuedAt||Date.parse(q.issuedAt)<=c.now.valueOf())&&(!q.acceptance||Date.parse(q.acceptance.acceptedAt)<=c.now.valueOf()));
+   await verifyStoredGuestFinancialEvidence(c,q,this.ring);
+   const rows=await this.tx(c).query<{id:string;operationId:string;originalId:string|null;recordedAt:Date;ciphertext:string}>('SELECT id,operation_id AS "operationId",original_receipt_id AS "originalId",recorded_at AS "recordedAt",payload_ciphertext AS ciphertext FROM ls_fishing_billing.receipts WHERE workspace_id=$1 AND quote_id=$2 ORDER BY id LIMIT 1001',[this.workspaceId,q.id]);requireFact(rows.length<=1000);
+   const receipts=rows.map(row=>{
+    const r=ledgerReceiptV2Schema.parse(JSON.parse(unseal(row.ciphertext,'ls_fishing_billing/v1/receipt/'+this.workspaceId+'/'+row.id,this.ring)));
+    requireFact(r.id===row.id&&r.operationId===row.operationId&&r.originalReceiptId===row.originalId&&r.quoteId===q.id&&r.familyId===q.familyId&&Date.parse(r.recordedAt)===row.recordedAt.valueOf()&&Date.parse(r.recordedAt)<=c.now.valueOf());return r;
+   });
+   const attempts=await this.tx(c).query<{id:string;state:string;revision:number;ciphertext:string}>('SELECT id,state,revision,payload_ciphertext AS ciphertext FROM ls_fishing_billing.card_attempts WHERE workspace_id=$1 AND quote_id=$2 ORDER BY id LIMIT 1001',[this.workspaceId,q.id]);requireFact(attempts.length<=1000);
+   const pending=attempts.map(row=>{
+    const a=cardAttemptSchema.parse(JSON.parse(unseal(row.ciphertext,'ls_fishing_billing/card/v1/attempt/'+this.workspaceId+'/'+row.id,this.ring)));
+    requireFact(a.id===row.id&&a.state===row.state&&a.revision===row.revision&&a.workspaceId===this.workspaceId&&a.quoteId===q.id&&a.familyId===q.familyId);return a;
+   }).filter(a=>['prepared','unknown','open','pending'].includes(a.state)).map(a=>a.id);
+   const balance=projectGuestBalanceV3(q,receipts,pending);
+   const exceptions=await this.tx(c).query<{id:string;state:string;ciphertext:string}>('SELECT id,state,payload_ciphertext AS ciphertext FROM ls_fishing_billing.card_exceptions WHERE workspace_id=$1 AND quote_id=$2 LIMIT 1001',[this.workspaceId,q.id]);requireFact(exceptions.length<=1000);
+   for(const row of exceptions){
+    const e=cardExceptionSchema.parse(JSON.parse(unseal(row.ciphertext,'ls_fishing_billing/card/v1/exception/'+this.workspaceId+'/'+row.id,this.ring)));
+    requireFact(e.id===row.id&&e.state===row.state&&e.workspaceId===this.workspaceId&&e.quoteId===q.id&&e.familyId===q.familyId);if(e.state==='open')balance.state='review_required';
+   }
+   // Authenticate the complete bounded intent set BEFORE selecting statuses.
+   const reminders=await this.tx(c).query<{id:string;state:string;intentKey:string;audienceKey:string;scheduledAt:Date;ciphertext:string}>('SELECT id,state,intent_key AS "intentKey",audience_key AS "audienceKey",scheduled_at AS "scheduledAt",payload_ciphertext AS ciphertext FROM ls_fishing_billing.reminders WHERE workspace_id=$1 AND quote_id=$2 ORDER BY id LIMIT 1001',[this.workspaceId,q.id]);requireFact(reminders.length<=1000);
+   balance.reminders=reminders.map(row=>{
+    const i=reminderIntentSchema.parse(JSON.parse(unseal(row.ciphertext,'ls_fishing_billing/v1/reminder/'+this.workspaceId+'/'+row.id,this.ring)));
+    requireFact(i.id===row.id&&i.state===row.state&&i.quoteId===q.id&&i.familyId===q.familyId&&this.hmac({key:i.key})===row.intentKey&&this.hmac({quoteId:i.quoteId,guardianId:i.guardianId})===row.audienceKey&&Date.parse(i.scheduledAt)===row.scheduledAt.valueOf());return {id:i.id,state:i.state};
+   });
+   await this.current(c,actor,'read',scope(q));return guestOwnerSnapshotV3Schema.parse({quote:q,balance,receiptId:null});
+  });
  }
 }

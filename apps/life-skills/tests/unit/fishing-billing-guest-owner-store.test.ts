@@ -1,17 +1,22 @@
-import {randomUUID} from 'node:crypto';
+import {randomUUID,createHmac} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
 import {PGlite} from '@electric-sql/pglite';
 import {beforeAll,afterAll,afterEach,it,expect,vi} from 'vitest';
 vi.mock('server-only',()=>({}));
 import {asId} from '../../src/lib/ids.ts';
 import {AppError} from '../../src/lib/errors.ts';
-import {seal,unseal} from '../../src/features/identity/crypto.ts';
+import {seal,unseal,opaqueToken,tokenDigest} from '../../src/features/identity/crypto.ts';
 import type {Actor} from '../../src/features/identity/types.ts';
 import type {IdentityStore,SqlSession} from '../../src/features/identity/store.ts';
 import type {BillingAuthority,BillingContext,BillingAction,BillingScope} from '../../src/features/fishing-billing/native.ts';
 import {syntheticDefinition} from '../../src/features/fishing-billing/fixtures.ts';
-import {BILLING_DTO_VERSION,familyOfferSchema} from '../../src/features/fishing-billing/contracts.ts';
-import {BILLING_GUEST_V3} from '../../src/lib/fishing-billing-guest-contract-v3.ts';
+import {BILLING_DTO_VERSION,familyOfferSchema,reminderIntentSchema} from '../../src/features/fishing-billing/contracts.ts';
+import {ledgerReceiptV2Schema} from '../../src/features/fishing-billing/contracts-v2.ts';
+import {CARD_VERSION,cardAttemptSchema} from '../../src/features/fishing-billing/card-contracts.ts';
+import {BILLING_GUEST_V3,type GuestFamilyOffer} from '../../src/lib/fishing-billing-guest-contract-v3.ts';
+import {bindGuestIssuedMaterial,bindGuestDisplayBundle} from '../../src/lib/fishing-billing-guest-material-v3.ts';
+import {guestGrantLifecycleSchema,FishingBillingGuestGrantResolver,type BillingGuestGrantAuthority} from '../../src/lib/fishing-billing-guest-grant-resolver.ts';
+import {FishingBillingGuestNativeV3} from '../../src/features/fishing-billing/guest-native-v3.ts';
 import {changeGuestBillingState} from '../../src/features/fishing-billing/guest-domain-v3.ts';
 import {FishingBillingGuestOwnerStore} from '../../src/lib/fishing-billing-guest-owner-store.ts';
 
@@ -22,15 +27,15 @@ const db=new PGlite(),ws=asId(randomUUID(),'workspace'),other=asId(randomUUID(),
 const ring={activeKeyId:'synthetic',keys:{synthetic:Buffer.alloc(32,7)}},key=Buffer.alloc(32,9),at=new Date('2035-01-02T15:00:00.000Z');
 let owner:Actor,parent:Actor,foreign:Actor,fault:string|null=null;
 let onAuthority:((c:BillingContext,a:BillingAction,s:BillingScope)=>Promise<void>)|null=null;
-let afterSql:((sql:string)=>Promise<void>)|null=null;
-const binder:IdentityStore={transaction:work=>db.transaction(tx=>work({query:async<T extends object>(sql:string,v:readonly unknown[]=[])=>{if(fault&&sql.startsWith(fault))throw Error('SYNTHETIC_SQL_FAILURE');const rows=(await tx.query<T>(sql,[...v])).rows;await afterSql?.(sql);return rows;}} as SqlSession))};
+let afterSql:((sql:string,rows:readonly object[])=>Promise<void>)|null=null;
+const binder:IdentityStore={transaction:work=>db.transaction(tx=>work({query:async<T extends object>(sql:string,v:readonly unknown[]=[])=>{if(fault&&sql.startsWith(fault))throw Error('SYNTHETIC_SQL_FAILURE');const rows=(await tx.query<T>(sql,[...v])).rows;await afterSql?.(sql,rows);return rows;}} as SqlSession))};
 const authority:BillingAuthority={authorize:async(c,a,s)=>{
  if(s.programKey!=='fishing_monthly_club'||!s.familyId)throw new AppError('FORBIDDEN');
  const rows=await c.tx.query<{id:string}>("SELECT person_id AS id FROM ls_cases.family_members WHERE workspace_id=$1 AND family_id=$2 AND role='child'",[ws,s.familyId]);
  if(!s.childIds.length||s.childIds.some(id=>!rows.some(r=>r.id===id)))throw new AppError('FORBIDDEN');
  await onAuthority?.(c,a,s);
 },reminderPermission:async()=>{throw Error('REMINDERS_NOT_ADMITTED');}};
-const store=()=>new FishingBillingGuestOwnerStore(binder,ws,ring,key,{now:()=>new Date(at)},authority);
+const store=(now=at)=>new FishingBillingGuestOwnerStore(binder,ws,ring,key,{now:()=>new Date(now)},authority);
 async function actor(role:'practitioner'|'parent',workspace=ws){
  const id=randomUUID(),digest=id.replaceAll('-','').padEnd(64,'0');
  await db.query("INSERT INTO ls_identity.people(id,workspace_id,kind,profile_ciphertext,created_at) VALUES($1,$2,'adult','SYNTHETIC',$3)",[id,workspace,at]);
@@ -47,6 +52,7 @@ beforeAll(async()=>{
  await db.exec('CREATE SCHEMA ls_control');
  for(const f of ['0001_ls_foundation.sql','0010_ls_identity_cases_20260906.sql'])await db.exec(await readFile('migrations/'+f,'utf8'));
  await db.exec(await readFile('tests/fixtures/fishing-billing.sql','utf8'));
+ await db.exec(await readFile('migrations/proposals/UNNUMBERED_ls_fishing_billing_guest_v3.sql','utf8'));
  for(const id of [ws,other])await db.query('INSERT INTO ls_identity.workspaces(id,created_at) VALUES($1,$2)',[id,at]);
  owner=await actor('practitioner');parent=await actor('parent');foreign=await actor('practitioner',other);
 },20000);
@@ -131,4 +137,78 @@ it('cannot shrink the final authorized child scope after one membership is withd
  const f=await scenario();let calls=0;
  onAuthority=async(c,_,s)=>{if(++calls===1){try{s.childIds.pop();}catch{}await c.tx.query("DELETE FROM ls_cases.family_members WHERE workspace_id=$1 AND family_id=$2 AND person_id=$3",[ws,f.family,f.children[1]]);}};
  await expect(store().createOffer(owner,f.command)).rejects.toMatchObject({code:'UNAVAILABLE'});expect((await row(f.command.id)).rows).toHaveLength(0);
+});
+
+// Connected owner -> actual Native accept -> owner read. Grant issuance and
+// assurance/legal/source records below are explicitly SYNTHETIC seeded inputs,
+// not a verified real owner issuance/parent/legal/provider or browser journey.
+async function nativeAccepted(){
+ const f=await scenario(),created=await store().createOffer(owner,f.command),issued=await store().issueOffer(owner,issue(f.command.id)),q=issued.quote;
+ const offer=bindGuestIssuedMaterial({workspaceId:ws,familyId:q.familyId,quoteId:q.id,issuedRevision:q.revision,definition:q.definition,lines:q.lines,createdAt:q.createdAt,issuedAt:q.issuedAt,override:q.override});
+ const bundle=bindGuestDisplayBundle({id:randomUUID(),version:'SYNTHETIC_ONLY',locale:'he',offerSnapshotSha256:offer.sha256,documents:[{purpose:'financial_terms',source:q.definition.terms,displayedTextSha256:'b'.repeat(64),releaseEvidenceId:randomUUID()}]});
+ const token=opaqueToken(),lifecycle=guestGrantLifecycleSchema.parse({version:BILLING_GUEST_V3,grant:{version:BILLING_GUEST_V3,id:randomUUID(),action:'accept_financial_offer',offer,displayBundle:bundle,recipientBindingEvidenceId:randomUUID(),admissionPolicy:q.definition.source,tokenDigest:tokenDigest(token),issuedAt:at.toISOString(),expiresAt:'2035-01-03T15:00:00.000Z',issuedByAccountId:owner.id},state:'active',revokedAt:null,use:null}),g=lifecycle.grant;
+ await db.query('INSERT INTO ls_fishing_billing.guest_grants VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',[ws,g.id,q.id,g.action,g.tokenDigest,'active',g.issuedAt,g.expiresAt,seal(JSON.stringify(lifecycle),'ls_fishing_billing/guest_grant/v3/'+ws+'/'+g.id,ring)]);
+ const currentEvidence={workspaceId:ws,familyId:q.familyId,quoteId:q.id,grantId:g.id,recipientBindingEvidenceId:g.recipientBindingEvidenceId,assuranceEvidenceId:randomUUID(),admissionPolicy:g.admissionPolicy};
+ const presentation={action:'accept_financial_offer' as const,grantId:g.id,displayBundleId:bundle.id,displayBundleSha256:bundle.sha256,locale:bundle.locale,evidenceId:randomUUID(),affirmation:{version:'SYNTHETIC-v1',guardianAuthorityText:'SYNTHETIC GUARDIAN ONLY',financialTermsText:'SYNTHETIC FINANCIAL ONLY'}};
+ const guestAuthority:BillingGuestGrantAuthority={target:async()=>{},current:async c=>{
+  const children=await c.tx.query<{id:string}>("SELECT person_id AS id FROM ls_cases.family_members WHERE workspace_id=$1 AND family_id=$2 AND role='child'",[ws,q.familyId]);if(q.lines.some(l=>!children.some(c=>c.id===l.childId)))throw new AppError('FORBIDDEN');return currentEvidence;
+ },display:async(_,__,challenge)=>{if(challenge!=='z'.repeat(43))throw new AppError('UNAVAILABLE');return presentation;}};
+ const resolver=new FishingBillingGuestGrantResolver(ws,ring,key,{now:()=>new Date(at)},guestAuthority),native=new FishingBillingGuestNativeV3(binder,ws,ring,{now:()=>new Date(at)},resolver);
+ const acceptance=await native.acceptFinancialOffer(token,{operationId:randomUUID(),expectedVersion:q.revision,displayBundleId:bundle.id,displayBundleSha256:bundle.sha256,displayChallenge:'z'.repeat(43),parent:{submittedName:'SYNTHETIC PARENT ONLY',guardianAuthorityAttested:true,financialTermsAffirmed:true}});
+ return {...f,created,issued,acceptance,lifecycle};
+}
+async function seedMoney(q:GuestFamilyOffer){
+ const common={quoteId:q.id,familyId:q.familyId,kind:'cash',currency:'USD',originalReceiptId:null,actorId:owner.id,recordedAt:at.toISOString(),reason:null,provider:null};
+ const receipts=[ledgerReceiptV2Schema.parse({...common,id:randomUUID(),operationId:randomUUID(),amountMinor:20000,allocations:[{lineId:q.lines[0]!.id,amountMinor:20000}],receivedPrecision:'date',receivedDate:'2035-01-02',timeZone:'America/New_York'}),ledgerReceiptV2Schema.parse({...common,id:randomUUID(),operationId:randomUUID(),amountMinor:10000,allocations:[{lineId:q.lines[1]!.id,amountMinor:10000}],receivedAt:at.toISOString()})];
+ for(const r of receipts)await db.query('INSERT INTO ls_fishing_billing.receipts VALUES($1,$2,$3,$4,$5,$6,$7)',[ws,r.id,q.id,r.operationId,null,seal(JSON.stringify(r),'ls_fishing_billing/v1/receipt/'+ws+'/'+r.id,ring),at]);return receipts;
+}
+it('current-owner reloads actual Native acceptance and siblings while original owner operation stays original',async()=>{
+ const f=await nativeAccepted(),snapshot=await store().readSnapshot(owner,f.command.id),again=await store().readSnapshot(owner,f.command.id);
+ expect(snapshot).toEqual(again);expect(snapshot.quote.acceptance?.id).toBe(f.acceptance.acceptanceId);expect(snapshot.quote.acceptance?.parent.submittedName).toBe('SYNTHETIC PARENT ONLY');
+ expect(snapshot.balance).toMatchObject({version:BILLING_GUEST_V3,dueMinor:130000,paidMinor:0,remainingMinor:130000,state:'unpaid'});expect(snapshot.balance.lines.map(l=>l.childId)).toEqual(f.children);
+ expect(await store().createOffer(owner,f.command)).toEqual({...f.created,replayed:true});expect(snapshot.quote.revision).toBe(3);
+});
+it('current-owner preserves literal Florida cash dates separately from exact instants and recording time',async()=>{
+ const f=await nativeAccepted(),q=await store().readQuote(owner,f.command.id),receipts=await seedMoney(q),s=await store().readSnapshot(owner,q.id);
+ expect(s.balance).toMatchObject({paidMinor:30000,remainingMinor:100000,state:'partial'});
+ const date=s.balance.receipts.find(r=>r.id===receipts[0]!.id)!;expect(date).toMatchObject({receivedDate:'2035-01-02',timeZone:'America/New_York',recordedAt:at.toISOString()});expect(date).not.toHaveProperty('receivedAt');expect(s.balance.receipts.find(r=>r.id===receipts[1]!.id)).toHaveProperty('receivedAt',at.toISOString());
+});
+it('current-owner history remains readable after guest expiry/revocation and a later cancelled revision',async()=>{
+ const f=await nativeAccepted(),q=await store().readQuote(owner,f.command.id);await seedMoney(q);
+ const later=changeGuestBillingState(q,q.revision,{cancel:true,paused:true});await db.query('UPDATE ls_fishing_billing.quotes SET revision=$2,payload_ciphertext=$3 WHERE id=$1',[q.id,later.revision,seal(JSON.stringify(later),'ls_fishing_billing/guest/v3/quote/'+ws+'/'+q.id,ring)]);
+ const gr=await db.query<{payload_ciphertext:string}>('SELECT payload_ciphertext FROM ls_fishing_billing.guest_grants WHERE id=$1',[f.lifecycle.grant.id]),original=guestGrantLifecycleSchema.parse(JSON.parse(unseal(gr.rows[0]!.payload_ciphertext,'ls_fishing_billing/guest_grant/v3/'+ws+'/'+f.lifecycle.grant.id,ring))),revoked=guestGrantLifecycleSchema.parse({...original,state:'revoked',revokedAt:at.toISOString()});
+ await db.query("UPDATE ls_fishing_billing.guest_grants SET state='revoked',payload_ciphertext=$2 WHERE id=$1",[original.grant.id,seal(JSON.stringify(revoked),'ls_fishing_billing/guest_grant/v3/'+ws+'/'+original.grant.id,ring)]);
+ const s=await store(new Date('2035-01-04T15:00:00Z')).readSnapshot(owner,q.id);expect(s.balance).toMatchObject({paidMinor:30000,remainingMinor:100000,cancelled:true,paused:true});expect(s.quote.acceptance).toEqual(q.acceptance);
+});
+it('current-owner denies a quote whose statement differs from the actual immutable financial evidence',async()=>{
+ const f=await nativeAccepted(),q=await store().readQuote(owner,f.command.id);q.acceptance!.parent.statementSha256='f'.repeat(64);
+ await db.query('UPDATE ls_fishing_billing.quotes SET payload_ciphertext=$2 WHERE id=$1',[q.id,seal(JSON.stringify(q),'ls_fishing_billing/guest/v3/quote/'+ws+'/'+q.id,ring)]);await expect(store().readSnapshot(owner,q.id)).rejects.toMatchObject({code:'UNAVAILABLE'});
+});
+it.each(['missing','overflow'] as const)('current-owner denies %s obligations with a bounded actual SQL read',async kind=>{
+ const f=await nativeAccepted();let seen=0;
+ if(kind==='missing')await db.query('DELETE FROM ls_fishing_billing.obligations WHERE quote_id=$1 AND line_id=$2',[f.command.id,f.command.children[0]!.lineId]);
+ else for(let i=0;i<12;i++)await db.query('INSERT INTO ls_fishing_billing.obligations VALUES($1,$2,$3,$4,$5,$6,$7,$8)',[ws,f.command.id,randomUUID(),f.family,randomUUID(),randomUUID(),'2035-01-01T05:00:00Z','2035-02-01T05:00:00Z']);
+ afterSql=async(sql,rows)=>{if(sql.includes('FROM ls_fishing_billing.obligations'))seen=rows.length;};await expect(store().readSnapshot(owner,f.command.id)).rejects.toMatchObject({code:'UNAVAILABLE'});expect(seen).toBe(kind==='missing'?1:11);
+});
+it('current-owner authenticates money receipt metadata instead of trusting an indexed operation',async()=>{
+ const f=await nativeAccepted(),q=await store().readQuote(owner,f.command.id),r=await seedMoney(q);await db.query('UPDATE ls_fishing_billing.receipts SET operation_id=$2 WHERE id=$1',[r[0]!.id,randomUUID()]);await expect(store().readSnapshot(owner,q.id)).rejects.toMatchObject({code:'UNAVAILABLE'});
+});
+it('current-owner rechecks actual access after the asynchronous evidence and money reads',async()=>{
+ const f=await nativeAccepted();let reads=0;onAuthority=async(_,a)=>{if(a==='read'&&++reads===2)throw new AppError('FORBIDDEN');};await expect(store().readSnapshot(owner,f.command.id)).rejects.toMatchObject({code:'UNAVAILABLE'});expect(reads).toBe(2);
+ expect((await db.query('SELECT id FROM ls_fishing_billing.guest_financial_acceptances WHERE quote_id=$1',[f.command.id])).rows).toHaveLength(1);
+});
+it('current-owner shows authenticated pending card facts without declaring payment, and rejects state tampering',async()=>{
+ const f=await nativeAccepted(),q=await store().readQuote(owner,f.command.id),id=randomUUID(),command={operationId:randomUUID(),quoteId:q.id,expectedVersion:q.revision,selection:[{lineId:q.lines[0]!.id,amountMinor:1000}]};
+ const a=cardAttemptSchema.parse({version:CARD_VERSION,id,workspaceId:ws,quoteId:q.id,familyId:q.familyId,actorId:owner.id,revision:1,balanceVersion:q.revision,binding:{accountId:'acct_SYNTHETIC',livemode:false,apiVersion:'2026-09-30.endive',verifiedBindingId:'SYNTHETIC_ONLY'},command,requestDigest:'d'.repeat(64),preparation:{version:CARD_VERSION,operationId:command.operationId,quoteId:q.id,entityVersion:q.revision,replayed:false,result:{attemptId:id,amountMinor:1000,allocations:command.selection}},createdAt:at.toISOString(),state:'unknown',dispatchId:randomUUID(),sessionId:null,checkoutUrl:null,paymentIntentId:null});
+ await db.query('INSERT INTO ls_fishing_billing.card_attempts VALUES($1,$2,$3,$4,$5,$6)',[ws,id,q.id,a.revision,a.state,seal(JSON.stringify(a),'ls_fishing_billing/card/v1/attempt/'+ws+'/'+id,ring)]);
+ expect((await store().readSnapshot(owner,q.id)).balance).toMatchObject({pendingAttemptIds:[id],paidMinor:0,state:'unpaid'});
+ await db.query("UPDATE ls_fishing_billing.card_attempts SET state='failed' WHERE id=$1",[id]);await expect(store().readSnapshot(owner,q.id)).rejects.toMatchObject({code:'UNAVAILABLE'});
+});
+it('current-owner authenticates the complete reminder status set before exposing statuses',async()=>{
+ const f=await nativeAccepted(),q=await store().readQuote(owner,f.command.id),id=randomUUID();
+ const i=reminderIntentSchema.parse({version:BILLING_DTO_VERSION,id,key:'SYNTHETIC_STATUS_'+id,quoteId:q.id,familyId:q.familyId,guardianId:parent.id,channel:'email',audience:'individual',locale:'he',policyId:'SYNTHETIC_ONLY',policyRevision:1,sequence:0,dueAt:'2035-01-05T22:00:00Z',scheduledAt:'2035-01-05T22:00:00Z',state:'queued',dispatchId:null,providerId:null,reason:null});
+ const hash=(v:unknown)=>createHmac('sha256',key).update(JSON.stringify(v)).digest('hex');
+ await db.query('INSERT INTO ls_fishing_billing.reminders VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',[ws,id,q.id,hash({key:i.key}),i.state,seal(JSON.stringify(i),'ls_fishing_billing/v1/reminder/'+ws+'/'+id,ring),'SYNTHETIC_POLICY_NOT_DISPATCHABLE',i.scheduledAt,hash({guardianId:i.guardianId,quoteId:i.quoteId})]);
+ expect((await store().readSnapshot(owner,q.id)).balance.reminders).toEqual([{id,state:'queued'}]);
+ await db.query("UPDATE ls_fishing_billing.reminders SET audience_key=$2 WHERE id=$1",[id,'a'.repeat(64)]);await expect(store().readSnapshot(owner,q.id)).rejects.toMatchObject({code:'UNAVAILABLE'});
 });
