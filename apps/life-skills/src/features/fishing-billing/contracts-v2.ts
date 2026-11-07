@@ -54,6 +54,7 @@ export function projectBalanceV2(input:FamilyOffer,raw:readonly LedgerReceiptV2[
   if('receivedAt' in r)requireBilling(['card','refund','dispute'].includes(r.kind)?
    Math.floor(Date.parse(r.receivedAt)/1000)>=Math.floor(Date.parse(q.acceptance!.acceptedAt)/1000):
    Date.parse(r.receivedAt)>=Date.parse(q.acceptance!.acceptedAt));
+  else requireBilling(r.receivedDate>=newYorkDate(q.acceptance!.acceptedAt));
  }
  return balanceV2Schema.parse({...calculateLedger(q,receipts,pending),version:BILLING_DTO_V2});
 }

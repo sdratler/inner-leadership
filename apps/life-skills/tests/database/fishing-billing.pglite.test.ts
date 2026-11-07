@@ -42,7 +42,7 @@ const outbox:BillingOutboxReservation={reserve:async(c,{intent,amount})=>{
  if(outboxFails)throw new Error('SYNTHETIC_EXISTING_OUTBOX_FAILURE');
  await c.tx.query('INSERT INTO synthetic_billing.existing_outbox(dispatch_id,intent_id,remaining_minor,lines_json) VALUES($1,$2,$3,$4::jsonb)',[intent.dispatchId,intent.id,amount.remainingMinor,JSON.stringify(amount.lines)]);
 }};
-const store=(dbinder:IdentityStore=binder)=>new FishingBillingStore(dbinder,workspace,ring,Buffer.alloc(32,9),authority,{now:()=>now},outbox);
+const store=(dbinder:IdentityStore=binder,at=now)=>new FishingBillingStore(dbinder,workspace,ring,Buffer.alloc(32,9),authority,{now:()=>at},outbox);
 async function actor(role:'practitioner'|'parent',ws=workspace){
  const id=randomUUID(),digest=id.replaceAll('-','').padEnd(64,'0');
  await db.query("INSERT INTO ls_identity.people(id,workspace_id,kind,profile_ciphertext,created_at) VALUES($1,$2,'adult','SYNTHETIC',$3)",[id,ws,now]);
@@ -182,11 +182,14 @@ it('rejects altered, cross-quote and stale history cursors after refreshing sess
  await expect(store().readLedgerHistory(owner,{quoteId:f.quote.id,cursor:page.nextCursor,limit:1})).rejects.toThrow('CONFLICT');
 });
 it('records a real date-only cash amount once, preserves exact old receipts and returns authoritative V2 history/status',async()=>{
- const f=await scenario(),old=await store().recordCash(owner,cash(f.quote,10000,1)),cmd={version:BILLING_DTO_V2,operationId:randomUUID(),expectedVersion:4,quoteId:f.quote.id,amountMinor:20000,currency:'USD',allocations:[{lineId:f.quote.lines[0]!.id,amountMinor:20000}],receivedPrecision:'date',receivedDate:'2035-01-05',timeZone:'America/New_York'};
+ const f=await scenario(),old=await store().recordCash(owner,cash(f.quote,10000,1)),cmd={version:BILLING_DTO_V2,operationId:randomUUID(),expectedVersion:4,quoteId:f.quote.id,amountMinor:20000,currency:'USD',allocations:[{lineId:f.quote.lines[0]!.id,amountMinor:20000}],receivedPrecision:'date',receivedDate:'2035-01-06',timeZone:'America/New_York'};
+ await expect(store().recordCashDate(owner,{...cmd,receivedDate:'2035-01-05'})).rejects.toThrow('INVALID_REQUEST');
+ expect((await store().readBalanceV2(owner,f.quote.id)).balance).toMatchObject({revision:4,paidMinor:10000});
+ expect((await db.query('SELECT operation_id FROM ls_fishing_billing.commands WHERE workspace_id=$1 AND operation_id=$2',[workspace,cmd.operationId])).rows).toHaveLength(0);
  const result=await store().recordCashDate(owner,cmd);expect(result).toMatchObject({entityVersion:5,result:{balance:{paidMinor:30000,remainingMinor:100000}}});
  expect((await store().recordCashDate(owner,cmd)).replayed).toBe(true);expect((await store().readOperationReceiptV2(owner,cmd.operationId))!.result.receiptId).toBe(result.result.receiptId);
  const current=await store().readBalanceV2(owner,f.quote.id),date=current.balance.receipts.find(r=>r.id===result.result.receiptId)!;
- expect(date).toMatchObject({receivedPrecision:'date',receivedDate:'2035-01-05',timeZone:'America/New_York',recordedAt:now.toISOString(),actorId:owner.id});expect(date).not.toHaveProperty('receivedAt');
+ expect(date).toMatchObject({receivedPrecision:'date',receivedDate:'2035-01-06',timeZone:'America/New_York',recordedAt:now.toISOString(),actorId:owner.id});expect(date).not.toHaveProperty('receivedAt');
  expect(current.balance.receipts.find(r=>r.id===old.result.receiptId)).toEqual(old.result.balance.receipts[0]);
  const legacyReceipt=await store().readOperationReceiptV2(owner,old.operationId);expect(legacyReceipt!.sourceVersion).toBe('JLFA-FISHING-BILLING-DTO-v1');
  await expect(store().readBalance(owner,f.quote.id)).rejects.toThrow('UNAVAILABLE');
@@ -195,6 +198,13 @@ it('records a real date-only cash amount once, preserves exact old receipts and 
  expect(reversed.result.balance).toMatchObject({paidMinor:25000,remainingMinor:105000,revision:6});
  const history=await store().readLedgerHistoryV2(owner,{quoteId:f.quote.id,cursor:null,limit:100});expect(history.items).toHaveLength(3);expect(history.items.find(r=>r.id===date.id)).not.toHaveProperty('receivedAt');
  await expect(store().readBalanceV2(parent,f.quote.id)).rejects.toThrow('FORBIDDEN');
+});
+it('records date cash on the actual acceptance Florida day across a UTC midnight boundary',async()=>{
+ const f=await scenario(false),at=new Date('2035-01-07T00:30:00Z'),edge=store(binder,at);
+ await edge.acceptOffer(parent,{operationId:randomUUID(),expectedVersion:2,quoteId:f.quote.id,acknowledged:true,terms:f.issued.result.quote.definition.terms});
+ const result=await edge.recordCashDate(owner,{version:BILLING_DTO_V2,operationId:randomUUID(),expectedVersion:3,quoteId:f.quote.id,currency:'USD',amountMinor:20000,
+  allocations:[{lineId:f.quote.lines[0]!.id,amountMinor:20000}],receivedPrecision:'date',receivedDate:'2035-01-06',timeZone:'America/New_York'});
+ expect(result.result.balance.receipts[0]).toMatchObject({receivedDate:'2035-01-06',recordedAt:at.toISOString()});expect(result.result.balance.receipts[0]).not.toHaveProperty('receivedAt');
 });
 it('full date-only cash suppresses payment chasers while a future NY date or revoked actor cannot write',async()=>{
  const f=await scenario();await queue(f.quote);
@@ -207,7 +217,7 @@ it('full date-only cash suppresses payment chasers while a future NY date or rev
 it.each(['pause','cancel'] as const)('retains date cash and safely journals %s without a legacy instant result',async action=>{
  const f=await scenario(),planned=await queue(f.quote);
  const cashResult=await store().recordCashDate(owner,{version:BILLING_DTO_V2,operationId:randomUUID(),expectedVersion:3,quoteId:f.quote.id,
-  amountMinor:20000,currency:'USD',allocations:[{lineId:f.quote.lines[0]!.id,amountMinor:20000}],receivedPrecision:'date',receivedDate:'2035-01-05',timeZone:'America/New_York'});
+  amountMinor:20000,currency:'USD',allocations:[{lineId:f.quote.lines[0]!.id,amountMinor:20000}],receivedPrecision:'date',receivedDate:'2035-01-06',timeZone:'America/New_York'});
  const original=JSON.stringify(cashResult.result.balance.receipts),cmd={version:BILLING_DTO_V2,operationId:randomUUID(),expectedVersion:4,quoteId:f.quote.id,...(action==='pause'?{paused:true}:{cancel:true as const})};
  await expect(store().setStateV2(parent,cmd)).rejects.toThrow('FORBIDDEN');
  const result=await store().setStateV2(owner,cmd);

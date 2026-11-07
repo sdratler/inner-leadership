@@ -1,6 +1,6 @@
 import {it,expect} from 'vitest';
 import {cashCommandSchema,ledgerReceiptSchema} from '../../../src/features/fishing-billing/contracts.ts';
-import {BILLING_DTO_V2,calendarDateSchema,dateCashReceiptSchema,cashDateCommandSchema,projectBalanceV2,newYorkDate} from '../../../src/features/fishing-billing/contracts-v2.ts';
+import {BILLING_DTO_V2,calendarDateSchema,dateCashReceiptSchema,cashDateCommandSchema,projectBalanceV2,newYorkDate,validateDateCash} from '../../../src/features/fishing-billing/contracts-v2.ts';
 import {syntheticAccepted,syntheticReceipt,syntheticId,syntheticOwner} from '../../../src/features/fishing-billing/fixtures.ts';
 import {syntheticDateCashFixtures} from '../../../src/features/fishing-billing/fixtures-v2.ts';
 function receipt(){return {id:syntheticId(601),operationId:syntheticId(602),quoteId:syntheticId(7),familyId:syntheticId(4),kind:'cash' as const,currency:'USD' as const,amountMinor:20000,allocations:[{lineId:syntheticId(10),amountMinor:20000}],actorId:syntheticOwner,provider:null,originalReceiptId:null,reason:null,receivedPrecision:'date' as const,receivedDate:'2035-01-05',timeZone:'America/New_York' as const,recordedAt:'2035-01-06T15:00:00Z'};}
@@ -25,6 +25,15 @@ it('uses identical money math for mixed instant/date receipts and linked correct
  const before=JSON.stringify(instant),b=projectBalanceV2(q,[instant,date,reversal]);
  expect(b).toMatchObject({version:BILLING_DTO_V2,paidMinor:25000,remainingMinor:105000,state:'partial'});
  expect(JSON.stringify(instant)).toBe(before);expect(b.receipts.find(r=>r.id===date.id)).not.toHaveProperty('receivedAt');
+});
+it('rejects a date before the accepted Florida day in both projection and the date-cash validator',()=>{
+ const q=syntheticAccepted(),r={...receipt(),receivedDate:'2035-01-01'};
+ expect(()=>projectBalanceV2(q,[r])).toThrow('INVALID_REQUEST');expect(()=>validateDateCash(q,[],r)).toThrow('INVALID_REQUEST');
+});
+it('accepts the same Florida day across a UTC-date boundary without inventing an acceptance-time cash instant',()=>{
+ const base=syntheticAccepted(),q={...base,acceptance:{...base.acceptance!,acceptedAt:'2035-01-03T00:30:00Z'}},r={...receipt(),receivedDate:'2035-01-02'};
+ expect(newYorkDate(q.acceptance.acceptedAt)).toBe('2035-01-02');
+ expect(projectBalanceV2(q,[r]).receipts[0]).toEqual(r);expect(validateDateCash(q,[],r)).not.toHaveProperty('receivedAt');
 });
 it('serializes complete V2 view/operation/history fixtures with the requested two-child arithmetic and distinct precisions',()=>{
  const f=JSON.parse(JSON.stringify(syntheticDateCashFixtures()));expect(f.syntheticOnly).toBe(true);

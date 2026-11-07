@@ -249,12 +249,12 @@ it('freezes the complete request and eight-letter identifier before dispatch, pr
  expect((await db.query<{payload_ciphertext:string}>('SELECT payload_ciphertext FROM ls_fishing_billing.card_attempt_requests WHERE attempt_id=$1',[f.command.operationId])).rows[0]!.payload_ciphertext).toBe(row.payload_ciphertext);
 });
 it('combines date-only partial cash and a verified card remainder for a two-child family without inventing a receipt instant',async()=>{
- const q=await family(),cash=await native().recordCashDate(owner,{version:BILLING_DTO_V2,operationId:randomUUID(),expectedVersion:3,quoteId:q.id,currency:'USD',amountMinor:20000,allocations:[{lineId:q.lines[0]!.id,amountMinor:20000}],receivedPrecision:'date',receivedDate:'2035-01-05',timeZone:'America/New_York'});
+ const q=await family(),cash=await native().recordCashDate(owner,{version:BILLING_DTO_V2,operationId:randomUUID(),expectedVersion:3,quoteId:q.id,currency:'USD',amountMinor:20000,allocations:[{lineId:q.lines[0]!.id,amountMinor:20000}],receivedPrecision:'date',receivedDate:'2035-01-06',timeZone:'America/New_York'});
  const command={operationId:randomUUID(),expectedVersion:4,quoteId:q.id,selection:[{lineId:q.lines[0]!.id,amountMinor:45000},{lineId:q.lines[1]!.id,amountMinor:65000}]};
  const preparation=await cards().prepare(parent,command),attempt=await cards().createCheckout(parent,q.id,command.operationId);
  await cards().processEvent(await event(payment({quote:q,command,preparation,attempt},{amountMinor:110000,receivedMinor:110000})));
  const b=(await native().readBalanceV2(owner,q.id)).balance;expect(b).toMatchObject({state:'paid',paidMinor:130000,remainingMinor:0,revision:8});
- expect(b.receipts.find(r=>r.id===cash.result.receiptId)).toMatchObject({receivedDate:'2035-01-05',receivedPrecision:'date'});expect(b.receipts.find(r=>r.id===cash.result.receiptId)).not.toHaveProperty('receivedAt');
+ expect(b.receipts.find(r=>r.id===cash.result.receiptId)).toMatchObject({receivedDate:'2035-01-06',receivedPrecision:'date'});expect(b.receipts.find(r=>r.id===cash.result.receiptId)).not.toHaveProperty('receivedAt');
  expect(b.receipts.find(r=>r.kind==='card')).toMatchObject({receivedAt:now.toISOString(),amountMinor:110000});
 });
 it('runs one durable two-child card/cash/reminder journey with fresh balances, paid suppression and a truthful late delivery',async()=>{
@@ -263,7 +263,7 @@ it('runs one durable two-child card/cash/reminder journey with fresh balances, p
  const queued=await native().queueReminders(owner,{quoteId,policy,guardianId:parent.id,channel:'email'});expect(queued).toHaveLength(2);
  const before=await native().readBalanceV2(owner,quoteId);
  const dateCash=await native().recordCashDate(owner,{version:BILLING_DTO_V2,operationId:randomUUID(),quoteId,expectedVersion:before.quote.revision,
-  currency:'USD',amountMinor:20000,allocations:[{lineId:f.quote.lines[1]!.id,amountMinor:20000}],receivedPrecision:'date',receivedDate:'2035-01-05',timeZone:'America/New_York'});
+  currency:'USD',amountMinor:20000,allocations:[{lineId:f.quote.lines[1]!.id,amountMinor:20000}],receivedPrecision:'date',receivedDate:'2035-01-06',timeZone:'America/New_York'});
  expect(dateCash.result.balance.remainingMinor).toBe(110000);
  const eventId=await event(payment(f)),processed=await cards().processEvent(eventId);
  expect(processed.receiptIds).toHaveLength(1);
