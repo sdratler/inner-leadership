@@ -16,11 +16,16 @@ import {
  requireBilling,createFamilyOffer,issueFamilyOffer,acceptFamilyOffer,changeBillingState,projectBalance,
  validateCashReceipt,validateReversal,
 } from './domain.ts';
-import {planPaymentReminders,checkReminderDispatch,type DispatchPermission} from './reminders.ts';
+import {planPaymentReminders,checkReminderDispatch,reminderSuppression,type DispatchPermission} from './reminders.ts';
 import type {BillingStripeBinding} from './stripe-test.ts';
 import {LEDGER_HISTORY_VERSION,ledgerHistoryQuerySchema,ledgerHistoryPageSchema} from './history-contracts.ts';
 import {cardAttemptSchema,cardExceptionSchema} from './card-contracts.ts';
 import {billingStateCommandV2Schema} from './state-contracts-v2.ts';
+import {
+ REMINDER_SERVICE_VERSION,reminderServiceBindingSchema,reminderBatchCommandSchema,reminderOutcomeLookupSchema,verifiedReminderOutcomeSchema,serviceDispatchPermissionSchema,
+ reminderPlanningCommandSchema,reminderServicePlanSchema,
+ type BillingReminderServiceConfiguration,type BillingReminderServiceOutbox,type ReminderBatchResult,
+} from './reminder-service.ts';
 import {
  BILLING_DTO_V2,ledgerReceiptV2Schema,cashDateCommandSchema,dateCashReceiptSchema,validateDateCash,
  projectBalanceV2,operationReceiptV2Schema,upgradeOperationReceipt,reversalCommandV2Schema,ledgerHistoryV2Schema,
@@ -44,6 +49,8 @@ export interface BillingAuthority{
  * Payment after reservation is an explicit in-flight race, never retractable. */
 export interface BillingOutboxReservation{
  reserve(context:BillingContext,input:{intent:ReminderIntent;amount:{currency:'USD';quoteId:string;familyId:string;revision:number;remainingMinor:number;lines:ReturnType<typeof projectBalance>['lines']}}):Promise<void>;
+ reserveService?:BillingReminderServiceOutbox['reserveService'];
+ readServiceOutcome?:BillingReminderServiceOutbox['readServiceOutcome'];
 }
 /** Root binds the actual service policy, database target, test account/mode and
  * current native family/child/period scope. No session impersonation or default
@@ -57,9 +64,10 @@ export type BillingCardLedger={
 };
 type QuoteRow={id:string;familyId:string;revision:number;ciphertext:string};
 type CommandRow={actorId:string;action:string;quoteId:string|null;digest:string;ciphertext:string};
-type IntentRow={id:string;ciphertext:string;state:ReminderIntent['state']};
+type IntentRow={id:string;quoteId:string;intentKey:string;audienceKey:string;scheduledAt:Date|string;ciphertext:string;state:ReminderIntent['state']};
 const qSelect='SELECT id,family_id AS "familyId",revision,payload_ciphertext AS ciphertext FROM ls_fishing_billing.quotes';
-const iSelect='SELECT id,payload_ciphertext AS ciphertext,state FROM ls_fishing_billing.reminders';
+const iSelect='SELECT id,quote_id AS "quoteId",intent_key AS "intentKey",audience_key AS "audienceKey",scheduled_at AS "scheduledAt",payload_ciphertext AS ciphertext,state FROM ls_fishing_billing.reminders';
+const iPolicySelect=iSelect.replace(' FROM ',',policy_ciphertext AS "policyCiphertext" FROM ');
 const aad=(kind:string,workspace:string,id:string)=>'ls_fishing_billing/v1/'+kind+'/'+workspace+'/'+id;
 const scope=(q:FamilyOffer):BillingScope=>({programKey:'fishing_monthly_club',quoteId:q.id,familyId:q.familyId,childIds:[...new Set(q.lines.map(l=>l.childId))]});
 const canonical=(value:unknown):string=>{
@@ -74,13 +82,16 @@ const commandRecordSchema=z.object({
 }).strict();
 export class FishingBillingStore{
  private readonly key:Buffer;
+ private readonly reminderService:BillingReminderServiceConfiguration|null;
  constructor(
   readonly db:IdentityStore,readonly workspaceId:WorkspaceId,private readonly ring:Keyring,digestKey:Buffer,
   readonly authority:BillingAuthority,readonly clock:IdentityClock,
   private readonly outbox:BillingOutboxReservation|null=null,
   private readonly financialService:BillingFinancialServiceAuthority|null=null,
+  reminderService:BillingReminderServiceConfiguration|null=null,
  ){
   requireBilling(digestKey.length>=32,'UNAVAILABLE');this.key=Buffer.from(digestKey);
+  this.reminderService=reminderService?{binding:reminderServiceBindingSchema.parse(reminderService.binding),authority:reminderService.authority}:null;
  }
  private digest(value:unknown){return createHmac('sha256',this.key).update(canonical(value)).digest('hex');}
  private async context<T>(actor:Actor,mutating:boolean,work:(c:BillingContext)=>Promise<T>):Promise<T>{
@@ -191,7 +202,9 @@ export class FishingBillingStore{
  }
  private decodeIntent(c:BillingLedgerContext,row:IntentRow){
   const intent=reminderIntentSchema.parse(JSON.parse(unseal(row.ciphertext,aad('reminder',c.workspaceId,row.id),this.ring)));
-  requireBilling(intent.id===row.id&&intent.state===row.state,'UNAVAILABLE');return intent;
+  requireBilling(intent.id===row.id&&intent.quoteId===row.quoteId&&intent.state===row.state&&
+   this.digest({key:intent.key})===row.intentKey&&this.digest({quoteId:intent.quoteId,guardianId:intent.guardianId})===row.audienceKey&&
+   Date.parse(intent.scheduledAt)===new Date(row.scheduledAt).valueOf(),'UNAVAILABLE');return intent;
  }
  private async saveIntent(c:BillingLedgerContext,intent:ReminderIntent){
   await c.tx.query('UPDATE ls_fishing_billing.reminders SET state=$3,payload_ciphertext=$4 WHERE workspace_id=$1 AND id=$2',[c.workspaceId,intent.id,intent.state,seal(JSON.stringify(intent),aad('reminder',c.workspaceId,intent.id),this.ring)]);
@@ -425,25 +438,29 @@ export class FishingBillingStore{
    const permission=await this.authority.reminderPermission(c,q,policy,input.guardianId,input.channel);
    requireBilling(permission.audience.guardianId===input.guardianId&&permission.audience.channel===input.channel&&permission.audience.audience==='individual','FORBIDDEN');
    requireBilling(permission.policyCurrent,'UNAVAILABLE');
-   const existing=await c.tx.query<IntentRow>(iSelect+' WHERE workspace_id=$1 AND quote_id=$2 ORDER BY id LIMIT 1001',[c.workspaceId,q.id]);
-   requireBilling(existing.length<=1000,'UNAVAILABLE');
-   const previous=existing.map(r=>this.decodeIntent(c,r));
+   return this.queueIntents(c,q,policy,permission,await this.currentIntents(c,q));
+  });
+ }
+ private async currentIntents(c:BillingLedgerContext,q:FamilyOffer){
+  const rows=await c.tx.query<IntentRow>(iSelect+' WHERE workspace_id=$1 AND quote_id=$2 ORDER BY id LIMIT 1001',[c.workspaceId,q.id]);
+  requireBilling(rows.length<=1000,'UNAVAILABLE');return rows.map(row=>this.decodeIntent(c,row));
+ }
+ private async queueIntents(c:BillingLedgerContext,q:FamilyOffer,policy:ReminderPolicy,permission:DispatchPermission,previous:ReminderIntent[]){
    if(!permission.ownerEnabled)return previous;
-   // An uncertain earlier send blocks cross-channel or new-policy fallback.
-   if(previous.some(i=>i.guardianId===input.guardianId&&i.state==='unknown'))return previous;
+   // The owner and service paths share exactly the same deterministic planner.
+   if(previous.some(i=>i.guardianId===permission.audience.guardianId&&i.state==='unknown'))return previous;
    const planned=planPaymentReminders({balance:await this.balance(c,q),policy,audience:permission.audience,newId:randomUUID});
    for(const intent of planned){
     const key=this.digest({key:intent.key});
-    await c.tx.query('INSERT INTO ls_fishing_billing.reminders(workspace_id,id,quote_id,intent_key,state,payload_ciphertext,policy_ciphertext) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(workspace_id,intent_key) DO NOTHING',[c.workspaceId,intent.id,q.id,key,intent.state,seal(JSON.stringify(intent),aad('reminder',c.workspaceId,intent.id),this.ring),seal(JSON.stringify(policy),aad('reminder_policy',c.workspaceId,intent.id),this.ring)]);
+    await c.tx.query('INSERT INTO ls_fishing_billing.reminders(workspace_id,id,quote_id,intent_key,state,payload_ciphertext,policy_ciphertext,scheduled_at,audience_key) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(workspace_id,intent_key) DO NOTHING',[c.workspaceId,intent.id,q.id,key,intent.state,seal(JSON.stringify(intent),aad('reminder',c.workspaceId,intent.id),this.ring),seal(JSON.stringify(policy),aad('reminder_policy',c.workspaceId,intent.id),this.ring),intent.scheduledAt,this.digest({quoteId:intent.quoteId,guardianId:intent.guardianId})]);
    }
-   return (await c.tx.query<IntentRow>(iSelect+' WHERE workspace_id=$1 AND quote_id=$2 ORDER BY id',[c.workspaceId,q.id])).map(r=>this.decodeIntent(c,r));
-  });
+   return this.currentIntents(c,q);
  }
  async reserveReminder(actor:Actor,id:string,dispatchId:string){
   billingId.parse(id);billingId.parse(dispatchId);
   return this.context(actor,true,async c=>{
    this.owner(c);
-   const row=await one<IntentRow&{policyCiphertext:string}>(c.tx,'SELECT id,payload_ciphertext AS ciphertext,state,policy_ciphertext AS "policyCiphertext" FROM ls_fishing_billing.reminders WHERE workspace_id=$1 AND id=$2 FOR UPDATE',[c.workspaceId,id]);
+   const row=await one<IntentRow&{policyCiphertext:string}>(c.tx,iPolicySelect+' WHERE workspace_id=$1 AND id=$2 FOR UPDATE',[c.workspaceId,id]);
    if(!row)throw new AppError('NOT_FOUND');
    const intent=this.decodeIntent(c,row),q=await this.quote(c,intent.quoteId,true);
    await this.authority.authorize(c,'dispatch',scope(q));
@@ -464,6 +481,105 @@ export class FishingBillingStore{
    return {reserved:true as const,intent:reserved,remainingMinor:eligibility.remainingMinor};
   });
  }
+ private async serviceContext<T>(operation:'scan'|'plan'|'outcome',work:(c:BillingLedgerContext,configuration:BillingReminderServiceConfiguration)=>Promise<T>):Promise<T>{
+  const configuration=this.reminderService;requireBilling(configuration,'UNAVAILABLE');
+  return this.db.transaction(async tx=>{
+   await lockWorkspace(tx,this.workspaceId);const now=this.clock.now();requireBilling(Number.isFinite(now.valueOf()),'UNAVAILABLE');
+   const c:BillingLedgerContext={tx,workspaceId:this.workspaceId,now};
+   await configuration!.authority.authorize(c,configuration!.binding,operation,null,null);
+   return work(c,configuration!);
+  });
+ }
+ /** Service planning after real native acceptance. Policy, guardian and channel
+  * come from the current constructor-owned resolver, never this command or a
+  * remembered operator session. This cannot accept an offer or create a debt. */
+ async queueReminderServiceIntents(raw:unknown){
+  const command=reminderPlanningCommandSchema.parse(raw);requireBilling(this.outbox?.reserveService,'UNAVAILABLE');
+  return this.serviceContext('plan',async(c,configuration)=>{
+   const q=await this.quote(c,command.quoteId,true);requireBilling(q.state==='accepted'&&q.acceptance,'CONFLICT');
+   await configuration.authority.authorize(c,configuration.binding,'plan',scope(q),null);
+   requireBilling(typeof configuration.authority.plan==='function','UNAVAILABLE');
+   const rawPlan=await configuration.authority.plan(c,configuration.binding,q);requireBilling(rawPlan,'UNAVAILABLE');
+   const plan=reminderServicePlanSchema.parse(rawPlan),audience={quoteId:q.id,familyId:q.familyId,guardianId:plan.guardianId,channel:plan.channel};
+   await configuration.authority.authorize(c,configuration.binding,'plan',scope(q),audience);
+   const permission=serviceDispatchPermissionSchema.parse(await configuration.authority.permission(c,configuration.binding,q,plan.policy,audience));
+   requireBilling(permission.audience.guardianId===plan.guardianId&&permission.audience.channel===plan.channel,'FORBIDDEN');
+   requireBilling(permission.policyCurrent,'UNAVAILABLE');
+   const previous=await this.currentIntents(c,q),base={version:REMINDER_SERVICE_VERSION,quoteId:q.id};
+   if(previous.some(i=>i.guardianId===plan.guardianId&&i.state==='unknown'))return {...base,state:'blocked_unknown' as const,reason:'unresolved_dispatch',intents:previous};
+   const reason=reminderSuppression(await this.balance(c,q),permission);
+   if(reason)return {...base,state:reason==='send_window_closed'?'deferred' as const:'suppressed' as const,reason,intents:previous};
+   return {...base,state:'queued' as const,reason:null,intents:await this.queueIntents(c,q,plan.policy,permission,previous)};
+  });
+ }
+ /** Finite reservation bridge, not a worker or sender. The existing runtime
+  * invokes it with a caller-selected bound. UNKNOWN is committed with the
+  * existing outbox reservation in the SAME transaction before any transport. */
+ async reserveReminderServiceBatch(raw:unknown):Promise<ReminderBatchResult>{
+  const command=reminderBatchCommandSchema.parse(raw);requireBilling(this.outbox?.reserveService,'UNAVAILABLE');
+  return this.serviceContext('scan',async(c,configuration)=>{
+   const rows=await c.tx.query<IntentRow&{policyCiphertext:string}>(iPolicySelect+` AS due
+    WHERE workspace_id=$1 AND state='queued' AND scheduled_at<=$2
+    AND NOT EXISTS(SELECT 1 FROM ls_fishing_billing.reminders uncertain
+     WHERE uncertain.workspace_id=due.workspace_id AND uncertain.quote_id=due.quote_id
+     AND uncertain.audience_key=due.audience_key AND uncertain.state='unknown')
+    ORDER BY scheduled_at,id LIMIT $3 FOR UPDATE OF due SKIP LOCKED`,[c.workspaceId,c.now,command.limit+1]);
+   const results:ReminderBatchResult['results']=[];
+   for(const row of rows.slice(0,command.limit)){
+    const intent=this.decodeIntent(c,row),q=await this.quote(c,intent.quoteId,true);
+    await configuration.authority.authorize(c,configuration.binding,'reserve',scope(q),intent);
+    requireBilling(intent.familyId===q.familyId,'UNAVAILABLE');
+    const unknown=await c.tx.query<IntentRow>(iSelect+" WHERE workspace_id=$1 AND quote_id=$2 AND audience_key=$3 AND state='unknown' LIMIT 1001 FOR UPDATE",[c.workspaceId,q.id,row.audienceKey]);
+    requireBilling(unknown.length<=1000,'UNAVAILABLE');
+    if(unknown.some(item=>this.decodeIntent(c,item).guardianId===intent.guardianId)){
+     results.push({intentId:intent.id,state:'blocked_unknown',reason:'unresolved_dispatch'});continue;
+    }
+    const policy=reminderPolicySchema.parse(JSON.parse(unseal(row.policyCiphertext,aad('reminder_policy',c.workspaceId,intent.id),this.ring)));
+    requireBilling(policy.id===intent.policyId&&policy.revision===intent.policyRevision,'UNAVAILABLE');
+    const permission=serviceDispatchPermissionSchema.parse(await configuration.authority.permission(c,configuration.binding,q,policy,intent));
+    const balance=await this.balance(c,q),check=checkReminderDispatch(intent,balance,permission,c.now.toISOString());
+    if(!check.eligible){
+     const deferred=['not_due','already_reserved','send_window_closed'].includes(check.reason);
+     if(!deferred)await this.saveIntent(c,{...intent,state:'suppressed',reason:check.reason});
+     results.push({intentId:intent.id,state:deferred?'deferred':'suppressed',reason:check.reason});continue;
+    }
+    const dispatchId=randomUUID(),reserved:ReminderIntent={...intent,state:'unknown',dispatchId,reason:'dispatch_reserved'};
+    const amount={currency:'USD' as const,quoteId:q.id,familyId:q.familyId,revision:balance.revision,remainingMinor:check.remainingMinor,lines:check.lines};
+    requireBilling(amount.lines.every(l=>l.remainingMinor>0)&&amount.remainingMinor===amount.lines.reduce((sum,l)=>sum+l.remainingMinor,0),'UNAVAILABLE');
+    await this.saveIntent(c,reserved);await this.outbox!.reserveService!(c,configuration.binding,{intent:reserved,amount});
+    results.push({intentId:intent.id,state:'reserved',dispatchId,remainingMinor:check.remainingMinor});
+   }
+   return {version:REMINDER_SERVICE_VERSION,scanned:results.length,moreDue:rows.length>command.limit,results};
+  });
+ }
+ /** Read the original existing-outbox receipt, not a caller-supplied delivery
+  * assertion. New-send eligibility is deliberately not a late-fact prerequisite.
+  * Current service/native authority still applies; unavailable stays unresolved. */
+ async recordReminderServiceOutcome(raw:unknown){
+  const lookup=reminderOutcomeLookupSchema.parse(raw);requireBilling(this.outbox?.readServiceOutcome,'UNAVAILABLE');
+  return this.serviceContext('outcome',async(c,configuration)=>{
+   const row=await one<IntentRow>(c.tx,iSelect+' WHERE workspace_id=$1 AND id=$2 FOR UPDATE',[c.workspaceId,lookup.intentId]);if(!row)throw new AppError('NOT_FOUND');
+   const intent=this.decodeIntent(c,row),q=await this.quote(c,intent.quoteId,true);
+   requireBilling(intent.familyId===q.familyId&&intent.dispatchId===lookup.dispatchId,'CONFLICT');
+   await configuration.authority.authorize(c,configuration.binding,'outcome',scope(q),intent);
+   const rawOutcome=await this.outbox!.readServiceOutcome!(c,configuration.binding,lookup);
+   if(rawOutcome===null)return {version:REMINDER_SERVICE_VERSION,state:'unresolved' as const,intentId:intent.id};
+   const outcome=verifiedReminderOutcomeSchema.parse(rawOutcome);
+   requireBilling(outcome.intentId===intent.id&&outcome.dispatchId===intent.dispatchId&&outcome.guardianId===intent.guardianId&&
+    outcome.channel===intent.channel&&outcome.outboxBindingId===configuration.binding.outboxBindingId,'UNAVAILABLE');
+   const next=await this.applyReminderOutcome(c,intent,outcome);
+   return {version:REMINDER_SERVICE_VERSION,state:'recorded' as const,intent:next,sourceReceiptId:outcome.sourceReceiptId};
+  });
+ }
+ private async applyReminderOutcome(c:BillingLedgerContext,i:ReminderIntent,cmd:{dispatchId:string;state:'provider_accepted'|'delivered'|'failed';providerId:string|null}){
+  requireBilling(i.dispatchId===cmd.dispatchId&&['unknown','provider_accepted','delivered','failed'].includes(i.state),'CONFLICT');
+  requireBilling(cmd.state==='failed'||cmd.providerId,'INVALID_REQUEST');
+  if(i.state==='delivered')requireBilling(cmd.state==='delivered'&&i.providerId===cmd.providerId,'CONFLICT');
+  if(i.providerId)requireBilling(i.providerId===cmd.providerId,'CONFLICT');
+  requireBilling(!(i.state==='provider_accepted'&&cmd.state==='failed'),'CONFLICT');
+  const next:ReminderIntent={...i,state:cmd.state,providerId:cmd.providerId,reason:null};
+  if(canonical(next)!==canonical(i))await this.saveIntent(c,next);return next;
+ }
  /** A late real receipt may resolve UNKNOWN even after payment/cancellation.
   * No retry/fallback is performed. Provider accepted is distinct from delivered. */
  async recordReminderOutcome(actor:Actor,input:{id:string;dispatchId:string;state:'provider_accepted'|'delivered'|'failed';providerId:string|null}){
@@ -471,12 +587,7 @@ export class FishingBillingStore{
   return this.context(actor,true,async c=>{
    this.owner(c);const row=await one<IntentRow>(c.tx,iSelect+' WHERE workspace_id=$1 AND id=$2 FOR UPDATE',[c.workspaceId,cmd.id]);if(!row)throw new AppError('NOT_FOUND');
    const i=this.decodeIntent(c,row),q=await this.quote(c,i.quoteId,true);await this.authority.authorize(c,'dispatch',scope(q));
-   requireBilling(i.dispatchId===cmd.dispatchId&&['unknown','provider_accepted','delivered','failed'].includes(i.state),'CONFLICT');
-   requireBilling(cmd.state==='failed'||cmd.providerId,'INVALID_REQUEST');
-   if(i.state==='delivered')requireBilling(cmd.state==='delivered'&&i.providerId===cmd.providerId,'CONFLICT');
-   if(i.providerId)requireBilling(i.providerId===cmd.providerId,'CONFLICT');
-   requireBilling(!(i.state==='provider_accepted'&&cmd.state==='failed'),'CONFLICT');
-   const next:ReminderIntent={...i,state:cmd.state,providerId:cmd.providerId,reason:null};await this.saveIntent(c,next);return next;
+   return this.applyReminderOutcome(c,i,cmd);
   });
  }
 }
