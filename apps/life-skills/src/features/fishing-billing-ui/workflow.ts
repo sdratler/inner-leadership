@@ -25,13 +25,13 @@ export class BillingWorkflow{
  currentFor(base:BillingData){return this.latest&&this.latest.quote.id===base.quote.id&&this.latest.quote.familyId===base.quote.familyId&&this.latest.quote.workspaceId===base.quote.workspaceId&&this.latest.balance.revision>=base.balance.revision?this.latest:base;}
  clear(){if(this.busy||this.unresolved())return false;this.set(idle);return true;}
  async submit(kind:CommandKind,raw:unknown,data:BillingData){
-  if(this.busy||this.unresolved()||!this.ports)return false;
+  if(this.busy||this.unresolved()||!this.ports||(kind==='state'&&!this.ports.setState))return false;
   const command=commandFor(kind,raw),scope=dataScope(data),operation={scope,kind,command};
   if(command.quoteId!==scope.quoteId)throw Error('BILLING_SCOPE_MISMATCH');
   if(command.expectedVersion!==data.balance.revision){this.set({...operation,phase:'conflict',data});return false;}
   this.busy=true;this.set({...operation,phase:'submitting'});
   try{
-   const result=await (kind==='cash'?this.ports.recordCashDate(command as Parameters<BillingUiPorts['recordCashDate']>[0]):this.ports.reverseCash(command as Parameters<BillingUiPorts['reverseCash']>[0]));
+   const result=await (kind==='cash'?this.ports.recordCashDate(command as Parameters<BillingUiPorts['recordCashDate']>[0]):kind==='reversal'?this.ports.reverseCash(command as Parameters<BillingUiPorts['reverseCash']>[0]):this.ports.setState!(command as Parameters<NonNullable<BillingUiPorts['setState']>>[0]));
    if(result.kind==='confirmed')await this.accept(operation,result.receipt,result.current);
    else if(result.kind==='conflict'){
     const current=scopedData(result.current,scope);
