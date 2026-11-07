@@ -1,4 +1,5 @@
 import {describe,it,expect,vi} from 'vitest';
+import {createHash} from 'node:crypto';
 vi.mock('server-only',()=>({}));
 import {asId} from '../../src/lib/ids.ts';
 import {AppError} from '../../src/lib/errors.ts';
@@ -28,17 +29,19 @@ function setup(){
   return (missing||values[0]!==workspace||values[1]!==row.digest?[]:[{...row}]) as unknown as T[];
  });
  const context:BillingLedgerContext={tx:{query} as SqlSession,workspaceId:workspace,now:new Date(clockValue)};
- const authority={target:vi.fn<BillingGuestGrantAuthority['target']>().mockResolvedValue(),current:vi.fn<BillingGuestGrantAuthority['current']>().mockImplementation(async(c,g)=>{if(c.workspaceId!==workspace||g.offer.material.familyId!==quote.familyId)throw new AppError('FORBIDDEN');}),display:vi.fn<BillingGuestGrantAuthority['display']>().mockImplementation(async(_,__,challenge)=>{if(challenge!=='z'.repeat(43))throw new AppError('FORBIDDEN');})};
+ const currentEvidence={workspaceId:workspace,familyId:quote.familyId,quoteId:quote.id,grantId:lifecycle.grant.id,recipientBindingEvidenceId:lifecycle.grant.recipientBindingEvidenceId,assuranceEvidenceId:syntheticId(987),admissionPolicy:lifecycle.grant.admissionPolicy};
+ const presentation={action:'accept_financial_offer' as const,grantId:lifecycle.grant.id,displayBundleId:displayBundle.id,displayBundleSha256:displayBundle.sha256,locale:displayBundle.locale,evidenceId:syntheticId(988),affirmation:{version:'SYNTHETIC-STATEMENT-v1',guardianAuthorityText:'SYNTHETIC GUARDIAN STATEMENT',financialTermsText:'SYNTHETIC FINANCIAL STATEMENT'}};
+ const authority={target:vi.fn<BillingGuestGrantAuthority['target']>().mockResolvedValue(),current:vi.fn<BillingGuestGrantAuthority['current']>().mockImplementation(async(c,g)=>{if(c.workspaceId!==workspace||g.offer.material.familyId!==quote.familyId)throw new AppError('FORBIDDEN');return currentEvidence;}),display:vi.fn<BillingGuestGrantAuthority['display']>().mockImplementation(async(_,__,challenge)=>{if(challenge!=='z'.repeat(43))throw new AppError('FORBIDDEN');return presentation;})};
  const resolver=new FishingBillingGuestGrantResolver(workspace,ring,key,{now:()=>new Date(clockValue)},authority);
  const command={operationId:syntheticId(984),expectedVersion:2,displayBundleId:displayBundle.id,displayBundleSha256:displayBundle.sha256,displayChallenge:'z'.repeat(43),parent:{submittedName:'SYNTHETIC ONLY',guardianAuthorityAttested:true,financialTermsAffirmed:true}};
  const write=()=>{row.state=lifecycle.state;row.ciphertext=seal(JSON.stringify(lifecycle),aad,ring);};
  const resolve=()=>resolver.resolve(context,token,'accept_financial_offer',command);
- return {token,ring,key,quote,workspace,lifecycle,row,context,authority,resolver,command,query,resolve,write,missing:()=>{missing=true;},clock:(n:number)=>{clockValue=n;},replace:(g:typeof lifecycle)=>{lifecycle=g;write();}};
+ return {token,ring,key,quote,workspace,lifecycle,row,context,currentEvidence,presentation,authority,resolver,command,query,resolve,write,missing:()=>{missing=true;},clock:(n:number)=>{clockValue=n;},replace:(g:typeof lifecycle)=>{lifecycle=g;write();}};
 }
 describe('native guest grant resolution, unmounted and no write effects',()=>{
  it('resolves current sealed scope and exposes immutable facts only through its own opaque capability',async()=>{
   const f=setup(),cap=await f.resolve(),facts=await f.resolver.current(f.context,cap,'accept_financial_offer');
-  expect(Object.keys(cap)).toEqual([]);expect(Object.isFrozen(cap)).toBe(true);expect(facts.kind).toBe('fresh');expect(facts.grant.offer.material.workspaceId).toBe(f.workspace);expect(f.authority.display).toHaveBeenCalledOnce();
+  expect(Object.keys(cap)).toEqual([]);expect(Object.isFrozen(cap)).toBe(true);expect(facts.kind).toBe('fresh');expect(facts.grant.offer.material.workspaceId).toBe(f.workspace);expect(f.authority.display).toHaveBeenCalledTimes(2);
   expect(Object.isFrozen(facts.grant.offer.material.lines)).toBe(true);expect(()=>{facts.grant.offer.material.lines[0]!.childId=syntheticId(999);}).toThrow();
   expect(JSON.stringify(f.query.mock.calls)).not.toContain(f.token);expect(f.query.mock.calls.every(([sql])=>sql.startsWith('SELECT'))).toBe(true);
  });
@@ -52,8 +55,8 @@ describe('native guest grant resolution, unmounted and no write effects',()=>{
  });
  it.each(['current','display'] as const)('does not expose mutable authenticated grant facts to the %s authority hook',async hook=>{
   const f=setup();
-  if(hook==='current')f.authority.current.mockImplementation(async(_,g)=>{g.offer.material.lines[0]!.amountMinor--;});
-  else f.authority.display.mockImplementation(async(_,g)=>{g.offer.material.lines[0]!.amountMinor--;});
+  if(hook==='current')f.authority.current.mockImplementation(async(_,g)=>{g.offer.material.lines[0]!.amountMinor--;return f.currentEvidence;});
+  else f.authority.display.mockImplementation(async(_,g)=>{g.offer.material.lines[0]!.amountMinor--;return f.presentation;});
   await expect(f.resolve()).rejects.toMatchObject({code:'UNAVAILABLE'});
  });
  it.each(['resolve','current'] as const)('rejects a transaction replacement inside target admission during %s',async stage=>{
@@ -92,7 +95,7 @@ describe('native guest grant resolution, unmounted and no write effects',()=>{
  it('requires exact original operation and body for a consumed-grant recovery',async()=>{
   const f=setup(),cap=await f.resolve(),facts=await f.resolver.current(f.context,cap,'accept_financial_offer');
   f.lifecycle.state='consumed';f.lifecycle.use={operationId:f.command.operationId,commandDigest:facts.commandDigest,receiptId:syntheticId(986),usedAt:'2035-01-02T15:01:00Z'};f.write();f.authority.display.mockClear();
-  const replay=await f.resolve(),r=await f.resolver.current(f.context,replay,'accept_financial_offer');expect(r.kind).toBe('replay');expect(r.originalReceiptId).toBe(syntheticId(986));expect(f.authority.display).not.toHaveBeenCalled();
+  const replay=await f.resolve(),r=await f.resolver.current(f.context,replay,'accept_financial_offer');expect(r.kind).toBe('replay');expect(r.originalReceiptId).toBe(syntheticId(986));expect(r.presentation).toBeNull();expect(r.statementSha256).toBeNull();expect(f.authority.display).not.toHaveBeenCalled();
   f.command.parent.submittedName='CHANGED';await expect(f.resolve()).rejects.toMatchObject({code:'UNAVAILABLE'});f.command.parent.submittedName='SYNTHETIC ONLY';f.command.operationId=syntheticId(999);await expect(f.resolve()).rejects.toMatchObject({code:'UNAVAILABLE'});
  });
  it('does not let an expired consumed grant recover its old receipt',async()=>{
@@ -103,17 +106,43 @@ describe('native guest grant resolution, unmounted and no write effects',()=>{
   expect(guestGrantLifecycleSchema.safeParse({...f.lifecycle,state:'revoked',revokedAt:'2035-01-02T15:59:00Z'}).success).toBe(false);
  });
  it('rechecks expiry after asynchronous authority/display validation',async()=>{
-  const f=setup();f.authority.display.mockImplementation(async()=>{f.clock(Date.parse(f.lifecycle.grant.expiresAt));});await expect(f.resolve()).rejects.toMatchObject({code:'UNAVAILABLE'});
+  const f=setup();f.authority.display.mockImplementation(async()=>{f.clock(Date.parse(f.lifecycle.grant.expiresAt));return f.presentation;});await expect(f.resolve()).rejects.toMatchObject({code:'UNAVAILABLE'});
  });
  it('re-reads authenticated lifecycle and current access before exposing previously resolved facts',async()=>{
   const f=setup(),cap=await f.resolve();f.lifecycle.state='revoked';f.lifecycle.revokedAt='2035-01-02T15:00:30Z';f.write();await expect(f.resolver.current(f.context,cap,'accept_financial_offer')).rejects.toMatchObject({code:'UNAVAILABLE'});
  });
  it('refuses previously minted facts after current policy access or clock expires',async()=>{
   const f=setup(),cap=await f.resolve();f.authority.current.mockRejectedValue(new AppError('FORBIDDEN'));await expect(f.resolver.current(f.context,cap,'accept_financial_offer')).rejects.toMatchObject({code:'UNAVAILABLE'});
-  f.authority.current.mockResolvedValue();f.clock(Date.parse(f.lifecycle.grant.expiresAt));await expect(f.resolver.current(f.context,cap,'accept_financial_offer')).rejects.toMatchObject({code:'UNAVAILABLE'});
+  f.authority.current.mockResolvedValue(f.currentEvidence);f.clock(Date.parse(f.lifecycle.grant.expiresAt));await expect(f.resolver.current(f.context,cap,'accept_financial_offer')).rejects.toMatchObject({code:'UNAVAILABLE'});
  });
  it('rejects stale bundle, revision or malformed command before creating a capability',async()=>{
   const f=setup();f.command.expectedVersion=1;await expect(f.resolve()).rejects.toMatchObject({code:'UNAVAILABLE'});f.command.expectedVersion=2;f.command.displayBundleSha256='f'.repeat(64);await expect(f.resolve()).rejects.toMatchObject({code:'UNAVAILABLE'});
   await expect(f.resolver.resolve(f.context,f.token,'accept_financial_offer',{...f.command,actorId:syntheticId(1)})).rejects.toMatchObject({code:'UNAVAILABLE'});
+ });
+ it('returns separately verified assurance and exact immutable displayed statement bytes/hash',async()=>{
+  const f=setup(),cap=await f.resolve(),facts=await f.resolver.current(f.context,cap,'accept_financial_offer');
+  expect(facts.currentEvidence.assuranceEvidenceId).toBe(syntheticId(987));expect(facts.currentEvidence.assuranceEvidenceId).not.toBe(facts.grant.recipientBindingEvidenceId);
+  expect(facts.presentation).toEqual(f.presentation);expect(Object.isFrozen(facts.presentation)).toBe(true);expect(Object.isFrozen(facts.currentEvidence)).toBe(true);
+  // Canonical exact text, including whitespace, comes from the server evidence.
+  expect(facts.statementSha256).toBe(createHash('sha256').update(JSON.stringify({financialTermsText:f.presentation.affirmation.financialTermsText,guardianAuthorityText:f.presentation.affirmation.guardianAuthorityText,locale:'he',version:'SYNTHETIC-STATEMENT-v1'})).digest('hex'));
+  f.presentation.affirmation.financialTermsText+=' CHANGED';expect(facts.presentation).not.toEqual(f.presentation);
+  await expect(f.resolver.current(f.context,cap,'accept_financial_offer')).rejects.toMatchObject({code:'UNAVAILABLE'});
+ });
+ it.each(['workspaceId','familyId','quoteId','grantId','recipientBindingEvidenceId'] as const)('denies valid-looking current evidence for another %s',async field=>{
+  const f=setup();f.authority.current.mockResolvedValue({...f.currentEvidence,[field]:syntheticId(999)});await expect(f.resolve()).rejects.toMatchObject({code:'UNAVAILABLE'});expect(f.authority.display).not.toHaveBeenCalled();
+ });
+ it('requires evidence rather than a void success or a caller-supplied assurance shortcut',async()=>{
+  const f=setup();f.authority.current.mockResolvedValue(undefined as never);await expect(f.resolve()).rejects.toMatchObject({code:'UNAVAILABLE'});
+  f.authority.current.mockResolvedValue(f.currentEvidence);f.authority.display.mockResolvedValue(undefined as never);await expect(f.resolve()).rejects.toMatchObject({code:'UNAVAILABLE'});
+  await expect(f.resolver.resolve(f.context,f.token,'accept_financial_offer',{...f.command,assuranceEvidenceId:syntheticId(987)})).rejects.toMatchObject({code:'UNAVAILABLE'});
+ });
+ it.each(['grantId','displayBundleId','displayBundleSha256','locale','action'] as const)('denies a presentation with the wrong %s',async field=>{
+  const f=setup(),wrong={...f.presentation,[field]:field==='displayBundleSha256'?'f'.repeat(64):field==='locale'?'en':field==='action'?'submit_private_completion':syntheticId(999)};
+  f.authority.display.mockResolvedValue(wrong as never);await expect(f.resolve()).rejects.toMatchObject({code:'UNAVAILABLE'});
+ });
+ it('denies absent statement text and changed current assurance/presentation evidence before a fresh mutation',async()=>{
+  const blank=setup();blank.presentation.affirmation.financialTermsText=' ';await expect(blank.resolve()).rejects.toMatchObject({code:'UNAVAILABLE'});
+  const a=setup(),cap=await a.resolve();a.currentEvidence.assuranceEvidenceId=syntheticId(999);await expect(a.resolver.current(a.context,cap,'accept_financial_offer')).rejects.toMatchObject({code:'UNAVAILABLE'});
+  const b=setup(),other=await b.resolve();b.presentation.evidenceId=syntheticId(999);await expect(b.resolver.current(b.context,other,'accept_financial_offer')).rejects.toMatchObject({code:'UNAVAILABLE'});
  });
 });
