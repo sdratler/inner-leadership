@@ -100,6 +100,19 @@ const policy={id:'SYNTHETIC-REMINDER',revision:1,source:{id:'SYNTHETIC',sha256:'
 const permission:DispatchPermission={audience,sendWindowOpen:true,ownerEnabled:true,policyCurrent:true};
 const intents=()=>planPaymentReminders({balance:projectBalance(syntheticAccepted(),[]),policy,audience,newId:()=>syntheticId(200)});
 describe('payment reminder intent eligibility',()=>{
+ it.each(['invalid','',undefined,null,Infinity])('fails closed on invalid/missing clock %s',now=>{
+  expect(()=>checkReminderDispatch(intents()[0]!,projectBalance(syntheticAccepted(),[]),permission,now as string)).toThrow();
+ });
+ it('groups equivalent offset instants once per sequence and dispatches both siblings',()=>{
+  const q=syntheticAccepted(),original=clone(q);
+  q.lines[0]!.dueAt='2035-01-05T22:00:00Z';q.lines[1]!.dueAt='2035-01-05T17:00:00-05:00';
+  const b=projectBalance(q,[]),plans=planPaymentReminders({balance:b,policy,audience,newId:()=>syntheticId(204)});
+  expect(plans).toHaveLength(2);expect(plans[0]!.dueAt).toBe('2035-01-05T22:00:00.000Z');
+  expect(checkReminderDispatch(plans[0]!,b,permission,'2035-01-06T00:00:00Z')).toMatchObject({eligible:true,remainingMinor:130000});
+  expect(q.lines[1]!.dueAt).toBe('2035-01-05T17:00:00-05:00');expect(original.lines[1]!.dueAt).toBe('2035-01-05T22:00:00Z');
+  q.lines[1]!.dueAt='2035-01-05T18:00:00-05:00';
+  expect(planPaymentReminders({balance:projectBalance(q,[]),policy,audience,newId:()=>syntheticId(205)})).toHaveLength(4);
+ });
  it('deduplicates siblings with the same guardian, channel and due date',()=>{
   expect(intents()).toHaveLength(2);expect(intents()[0]!.locale).toBe('he');
   const scannedAgain=planPaymentReminders({balance:projectBalance(syntheticAccepted(),[]),policy,audience,newId:()=>syntheticId(202)});

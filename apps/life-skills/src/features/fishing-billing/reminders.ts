@@ -1,5 +1,5 @@
 import {
- BILLING_DTO_VERSION,reminderPolicySchema,reminderIntentSchema,
+ BILLING_DTO_VERSION,reminderPolicySchema,reminderIntentSchema,billingInstant,
  type BillingBalance,type ReminderIntent,type ReminderPolicy,
 } from './contracts.ts';
 import {requireBilling} from './domain.ts';
@@ -13,6 +13,10 @@ export type ReminderAudience={
 export type DispatchPermission={
  audience:ReminderAudience;sendWindowOpen:boolean;ownerEnabled:boolean;policyCurrent:boolean;
 };
+function instantKey(value:string):string{
+ requireBilling(billingInstant.safeParse(value).success&&Number.isFinite(Date.parse(value)));
+ return new Date(Date.parse(value)).toISOString();
+}
 export function reminderSuppression(balance:BillingBalance,permission:DispatchPermission):string|null{
  if(balance.missingPolicy.length)return 'policy_not_ready';
  if(balance.cancelled)return 'cancelled';
@@ -33,12 +37,13 @@ export function planPaymentReminders(input:{
 }):ReminderIntent[]{
  const p=reminderPolicySchema.parse(input.policy),b=input.balance,a=input.audience;
  if(reminderSuppression(b,{audience:a,ownerEnabled:true,sendWindowOpen:true,policyCurrent:true}))return [];
- const dueDates=[...new Set(b.lines.filter(l=>l.remainingMinor>0).map(l=>l.dueAt))];
- requireBilling(dueDates.every(d=>d!==null));
+ const dueDates=[...new Set(b.lines.filter(l=>l.remainingMinor>0).map(l=>{
+  requireBilling(l.dueAt!==null);return instantKey(l.dueAt!);
+ }))];
  const intents:ReminderIntent[]=[];
  for(const dueAt of dueDates){
   for(let sequence=0;sequence<p.offsetsMinutes.length;sequence++){
-   const scheduledAt=new Date(Date.parse(dueAt!)+p.offsetsMinutes[sequence]!*60000).toISOString();
+   const scheduledAt=new Date(Date.parse(dueAt)+p.offsetsMinutes[sequence]!*60000).toISOString();
    const key=[BILLING_DTO_VERSION,b.quoteId,a.guardianId,a.channel,p.id,p.revision,dueAt,sequence].join('|');
    intents.push(reminderIntentSchema.parse({
     version:BILLING_DTO_VERSION,id:input.newId(),key,quoteId:b.quoteId,familyId:b.familyId,
@@ -51,14 +56,16 @@ export function planPaymentReminders(input:{
 }
 export function checkReminderDispatch(intent:ReminderIntent,balance:BillingBalance,permission:DispatchPermission,now:string){
  const i=reminderIntentSchema.parse(intent);
+ const observedAt=instantKey(now);
  requireBilling(i.quoteId===balance.quoteId&&i.familyId===balance.familyId,'FORBIDDEN');
  requireBilling(i.guardianId===permission.audience.guardianId&&i.channel===permission.audience.channel&&
   i.locale===permission.audience.locale&&permission.audience.audience==='individual','FORBIDDEN');
  if(i.state!=='queued')return {eligible:false as const,reason:'already_reserved'};
- if(Date.parse(i.scheduledAt)>Date.parse(now))return {eligible:false as const,reason:'not_due'};
+ if(Date.parse(i.scheduledAt)>Date.parse(observedAt))return {eligible:false as const,reason:'not_due'};
  const suppression=reminderSuppression(balance,permission);
  if(suppression)return {eligible:false as const,reason:suppression};
- const lines=balance.lines.filter(l=>l.dueAt===i.dueAt&&l.remainingMinor>0);
+ const dueKey=instantKey(i.dueAt);
+ const lines=balance.lines.filter(l=>l.dueAt!==null&&instantKey(l.dueAt)===dueKey&&l.remainingMinor>0);
  if(!lines.length)return {eligible:false as const,reason:'obsolete_due_date'};
  return {eligible:true as const,lines,remainingMinor:lines.reduce((s,l)=>s+l.remainingMinor,0)};
 }
