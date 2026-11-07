@@ -37,9 +37,9 @@ const authority:BillingAuthority={
   return {audience:{guardianId,channel,audience:'individual',locale:'he',verified:true,consented,active:true},sendWindowOpen,ownerEnabled,policyCurrent:p.id==='SYNTHETIC-APPROVED-REMINDER'&&p.source.sha256==='a'.repeat(64)};
  },
 };
-const outbox:BillingOutboxReservation={reserve:async(c,{intent,balance})=>{
+const outbox:BillingOutboxReservation={reserve:async(c,{intent,amount})=>{
  if(outboxFails)throw new Error('SYNTHETIC_EXISTING_OUTBOX_FAILURE');
- await c.tx.query('INSERT INTO synthetic_billing.existing_outbox(dispatch_id,intent_id,remaining_minor) VALUES($1,$2,$3)',[intent.dispatchId,intent.id,balance.remainingMinor]);
+ await c.tx.query('INSERT INTO synthetic_billing.existing_outbox(dispatch_id,intent_id,remaining_minor,lines_json) VALUES($1,$2,$3,$4::jsonb)',[intent.dispatchId,intent.id,amount.remainingMinor,JSON.stringify(amount.lines)]);
 }};
 const store=(dbinder:IdentityStore=binder)=>new FishingBillingStore(dbinder,workspace,ring,Buffer.alloc(32,9),authority,{now:()=>now},outbox);
 async function actor(role:'practitioner'|'parent',ws=workspace){
@@ -54,12 +54,12 @@ beforeAll(async()=>{
  await db.exec('CREATE SCHEMA ls_control');
  for(const file of ['0001_ls_foundation.sql','0010_ls_identity_cases_20260906.sql'])await db.exec(await readFile('migrations/'+file,'utf8'));
  await db.exec(await readFile('tests/fixtures/fishing-billing.sql','utf8'));
- await db.exec('CREATE SCHEMA synthetic_billing;CREATE TABLE synthetic_billing.program_families(workspace_id uuid,family_id uuid,guardian_id uuid,revoked boolean DEFAULT false,PRIMARY KEY(workspace_id,family_id));CREATE TABLE synthetic_billing.existing_outbox(dispatch_id uuid PRIMARY KEY,intent_id uuid UNIQUE,remaining_minor integer);');
+ await db.exec('CREATE SCHEMA synthetic_billing;CREATE TABLE synthetic_billing.program_families(workspace_id uuid,family_id uuid,guardian_id uuid,revoked boolean DEFAULT false,PRIMARY KEY(workspace_id,family_id));CREATE TABLE synthetic_billing.existing_outbox(dispatch_id uuid PRIMARY KEY,intent_id uuid UNIQUE,remaining_minor integer,lines_json jsonb NOT NULL);');
  for(const w of [workspace,otherWorkspace])await db.query('INSERT INTO ls_identity.workspaces(id,created_at) VALUES($1,$2)',[w,now]);
  owner=await actor('practitioner');parent=await actor('parent');outsider=await actor('practitioner',otherWorkspace);
 },20000);
 afterAll(async()=>{await db.close();});
-async function scenario(accept=true){
+async function scenario(accept=true,distinctDue=false){
  const familyId=randomUUID(),children=[randomUUID(),randomUUID()],definition={...syntheticDefinition(),id:randomUUID()};
  await db.query('INSERT INTO ls_cases.families(id,workspace_id,label_ciphertext,created_at) VALUES($1,$2,$3,$4)',[familyId,workspace,'SYNTHETIC',now]);
  await db.query('INSERT INTO synthetic_billing.program_families(workspace_id,family_id,guardian_id) VALUES($1,$2,$3)',[workspace,familyId,parent.id]);
@@ -70,8 +70,8 @@ async function scenario(accept=true){
  const offer={version:definition.version,id:definition.id,programKey:definition.programKey,environment:definition.environment,
   currency:definition.currency,unitAmountMinor:definition.unitAmountMinor,effectiveAt:definition.effectiveAt,source:definition.source,terms:definition.terms,policies:definition.policies};
  await store().publishOffer(owner,{operationId:randomUUID(),offer});
- const cmd:CreateFamilyOffer={operationId:randomUUID(),id:randomUUID(),familyId,definitionId:definition.id,override:null,children:children.map(childId=>({
-  lineId:randomUUID(),childId,groupId:null,period:{id:randomUUID(),startsAt:'2035-01-01T05:00:00Z',endsAt:'2035-02-01T05:00:00Z',timeZone:'America/New_York'},dueAt:'2035-01-05T22:00:00Z',
+ const cmd:CreateFamilyOffer={operationId:randomUUID(),id:randomUUID(),familyId,definitionId:definition.id,override:null,children:children.map((childId,index)=>({
+  lineId:randomUUID(),childId,groupId:null,period:{id:randomUUID(),startsAt:'2035-01-01T05:00:00Z',endsAt:'2035-02-01T05:00:00Z',timeZone:'America/New_York'},dueAt:distinctDue&&index===1?'2035-02-05T22:00:00Z':'2035-01-05T22:00:00Z',
  }))};
  const created=await store().createOffer(owner,cmd),issued=await store().issueOffer(owner,{operationId:randomUUID(),expectedVersion:1,quoteId:cmd.id});
  const accepted=accept?await store().acceptOffer(parent,{operationId:randomUUID(),expectedVersion:2,quoteId:cmd.id,terms:issued.result.quote.definition.terms,acknowledged:true}):null;
@@ -141,6 +141,26 @@ it('rolls back cash/aggregate/journal atomically if a durable command receipt fa
  expect((await store().readBalance(owner,f.quote.id)).balance).toMatchObject({paidMinor:0,revision:3});
  expect(await store().readOperationReceipt(owner,cmd.operationId)).toBeNull();
 });
+it('rejects valid-FK command metadata relinking instead of exposing an encrypted wrong-family receipt',async()=>{
+ const f=await scenario(),g=await scenario(),cmd=cash(f.quote),receipt=await store().recordCash(owner,cmd);
+ await db.query('UPDATE ls_fishing_billing.commands SET quote_id=$2 WHERE operation_id=$1',[cmd.operationId,g.quote.id]);
+ await expect(store().readOperationReceipt(owner,cmd.operationId)).rejects.toThrow('UNAVAILABLE');
+ await expect(store().recordCash(owner,cmd)).rejects.toThrow('UNAVAILABLE');
+ await db.query('UPDATE ls_fishing_billing.commands SET quote_id=$2 WHERE operation_id=$1',[cmd.operationId,f.quote.id]);
+ expect((await store().readOperationReceipt(owner,cmd.operationId))!.result.quote.id).toBe(receipt.result.quote.id);
+ await db.query('UPDATE ls_fishing_billing.commands SET actor_id=$2 WHERE operation_id=$1',[cmd.operationId,parent.id]);
+ await expect(store().readOperationReceipt(parent,cmd.operationId)).rejects.toThrow('UNAVAILABLE');
+});
+it('rejects a null quote relink and recovers a confirmed publication under the same operation',async()=>{
+ const f=await scenario(),cmd=cash(f.quote);await store().recordCash(owner,cmd);
+ await db.query('UPDATE ls_fishing_billing.commands SET quote_id=NULL WHERE operation_id=$1',[cmd.operationId]);
+ await expect(store().readOperationReceipt(owner,cmd.operationId)).rejects.toThrow('UNAVAILABLE');
+ const operationId=randomUUID(),d=syntheticDefinition(),offer={version:d.version,id:randomUUID(),programKey:d.programKey,environment:d.environment,currency:d.currency,unitAmountMinor:d.unitAmountMinor,effectiveAt:d.effectiveAt,source:d.source,terms:d.terms,policies:d.policies};
+ const published=await store().publishOffer(owner,{operationId,offer});
+ expect(await store().readPublicationReceipt(owner,operationId)).toEqual({operationId,definition:published.definition,replayed:true});
+ await expect(store().readPublicationReceipt(parent,operationId)).rejects.toThrow('FORBIDDEN');
+ expect(await store().readPublicationReceipt(owner,randomUUID())).toBeNull();
+});
 it('encrypts quote, money, command and intent payloads with record-bound AAD',async()=>{
  const f=await scenario();await store().recordCash(owner,cash(f.quote));await queue(f.quote);
  const quote=(await db.query<{payload_ciphertext:string}>('SELECT payload_ciphertext FROM ls_fishing_billing.quotes WHERE id=$1',[f.quote.id])).rows[0]!.payload_ciphertext;
@@ -169,6 +189,13 @@ it('payment immediately before reservation suppresses the chaser; partial dispat
  await store().recordCash(owner,{...cash(g.quote,130000),allocations:g.quote.lines.map(l=>({lineId:l.id,amountMinor:65000}))});
  expect(await store().reserveReminder(owner,j.id,randomUUID())).toMatchObject({reserved:false});
  expect((await db.query('SELECT * FROM synthetic_billing.existing_outbox WHERE intent_id=$1',[j.id])).rows).toHaveLength(0);
+});
+it('binds only eligible sibling due-group lines and amount in the durable outbox reservation',async()=>{
+ const f=await scenario(true,true),plans=await queue(f.quote),i=plans.find(x=>x.sequence===0&&x.dueAt==='2035-01-05T22:00:00.000Z')!;
+ const result=await store().reserveReminder(owner,i.id,randomUUID());expect(result).toMatchObject({reserved:true,remainingMinor:65000});
+ const row=(await db.query<{remaining_minor:number;lines_json:{lineId:string;remainingMinor:number}[]}>('SELECT remaining_minor,lines_json FROM synthetic_billing.existing_outbox WHERE intent_id=$1',[i.id])).rows[0]!;
+ expect(row.remaining_minor).toBe(65000);expect(row.lines_json).toHaveLength(1);expect(row.lines_json[0]!.lineId).toBe(f.quote.lines[0]!.id);
+ expect((await store().readBalance(owner,f.quote.id)).balance.remainingMinor).toBe(130000);
 });
 it('cancel/pause/consent and fail-closed windows suppress or defer without effects',async()=>{
  for(const condition of ['cancel','pause','consent','window']){

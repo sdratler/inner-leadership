@@ -33,7 +33,7 @@ export interface BillingAuthority{
  * A worker must durably reserve UNKNOWN before its non-idempotent transport.
  * Payment after reservation is an explicit in-flight race, never retractable. */
 export interface BillingOutboxReservation{
- reserve(context:BillingContext,input:{intent:ReminderIntent;balance:ReturnType<typeof projectBalance>}):Promise<void>;
+ reserve(context:BillingContext,input:{intent:ReminderIntent;amount:{currency:'USD';quoteId:string;familyId:string;revision:number;remainingMinor:number;lines:ReturnType<typeof projectBalance>['lines']}}):Promise<void>;
 }
 type QuoteRow={id:string;familyId:string;revision:number;ciphertext:string};
 type CommandRow={actorId:string;action:string;quoteId:string|null;digest:string;ciphertext:string};
@@ -48,6 +48,10 @@ const canonical=(value:unknown):string=>{
  return '{'+Object.keys(value).sort().map(k=>JSON.stringify(k)+':'+canonical((value as Record<string,unknown>)[k])).join(',')+'}';
 };
 const quoteResult=z.object({quote:familyOfferSchema,balance:operationReceiptSchema.shape.result.shape.balance,receiptId:billingId.nullable()}).strict();
+const commandRecordSchema=z.object({
+ version:z.literal('JLFA-BILLING-JOURNAL-v1'),workspaceId:billingId,operationId:billingId,actorId:billingId,
+ action:z.string().min(1).max(40),quoteId:billingId.nullable(),digest:z.string().regex(/^[a-f0-9]{64}$/),result:z.unknown(),
+}).strict();
 export class FishingBillingStore{
  private readonly key:Buffer;
  constructor(
@@ -91,11 +95,30 @@ export class FishingBillingStore{
  private async previous<T>(c:BillingContext,id:string,action:string,body:unknown,parse:(v:unknown)=>T):Promise<T|null>{
   const row=await one<CommandRow>(c.tx,'SELECT actor_id AS "actorId",action,quote_id AS "quoteId",request_digest AS digest,result_ciphertext AS ciphertext FROM ls_fishing_billing.commands WHERE workspace_id=$1 AND operation_id=$2',[c.workspaceId,id]);
   if(!row)return null;
+  const record=this.decodeCommand(c,id,row);
   requireBilling(row.actorId===c.actor.id&&row.action===action&&row.digest===this.digest(body),'CONFLICT');
-  return parse(JSON.parse(unseal(row.ciphertext,aad('command',c.workspaceId,id),this.ring)));
+  if(record.quoteId!==null){
+   const current=await this.quote(c,record.quoteId);this.validateCommandResult(c,id,current,record.result);
+  }
+  return parse(record.result);
+ }
+ private decodeCommand(c:BillingContext,id:string,row:CommandRow){
+  const record=commandRecordSchema.parse(JSON.parse(unseal(row.ciphertext,aad('command',c.workspaceId,id),this.ring)));
+  requireBilling(record.workspaceId===c.workspaceId&&record.operationId===id&&record.actorId===row.actorId&&
+   record.action===row.action&&record.quoteId===row.quoteId&&record.digest===row.digest,'UNAVAILABLE');
+  return record;
+ }
+ private validateCommandResult(c:BillingContext,id:string,current:FamilyOffer,raw:unknown){
+  const receipt=operationReceiptSchema.parse(raw),result=receipt.result;
+  requireBilling(receipt.operationId===id&&receipt.entityId===current.id&&receipt.entityVersion===result.quote.revision&&
+   result.quote.id===current.id&&result.quote.workspaceId===c.workspaceId&&result.quote.familyId===current.familyId&&
+   result.quote.definition.id===current.definition.id&&result.balance.quoteId===current.id&&result.balance.familyId===current.familyId&&
+   result.balance.revision===receipt.entityVersion,'UNAVAILABLE');
+  return receipt;
  }
  private async journal(c:BillingContext,id:string,action:string,quoteId:string|null,body:unknown,result:unknown){
-  await c.tx.query('INSERT INTO ls_fishing_billing.commands(workspace_id,operation_id,actor_id,action,quote_id,request_digest,result_ciphertext,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',[c.workspaceId,id,c.actor.id,action,quoteId,this.digest(body),seal(JSON.stringify(result),aad('command',c.workspaceId,id),this.ring),c.now]);
+  const digest=this.digest(body),record=commandRecordSchema.parse({version:'JLFA-BILLING-JOURNAL-v1',workspaceId:c.workspaceId,operationId:id,actorId:c.actor.id,action,quoteId,digest,result});
+  await c.tx.query('INSERT INTO ls_fishing_billing.commands(workspace_id,operation_id,actor_id,action,quote_id,request_digest,result_ciphertext,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',[c.workspaceId,id,c.actor.id,action,quoteId,digest,seal(JSON.stringify(record),aad('command',c.workspaceId,id),this.ring),c.now]);
  }
  private async saveQuote(c:BillingContext,before:FamilyOffer,after:FamilyOffer){
   requireBilling(after.revision===before.revision+1,'UNAVAILABLE');
@@ -209,9 +232,26 @@ export class FishingBillingStore{
   billingId.parse(operationId);
   return this.context(actor,false,async c=>{
    const row=await one<CommandRow>(c.tx,'SELECT actor_id AS "actorId",action,quote_id AS "quoteId",request_digest AS digest,result_ciphertext AS ciphertext FROM ls_fishing_billing.commands WHERE workspace_id=$1 AND operation_id=$2',[c.workspaceId,operationId]);
-   if(!row||!row.quoteId)return null;
-   const q=await this.quote(c,row.quoteId);await this.authority.authorize(c,'read',scope(q));requireBilling(row.actorId===c.actor.id,'FORBIDDEN');
-   return {...operationReceiptSchema.parse(JSON.parse(unseal(row.ciphertext,aad('command',c.workspaceId,operationId),this.ring))),replayed:true};
+   if(!row)return null;
+   const record=this.decodeCommand(c,operationId,row);
+   requireBilling(record.actorId===c.actor.id,'FORBIDDEN');
+   if(record.quoteId===null)return null; // Publication uses the separate owner-only lookup below.
+   const q=await this.quote(c,record.quoteId!);await this.authority.authorize(c,'read',scope(q));
+   return {...this.validateCommandResult(c,operationId,q,record.result),replayed:true};
+  });
+ }
+ async readPublicationReceipt(actor:Actor,operationId:string){
+  billingId.parse(operationId);
+  return this.context(actor,false,async c=>{
+   this.owner(c);await this.authority.authorize(c,'publish',{programKey:'fishing_monthly_club',familyId:null,childIds:[],quoteId:null});
+   const row=await one<CommandRow>(c.tx,'SELECT actor_id AS "actorId",action,quote_id AS "quoteId",request_digest AS digest,result_ciphertext AS ciphertext FROM ls_fishing_billing.commands WHERE workspace_id=$1 AND operation_id=$2',[c.workspaceId,operationId]);
+   if(!row)return null;
+   const record=this.decodeCommand(c,operationId,row);requireBilling(record.actorId===c.actor.id,'FORBIDDEN');
+   requireBilling(record.action==='publish'&&record.quoteId===null,'CONFLICT');
+   const definition=publishedOfferSchema.parse(record.result);requireBilling(definition.publishedBy===record.actorId,'UNAVAILABLE');
+   const saved=await one<{ciphertext:string}>(c.tx,'SELECT payload_ciphertext AS ciphertext FROM ls_fishing_billing.definitions WHERE workspace_id=$1 AND id=$2',[c.workspaceId,definition.id]);
+   requireBilling(saved&&canonical(publishedOfferSchema.parse(JSON.parse(unseal(saved.ciphertext,aad('definition',c.workspaceId,definition.id),this.ring))))===canonical(definition),'UNAVAILABLE');
+   return {operationId,definition,replayed:true as const};
   });
  }
  async queueReminders(actor:Actor,input:{quoteId:string;policy:ReminderPolicy;guardianId:string;channel:'email'|'whatsapp'}){
@@ -254,7 +294,9 @@ export class FishingBillingStore{
    }
    requireBilling(this.outbox,'UNAVAILABLE');
    const reserved:ReminderIntent={...intent,state:'unknown',dispatchId,reason:'dispatch_reserved'};
-   await this.saveIntent(c,reserved);await this.outbox!.reserve(c,{intent:reserved,balance});
+   const amount={currency:'USD' as const,quoteId:q.id,familyId:q.familyId,revision:balance.revision,remainingMinor:eligibility.remainingMinor,lines:eligibility.lines};
+   requireBilling(amount.lines.every(l=>l.remainingMinor>0)&&amount.remainingMinor===amount.lines.reduce((sum,l)=>sum+l.remainingMinor,0),'UNAVAILABLE');
+   await this.saveIntent(c,reserved);await this.outbox!.reserve(c,{intent:reserved,amount});
    return {reserved:true as const,intent:reserved,remainingMinor:eligibility.remainingMinor};
   });
  }

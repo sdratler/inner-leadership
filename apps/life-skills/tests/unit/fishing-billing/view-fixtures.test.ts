@@ -13,4 +13,5 @@ it('serializes complete truthful owner view states with runtime-valid money/quot
  expect(fixture.views.reversal).toMatchObject({data:{balance:{paidMinor:10000,remainingMinor:120000}}});
  expect(fixture.views.paused).toMatchObject({data:{balance:{paused:true}}});
  expect(fixture.views.cancelled).toMatchObject({data:{balance:{cancelled:true,dueMinor:130000}}});
+ expect(fixture.views.policyNotReady).toMatchObject({data:{quote:{state:'issued'},balance:{state:'no_debt',dueMinor:0,missingPolicy:['renewal','payment_due']}}});
 });
