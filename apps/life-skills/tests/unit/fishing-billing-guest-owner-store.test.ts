@@ -9,9 +9,9 @@ import {seal,unseal,opaqueToken,tokenDigest} from '../../src/features/identity/c
 import type {Actor} from '../../src/features/identity/types.ts';
 import type {IdentityStore,SqlSession} from '../../src/features/identity/store.ts';
 import type {BillingAuthority,BillingContext,BillingAction,BillingScope} from '../../src/features/fishing-billing/native.ts';
-import {syntheticDefinition} from '../../src/features/fishing-billing/fixtures.ts';
+import {syntheticDefinition,syntheticAccepted,syntheticReceipt,syntheticId} from '../../src/features/fishing-billing/fixtures.ts';
 import {BILLING_DTO_VERSION,familyOfferSchema,reminderIntentSchema} from '../../src/features/fishing-billing/contracts.ts';
-import {ledgerReceiptV2Schema,BILLING_DTO_V2} from '../../src/features/fishing-billing/contracts-v2.ts';
+import {ledgerReceiptV2Schema,BILLING_DTO_V2,projectBalanceV2} from '../../src/features/fishing-billing/contracts-v2.ts';
 import {CARD_VERSION,cardAttemptSchema} from '../../src/features/fishing-billing/card-contracts.ts';
 import {BILLING_GUEST_V3,type GuestFamilyOffer} from '../../src/lib/fishing-billing-guest-contract-v3.ts';
 import {bindGuestIssuedMaterial,bindGuestDisplayBundle} from '../../src/lib/fishing-billing-guest-material-v3.ts';
@@ -23,6 +23,9 @@ import {OWNER_MONEY_V3,OWNER_RESPONSE_MAX_BYTES,FISHING_BILLING_OWNER_V3_PATH,bi
 import {billingOwnerReadV2Schema} from '../../src/lib/fishing-billing-owner-contract-v2.ts';
 import {fishingBillingOwnerHttpV3,type FishingBillingOwnerHttpV3Deps} from '../../src/lib/fishing-billing-owner-http-v3.ts';
 import {createFishingBillingOwnerClientV3} from '../../src/lib/fishing-billing-owner-client-v3.ts';
+import {currentLedgerFrameV3Schema} from '../../src/lib/fishing-billing-current-contract-v3.ts';
+import {projectBillingCurrentLedgerV3} from '../../src/lib/fishing-billing-current-ledger-v3.ts';
+import {projectHistoricalAccountPayableBasis} from '../../src/lib/fishing-billing-guest-material-v3.ts';
 
 // Actual memory-only SQL/IdentityStore/fresh session/AEAD/pure-domain/journal.
 // Family authority is synthetic; no actual program/legal/native target, account
@@ -387,4 +390,33 @@ it.each(['confirmed','conflict'] as const)('owner-transport never regresses the 
 it('owner-transport HTTP also rejects an original receipt below the submitted command revision',async()=>{
  const f=await nativeAccepted(),q=await store().readQuote(owner,f.command.id),cmd=cashDate(q),receipt=await store().recordCashDate(owner,cmd),p=ownerPipeline(q);p.ports.recordCashDate.mockResolvedValueOnce(receipt);
  const r=await fishingBillingOwnerHttpV3(ownerRequest('',{action:'cash_date',command:{...cmd,expectedVersion:receipt.entityVersion}}),p.load);expect(r.status).toBe(503);expect(await r.json()).toMatchObject({ok:false,error:{code:'UNAVAILABLE'}});expect(p.ports.readSnapshot).not.toHaveBeenCalled();expect((await db.query('SELECT id FROM ls_fishing_billing.receipts WHERE quote_id=$1',[q.id])).rows).toHaveLength(1);
+});
+it('current-frame keeps actual guest acceptance basis separate from later current cash, flags and history',async()=>{
+ const f=await nativeAccepted(),q=await store().readQuote(owner,f.command.id),cash=await store().recordCashDate(owner,cashDate(q)),before=await store().readSnapshot(owner,q.id);
+ const first=projectBillingCurrentLedgerV3({source:{kind:'guest_successor',quote:before.quote},receipts:before.balance.receipts});
+ await store().setState(owner,{version:OWNER_MONEY_V3,operationId:randomUUID(),expectedVersion:cash.entityVersion,quoteId:q.id,cancel:true});const current=await store().readSnapshot(owner,q.id),frame=projectBillingCurrentLedgerV3({source:{kind:'guest_successor',quote:current.quote},receipts:current.balance.receipts,pendingAttemptIds:current.balance.pendingAttemptIds,reminders:current.balance.reminders});
+ expect(frame.balance).toEqual(current.balance);expect(frame.payableBasis).toEqual(first.payableBasis);expect(frame.source.quote.revision).toBe(cash.entityVersion+1);expect(frame.balance).toMatchObject({cancelled:true,paidMinor:20000,remainingMinor:110000});expect(frame.payableBasis?.acceptance.kind).toBe('guest_successor');expect(frame.source.quote.acceptance).not.toHaveProperty('actorId');
+});
+it('current-frame preserves historical account provenance and exact mixed date/instant receipts',()=>{
+ const original=syntheticAccepted(),quote={...original,revision:7,paused:true,state:'cancelled' as const},instant=syntheticReceipt('card',10,65000,870),{receivedAt,...dateInput}=syntheticReceipt('cash',11,20000,871);expect(receivedAt).toBe(at.toISOString());const date=ledgerReceiptV2Schema.parse({...dateInput,receivedPrecision:'date',receivedDate:'2035-01-02',timeZone:'America/New_York'});
+ const receipts=[instant,date],frame=projectBillingCurrentLedgerV3({source:{kind:'historical_account',quote},originalAccountSnapshot:original,receipts});expect(frame.source.quote).toEqual(quote);expect(frame.balance).toEqual(projectBalanceV2(quote,receipts));expect(frame.balance).toMatchObject({version:BILLING_DTO_V2,paidMinor:85000,remainingMinor:45000,paused:true,cancelled:true});
+ expect(frame.payableBasis).toEqual(projectHistoricalAccountPayableBasis(original));expect(frame.payableBasis).not.toEqual(projectHistoricalAccountPayableBasis(quote));expect(frame.payableBasis?.acceptance).toMatchObject({kind:'historical_account',actorAccountId:original.acceptance!.actorId});expect(frame.balance.receipts.find(r=>r.id===date.id)).not.toHaveProperty('receivedAt');expect(frame.balance.receipts.find(r=>r.id===instant.id)).toEqual(instant);
+});
+it('current-frame requires the actual original account acceptance snapshot rather than reconstructing it from later current',()=>{
+ const original=syntheticAccepted(),quote={...original,revision:7},input={source:{kind:'historical_account' as const,quote},receipts:[]};
+ expect(()=>projectBillingCurrentLedgerV3(input)).toThrow();expect(()=>projectBillingCurrentLedgerV3({...input,originalAccountSnapshot:quote})).toThrow();expect(()=>projectBillingCurrentLedgerV3({...input,originalAccountSnapshot:{...original,familyId:syntheticId(999)}})).toThrow();expect(()=>projectBillingCurrentLedgerV3({...input,originalAccountSnapshot:{...original,lines:original.lines.map(l=>({...l,groupId:syntheticId(998)}))}})).toThrow();expect(projectBillingCurrentLedgerV3({...input,originalAccountSnapshot:original}).balance.state).toBe('unpaid');
+ expect(()=>projectBillingCurrentLedgerV3({...input,originalAccountSnapshot:{...original,state:'cancelled'}})).toThrow();
+});
+it('current-frame rejects source/version/basis scope relabels and duplicated status facts',async()=>{
+ const f=await nativeAccepted(),current=await store().readSnapshot(owner,f.command.id),frame=projectBillingCurrentLedgerV3({source:{kind:'guest_successor',quote:current.quote},receipts:[]}),parse=(v:unknown)=>currentLedgerFrameV3Schema.safeParse(v).success;
+ expect(parse({...frame,source:{kind:'historical_account',quote:current.quote}})).toBe(false);expect(parse({...frame,balance:{...frame.balance,version:BILLING_DTO_V2}})).toBe(false);expect(parse({...frame,payableBasis:{...frame.payableBasis,familyId:randomUUID()}})).toBe(false);expect(parse({...frame,payableBasis:null})).toBe(false);
+ const id=randomUUID();expect(parse({...frame,balance:{...frame.balance,pendingAttemptIds:[id,id]}})).toBe(false);expect(parse({...frame,balance:{...frame.balance,reminders:[{id,state:'unknown'},{id,state:'unknown'}]}})).toBe(false);expect(()=>projectBillingCurrentLedgerV3({source:frame.source,receipts:[],originalAccountSnapshot:syntheticAccepted()})).toThrow();
+});
+it('current-frame keeps unanswered historical and guest requests nonpayable and does not infer acceptance',async()=>{
+ const f=await scenario();await store().createOffer(owner,f.command);const issued=await store().issueOffer(owner,issue(f.command.id)),guest=projectBillingCurrentLedgerV3({source:{kind:'guest_successor',quote:issued.quote},receipts:[]});expect(guest.payableBasis).toBeNull();expect(guest.balance.state).toBe('no_debt');
+ const accepted=syntheticAccepted(),quote=familyOfferSchema.parse({...accepted,revision:2,state:'issued',acceptance:null}),historical=projectBillingCurrentLedgerV3({source:{kind:'historical_account',quote},receipts:[]});expect(historical.payableBasis).toBeNull();expect(historical.balance.state).toBe('no_debt');expect(()=>projectBillingCurrentLedgerV3({source:{kind:'historical_account',quote},receipts:[syntheticReceipt('cash',10,1,874)]})).toThrow();
+});
+it('current-frame fails closed on oversized or foreign complete facts rather than returning zero paid',()=>{
+ const original=syntheticAccepted(),receipt=syntheticReceipt('cash',10,1,875),input={source:{kind:'historical_account' as const,quote:original},originalAccountSnapshot:original};
+ expect(()=>projectBillingCurrentLedgerV3({...input,receipts:Array.from({length:1001},()=>receipt)})).toThrow();expect(()=>projectBillingCurrentLedgerV3({...input,receipts:[{...receipt,quoteId:syntheticId(999)}]})).toThrow();expect(()=>projectBillingCurrentLedgerV3({...input,receipts:[],pendingAttemptIds:Array.from({length:1001},()=>syntheticId(998))})).toThrow();
 });
