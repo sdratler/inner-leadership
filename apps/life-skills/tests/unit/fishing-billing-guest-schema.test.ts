@@ -33,9 +33,13 @@ describe('unmanifested additive guest v3 schema',()=>{
  it('rejects unknown grants/quotes and reused operation/receipt identities',async()=>{
   await expect(addOp(syntheticId(1110),syntheticId(999))).rejects.toThrow();await expect(addOp()).rejects.toThrow();await expect(addOp(syntheticId(1111),grant,receipt)).rejects.toThrow();
  });
+ it('admits only one immutable operation per one-use grant',async()=>{
+  await expect(addOp(syntheticId(1130),grant,syntheticId(1131))).rejects.toMatchObject({code:'23505'});
+ });
  it('joins the grant quote and purpose in the operation foreign key',async()=>{
-  await expect(addOp(syntheticId(1121),grant,syntheticId(1122),syntheticId(1120))).rejects.toMatchObject({code:'23503'});
-  await expect(q("INSERT INTO ls_fishing_billing.guest_operations VALUES($1,$2,$3,$4,'submit_private_completion',$5,$6,'SYNTHETIC_WRONG_PURPOSE',$7)",[ws,syntheticId(1123),grant,quote,'f'.repeat(64),syntheticId(1124),at])).rejects.toMatchObject({code:'23503'});
+  const unused=syntheticId(1140);await addGrant(unused,'e'.repeat(64));
+  await expect(addOp(syntheticId(1121),unused,syntheticId(1122),syntheticId(1120))).rejects.toMatchObject({code:'23503'});
+  await expect(q("INSERT INTO ls_fishing_billing.guest_operations VALUES($1,$2,$3,$4,'submit_private_completion',$5,$6,'SYNTHETIC_WRONG_PURPOSE',$7)",[ws,syntheticId(1123),unused,quote,'f'.repeat(64),syntheticId(1124),at])).rejects.toMatchObject({code:'23503'});
  });
  it('joins financial evidence to the exact original journal receipt identity',async()=>{
   await addGrant(syntheticId(1125),'f'.repeat(64),ws,syntheticId(1120));await addOp(syntheticId(1126),syntheticId(1125),syntheticId(1128),syntheticId(1120));

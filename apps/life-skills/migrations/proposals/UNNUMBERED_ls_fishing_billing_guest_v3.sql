@@ -18,7 +18,7 @@ CREATE TABLE ls_fishing_billing.guest_operations(
  request_digest text NOT NULL CHECK(request_digest~'^[a-f0-9]{64}$'),
  receipt_id uuid NOT NULL,receipt_ciphertext text NOT NULL CHECK(length(receipt_ciphertext)>0),
  recorded_at timestamptz NOT NULL CHECK(isfinite(recorded_at)),
- PRIMARY KEY(workspace_id,operation_id),UNIQUE(workspace_id,receipt_id),
+ PRIMARY KEY(workspace_id,operation_id),UNIQUE(workspace_id,receipt_id),UNIQUE(workspace_id,grant_id),
  UNIQUE(workspace_id,operation_id,grant_id,quote_id,action,receipt_id),
  FOREIGN KEY(workspace_id,grant_id,quote_id,action) REFERENCES ls_fishing_billing.guest_grants(workspace_id,id,quote_id,action),
  FOREIGN KEY(workspace_id,quote_id) REFERENCES ls_fishing_billing.quotes(workspace_id,id)
