@@ -39,9 +39,13 @@ CREATE TABLE ls_fishing_billing.reminders(
  intent_key text NOT NULL CHECK(intent_key~'^[a-f0-9]{64}$'),
  state text NOT NULL CHECK(state IN('queued','unknown','provider_accepted','delivered','suppressed','failed')),
  payload_ciphertext text NOT NULL,policy_ciphertext text NOT NULL,
+ scheduled_at timestamptz NOT NULL,
+ audience_key text NOT NULL CHECK(audience_key~'^[a-f0-9]{64}$'),
  PRIMARY KEY(workspace_id,id),UNIQUE(workspace_id,intent_key),
  FOREIGN KEY(workspace_id,quote_id) REFERENCES ls_fishing_billing.quotes(workspace_id,id)
 );
+CREATE INDEX billing_reminders_due ON ls_fishing_billing.reminders(workspace_id,scheduled_at,id) WHERE state='queued';
+CREATE INDEX billing_reminders_uncertain ON ls_fishing_billing.reminders(workspace_id,quote_id,audience_key) WHERE state='unknown';
 -- Signed minimal durable intake; not settlement or provider acknowledgment.
 CREATE TABLE ls_fishing_billing.stripe_events(
  account_id text NOT NULL,livemode boolean NOT NULL CHECK(livemode=false),event_id text NOT NULL,
