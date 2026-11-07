@@ -113,9 +113,9 @@ async function cash(locale='en'){
  const review=page.getByRole('button',{name:'בדיקת הרישום',exact:true});await review.scrollIntoViewIfNeeded();
  async function visibleControl(){return review.evaluate(el=>{const r=el.getBoundingClientRect();return document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)===el;});}
  await check('holdout action is painted and reachable',async()=>assert(await visibleControl()));
- await page.evaluate(()=>{const cover=document.createElement('div');cover.id='qa-occlusion';cover.style.cssText='position:fixed;inset:0;z-index:2147483647;background:#fff';document.body.append(cover);});
+ await page.evaluate(()=>{const cover=document.createElement('div');cover.id='qa-occlusion';cover.style.cssText='position:fixed;inset:0;z-index:2147483647;background:#fff';document.querySelector('dialog[open]').append(cover);});
  await capture('he-holdout-intentionally-occluded');
- await check('intentional test-only occlusion is rejected',async()=>assert.equal(await visibleControl(),false));
+ await check('intentional top-layer test occlusion is rejected',async()=>{assert.equal(await visibleControl(),false);assert.equal(await review.evaluate(el=>{const r=el.getBoundingClientRect();return document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)?.id;}),'qa-occlusion');});
  await page.locator('#qa-occlusion').evaluate(el=>el.remove());await check('holdout action restored after removing test mutation',async()=>assert(await visibleControl()));
  await capture('he-holdout-corrected');
  await page.keyboard.press('Escape');await page.evaluate(()=>{document.documentElement.style.fontSize='200%';document.body.style.fontSize='2rem';});await noOverflow();await capture('he-enlarged-text-emulation');
