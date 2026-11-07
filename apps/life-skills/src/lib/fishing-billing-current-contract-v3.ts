@@ -1,5 +1,6 @@
 import {z} from 'zod';
-import {familyOfferSchema} from '../features/fishing-billing/contracts.ts';
+import {familyOfferSchema,billingId} from '../features/fishing-billing/contracts.ts';
+import {cardExceptionSchema} from '../features/fishing-billing/card-contracts.ts';
 import {balanceV2Schema} from '../features/fishing-billing/contracts-v2.ts';
 import {guestFamilyOfferSchema,guestBalanceV3Schema,guestPayableBasisSchema} from './fishing-billing-guest-contract-v3.ts';
 
@@ -15,11 +16,13 @@ const same=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
 export const currentLedgerFrameV3Schema=z.object({
  version:z.literal(BILLING_CURRENT_LEDGER_V3),source:currentLedgerSourceV3Schema,
  payableBasis:guestPayableBasisSchema.nullable(),balance:z.union([balanceV2Schema,guestBalanceV3Schema]),
+ cardExceptions:z.array(z.object({id:billingId,state:cardExceptionSchema.shape.state}).strict()).max(1000),
 }).strict().superRefine((f,c)=>{
  const q=f.source.quote,b=f.balance,p=f.payableBasis,fail=()=>c.addIssue({code:'custom',message:'CURRENT_LEDGER_PROVENANCE'});
  if(b.version!==(f.source.kind==='historical_account'?balanceV2Schema.shape.version.value:guestBalanceV3Schema.shape.version.value)||q.id!==b.quoteId||q.familyId!==b.familyId||q.revision!==b.revision||q.paused!==b.paused||(q.state==='cancelled')!==b.cancelled||q.lines.length!==b.lines.length||new Set(b.lines.map(l=>l.lineId)).size!==b.lines.length)fail();
  for(const l of b.lines){const original=q.lines.find(m=>m.id===l.lineId);if(!original||original.childId!==l.childId||!same(original.period,l.period)||original.groupId!==l.groupId||original.amountMinor!==l.quotedMinor||original.dueAt!==l.dueAt)fail();}
  const ids=new Set(b.receipts.map(r=>r.id));
+ if(new Set(f.cardExceptions.map(e=>e.id)).size!==f.cardExceptions.length||f.cardExceptions.some(e=>e.state==='open')&&b.state!=='review_required')fail();
  if(b.receipts.length>1000||ids.size!==b.receipts.length||b.reminders.length>1000||new Set(b.reminders.map(r=>r.id)).size!==b.reminders.length||b.pendingAttemptIds.length>1000||new Set(b.pendingAttemptIds).size!==b.pendingAttemptIds.length)fail();
  for(const r of b.receipts)if(r.quoteId!==q.id||r.familyId!==q.familyId||r.allocations.some(a=>!q.lines.some(l=>l.id===a.lineId))||r.originalReceiptId!==null&&!ids.has(r.originalReceiptId))fail();
  if(!q.acceptance){if(p!==null)fail();}
