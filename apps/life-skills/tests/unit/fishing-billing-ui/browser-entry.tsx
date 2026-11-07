@@ -30,7 +30,7 @@ const ports:BillingUiPorts={
   const saved={...syntheticReceipt('cash',10,command.amountMinor,850),operationId:command.operationId,receivedAt:command.receivedAt,allocations:command.allocations};
   current={quote,balance:projectBalance(quote,[...current.balance.receipts,saved])};
   known={version:BILLING_DTO_VERSION,operationId:command.operationId,entityId:quote.id,entityVersion:quote.revision,replayed:false,result:{...current,receiptId:saved.id}};
-  return mode==='unknown'?{kind:'unknown'}:{kind:'confirmed',receipt:known,current};
+  return mode==='unknown'||mode==='unresolved'?{kind:'unknown'}:{kind:'confirmed',receipt:known,current};
  },
  async reverseCash(command){qa.commands.push(command.operationId);return {kind:'unknown'};},
  async readOperation(operationId){qa.lookups.push(operationId);return mode==='unresolved'||!known?null:{receipt:known,current};},

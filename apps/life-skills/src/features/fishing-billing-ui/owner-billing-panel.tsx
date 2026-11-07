@@ -1,13 +1,13 @@
 'use client';
-import {useEffect,useId,useRef,useState,useSyncExternalStore} from 'react';
+import {useEffect,useId,useMemo,useRef,useState,useSyncExternalStore} from 'react';
 import type {FormEvent} from 'react';
 import {Button,Input,Textarea} from '../../ui/workspace/controls.tsx';
 import {ledgerReceiptSchema,type LedgerReceipt,type BillingBalance} from '../fishing-billing/contracts.ts';
 import {BillingWorkflow,type BillingWorkflowState} from './workflow.ts';
-import {commandFor,decodeData,floridaDate,inputUsd,money,parseUsd,resolvedReceivedDate,sameScope,dataScope,validateSubject,type BillingCommand,type BillingData,type BillingSubject,type BillingView,type CommandKind} from './model.ts';
+import {commandFor,decodeData,floridaDate,inputUsd,money,parseUsd,resolvedReceivedDate,sameScope,dataScope,validateSubject,preparationTicket,samePreparation,unallocatedAmount,type PreparationTicket,type BillingCommand,type BillingData,type BillingSubject,type BillingView,type CommandKind} from './model.ts';
 import styles from './panel.module.css';
 
-type Modal={quoteId:string;kind:CommandKind;lineIds:string[];receipt:LedgerReceipt|null;amount:string;allocations:Record<string,string>;date:string;reason:string;error:string;review:BillingCommand|null;preparing:boolean};
+type Modal={ticket:PreparationTicket;kind:CommandKind;lineIds:string[];receipt:LedgerReceipt|null;amount:string;allocations:Record<string,string>;date:string;reason:string;error:string;review:BillingCommand|null;preparing:boolean};
 export type OwnerBillingPanelProps={locale:'en'|'he';view:BillingView;subject:BillingSubject;workflow:BillingWorkflow;observedAt?:string;cashAllowed?:boolean;reversalAllowed?:boolean};
 const status:Record<BillingBalance['state'],readonly[string,string]>={no_debt:['No payment obligation','אין חובת תשלום'],unpaid:['Unpaid','טרם שולם'],partial:['Partially paid','שולם חלקית'],paid:['Paid','שולם'],overpaid:['Excess payment · review required','תשלום עודף · נדרשת בדיקה'],review_required:['Review required','נדרשת בדיקה']};
 const policy:Record<string,readonly[string,string]>={service_period:['Service period','תקופת השירות'],proration:['Partial-period policy','מדיניות לתקופה חלקית'],renewal:['Renewal policy','מדיניות חידוש'],cancellation:['Cancellation policy','מדיניות ביטול'],weather:['Weather policy','מדיניות מזג אוויר'],payment_due:['Approved payment date','מועד תשלום מאושר']};
@@ -36,6 +36,8 @@ export function OwnerBillingPanel({locale,view,subject,workflow,observedAt,cashA
   if(!validateSubject(subject,data)){data=null;invalid=true;}
  }}catch{invalid=true;}
  const active=data,scopeMatches=active&&('scope' in flow)?sameScope(dataScope(active),flow.scope):false;
+ const contextKey=active?`${active.quote.workspaceId}|${active.quote.familyId}|${active.quote.id}|${active.balance.revision}`:'unavailable';
+ const preparationContext=useMemo(()=>({key:contextKey}),[contextKey]);
  const uncertain=workflow.unresolved();
  const hiddenAmounts=Boolean(scopeMatches&&uncertain);
  const historyEntries=active&&!hiddenAmounts?historyFor(active):null;
@@ -51,16 +53,16 @@ export function OwnerBillingPanel({locale,view,subject,workflow,observedAt,cashA
    const reversed=(historyEntries??[]).filter(r=>r.originalReceiptId===receipt?.id).reduce((s,r)=>s+(r.allocations.find(a=>a.lineId===lineId)?.amountMinor??0),0);
    allocations[lineId]=inputUsd(receipt?Math.max(0,(original??0)-reversed):active.balance.lines.find(l=>l.lineId===lineId)!.remainingMinor);
   }
-  const amount=Object.values(allocations).reduce((s,v)=>s+(parseUsd(v)??0),0);
+  const amount=receipt?cashAvailable(receipt):Object.values(allocations).reduce((s,v)=>s+(parseUsd(v)??0),0);
   let date='';try{if(observedAt)date=floridaDate(observedAt);}catch{/* No workstation-clock fallback. */}
-  setModal({quoteId:active.quote.id,kind,lineIds,receipt,allocations,amount:inputUsd(amount),date,reason:'',error:'',review:null,preparing:false});
+  setModal({ticket:preparationTicket(dataScope(active),active.balance.revision,preparationContext),kind,lineIds,receipt,allocations,amount:inputUsd(amount),date,reason:'',error:'',review:null,preparing:false});
  };
  const update=(patch:Partial<Modal>)=>setModal(m=>m?{...m,...patch,error:''}:null);
  async function review(event:FormEvent){
-  event.preventDefault();if(!modal||!active||!workflow.ports||modal.preparing)return;
+  event.preventDefault();if(!modal||!active||!workflow.ports||modal.preparing||modal.ticket.context!==preparationContext||modal.ticket.revision!==active.balance.revision||!sameScope(modal.ticket.scope,dataScope(active)))return;
   const draft=modal,current=active,amount=parseUsd(draft.amount);
   const allocations=draft.lineIds.map(lineId=>({lineId,amountMinor:zero(draft.allocations[lineId]??'')?0:parseUsd(draft.allocations[lineId]??'')}));
-  if(amount===null||allocations.some(a=>a.amountMinor===null)||allocations.reduce((s,a)=>s+(a.amountMinor??0),0)!==amount){update({error:t('Enter a positive USD amount and allocate the same total across the selected children.','יש להזין סכום חיובי בדולר ולחלק את אותו הסכום בין הילדים שנבחרו.')});return;}
+  if(amount===null||allocations.some(a=>a.amountMinor===null)||allocations.reduce((s,a)=>s+(a.amountMinor??0),0)>amount||draft.kind==='cash'&&!allocations.some(a=>(a.amountMinor??0)>0)){update({error:t('Enter a positive USD amount. Allocations cannot exceed it; cash recording requires at least one allocation.','יש להזין סכום חיובי בדולר. סכום החלוקה אינו יכול לעלות עליו; רישום מזומן דורש הקצאה אחת לפחות.')});return;}
   if(draft.kind==='reversal'&&!draft.reason.trim()){update({error:t('Enter the reason for correcting this cash entry.','יש להזין סיבה לתיקון רישום המזומן.')});return;}
   update({preparing:true});
   try{
@@ -71,10 +73,11 @@ export function OwnerBillingPanel({locale,view,subject,workflow,observedAt,cashA
     if(!received)throw Error('DATE_NOT_READY');
     command=commandFor('cash',{...common,currency:'USD',receivedAt:resolvedReceivedDate(draft.date,received)});
    }else command=commandFor('reversal',{...common,originalReceiptId:draft.receipt!.id,reason:draft.reason.trim()});
-   setModal(m=>m&&m.quoteId===draft.quoteId?{...m,review:command,preparing:false,error:''}:m);
-  }catch{setModal(m=>m&&m.quoteId===draft.quoteId?{...m,preparing:false,error:t('This entry could not be prepared. Check the amount, allocation and received-date capability; nothing has been submitted.','לא ניתן להכין את הרישום. יש לבדוק את הסכום, החלוקה ואפשרות תאריך הקבלה; דבר לא נשלח.')}:m);}
+   if(workflow.currentFor(current).balance.revision!==draft.ticket.revision)throw Error('STALE_PREPARATION');
+   setModal(m=>m&&samePreparation(m.ticket,draft.ticket)?{...m,review:command,preparing:false,error:''}:m);
+  }catch{setModal(m=>m&&samePreparation(m.ticket,draft.ticket)?{...m,preparing:false,error:t('This entry could not be prepared. Check the amount, allocation and received-date capability; nothing has been submitted.','לא ניתן להכין את הרישום. יש לבדוק את הסכום, החלוקה ואפשרות תאריך הקבלה; דבר לא נשלח.')}:m);}
  }
- const visibleModal=modal&&active&&modal.quoteId===active.quote.id?modal:null;
+ const visibleModal=modal&&active&&sameScope(modal.ticket.scope,dataScope(active))&&(modal.ticket.context===preparationContext||flow.phase==='confirmed'&&modal.review?.operationId===flow.command.operationId)?modal:null;
  const currentData=active;
  return <section className={styles.panel} lang={locale} dir={locale==='he'?'rtl':'ltr'} aria-labelledby={`${id}-title`} data-billing-owner-panel>
   <header className={styles.heading}><div><p className={styles.eyebrow}>{t('Fishing Academy','אקדמיית הדיג')}</p><h1 id={`${id}-title`}>{t('Family billing','תשלומי המשפחה')}</h1>{active&&<p className={styles.family}><bdi>{subject.label}</bdi></p>}</div><span className={styles.test}>{t('Test environment · no live collection','סביבת בדיקה · ללא גבייה בפועל')}</span></header>
@@ -108,9 +111,10 @@ export function OwnerBillingPanel({locale,view,subject,workflow,observedAt,cashA
  </section>;
 }
 function State({title,body}:{title:string;body:string}){return <div className={styles.notice} role="status"><h2>{title}</h2><p>{body}</p></div>;}
-function WorkflowNotice({flow,workflow,locale,showDetails}:{flow:BillingWorkflowState;workflow:BillingWorkflow;locale:'en'|'he';showDetails:boolean}){
+export function WorkflowNotice({flow,workflow,locale,showDetails}:{flow:BillingWorkflowState;workflow:BillingWorkflow;locale:'en'|'he';showDetails:boolean}){
  const t=(en:string,he:string)=>locale==='he'?he:en;
  if(flow.phase==='idle')return null;
+ if(!showDetails)return workflow.unresolved()?<State title={t('Earlier operation needs verification','פעולה קודמת דורשת אימות')} body={t('Return to its original family context to check it. New billing entries remain unavailable until verification finishes.','יש לחזור למשפחה המקורית כדי לבדוק את הפעולה. רישומים חדשים אינם זמינים עד להשלמת האימות.')}/>:null;
  const title=flow.phase==='confirmed'?t('Recorded · balance refreshed','נרשם · היתרה רועננה'):flow.phase==='conflict'?t('Balance changed · review again','היתרה השתנתה · נדרשת בדיקה נוספת'):flow.phase==='rejected'?t('Entry not accepted','הרישום לא התקבל'):flow.phase==='refresh_required'?t('Receipt confirmed · current balance unavailable','הקבלה אושרה · היתרה העדכנית אינה זמינה'):flow.phase==='unknown'?t('Operation outcome unknown','תוצאת הפעולה אינה ידועה'):t('Verifying payment state…','בודק את מצב התשלום…');
  return <aside className={styles.operation} role="status" aria-live="polite"><h2>{title}</h2><p>{flow.phase==='unknown'?t('Do not record it again. Check the same operation reference; an absent result remains unresolved.','אין לרשום שוב. יש לבדוק את אותו מזהה פעולה; תוצאה חסרה נשארת לא פתורה.'):flow.phase==='refresh_required'?t('No additional entry is needed. Refresh the authoritative balance.','אין צורך ברישום נוסף. יש לרענן את היתרה המוסמכת.'):flow.phase==='confirmed'?t('The displayed balance comes from fresh authorized readback.','היתרה המוצגת מגיעה מקריאה מורשית ועדכנית.'):flow.phase==='conflict'?t('Nothing was confirmed from the stale form. Review the refreshed balance before a new entry.','לא אושר דבר מהטופס הישן. יש לבדוק את היתרה המרועננת לפני רישום חדש.'):t('No optimistic payment result is shown.','לא מוצגת תוצאת תשלום משוערת.')}</p>{showDetails&&<small>{t('Operation','פעולה')}: <bdi>{flow.command.operationId}</bdi></small>}{showDetails&&flow.phase==='unknown'&&<Button variant="secondary" onClick={()=>void workflow.recover()}>{t('Check operation status','בדיקת מצב הפעולה')}</Button>}{showDetails&&flow.phase==='refresh_required'&&<Button variant="secondary" onClick={()=>void workflow.refresh()}>{t('Refresh balance','רענון יתרה')}</Button>}{(flow.phase==='conflict'||flow.phase==='rejected')&&<Button variant="secondary" onClick={()=>workflow.clear()}>{t('Review details','בדיקת פרטים')}</Button>}</aside>;
 }
@@ -122,15 +126,16 @@ function BillingDialog({locale,modal,update,close,review,flow,workflow,data,chil
   {done?<><p role="status">{t('Receipt confirmed and balance refreshed.','הקבלה אושרה והיתרה רועננה.')}</p><Button onClick={close}>{t('Done','סיום')}</Button></>:busy?<><WorkflowNotice flow={flow} workflow={workflow} locale={locale} showDetails/><p>{t('Closing this dialog does not cancel or resolve the operation.','סגירת החלון אינה מבטלת או פותרת את הפעולה.')}</p></>:reviewing?<>
    <p>{t('Confirm the real amount and allocation before recording.','יש לאמת את הסכום שהתקבל ואת החלוקה לפני הרישום.')}</p><strong className={`${styles.confirmAmount} ${styles.money}`}>{money(modal.review!.amountMinor,locale)}</strong>
    <dl className={styles.confirmFacts}>{modal.review!.allocations.map(a=>{const l=data.quote.lines.find(l=>l.id===a.lineId)!;return <div key={a.lineId}><dt><bdi>{childName(l.childId)}</bdi></dt><dd className={styles.money}>{money(a.amountMinor,locale)}</dd></div>;})}</dl>
+   <p>{t('Unallocated amount','סכום שלא הוקצה')}: <bdi className={styles.money}>{money(unallocatedAmount(modal.review!.amountMinor,modal.review!.allocations),locale)}</bdi></p><p className={styles.help}>{modal.kind==='cash'?t('Any unallocated money remains separate; it does not reduce a child’s balance.','כסף שלא הוקצה נשאר בנפרד; הוא אינו מפחית את יתרת הילד.'):t('Only the stated allocations are reversed. Any unallocated reversal corrects the original unallocated money.','רק ההקצאות המוצגות מתוקנות. סכום תיקון שלא הוקצה מתקן כסף שלא הוקצה ברישום המקורי.')}</p>
    {'receivedAt' in modal.review!&&<p>{t('Received','התקבל')}: {dateText((modal.review! as {receivedAt:string}).receivedAt,locale,true)}</p>}
    {'reason' in modal.review!&&<><p>{t('Reason','סיבה')}: <bdi>{(modal.review! as {reason:string}).reason}</bdi></p><p>{t('This corrects the recorded cash entry; it does not send a refund. The original is retained.','פעולה זו מתקנת רישום מזומן; היא אינה מבצעת החזר. הרישום המקורי נשמר.')}</p></>}
    {data.balance.revision!==modal.review!.expectedVersion&&<p role="alert">{t('The balance changed. Return to the form and review again.','היתרה השתנתה. יש לחזור לטופס ולבדוק שוב.')}</p>}
    <div className={styles.actions}><Button disabled={data.balance.revision!==modal.review!.expectedVersion} onClick={()=>void workflow.submit(modal.kind,modal.review,data)}>{t('Confirm entry','אישור הרישום')}</Button><Button variant="secondary" onClick={()=>update({review:null})}>{t('Back to edit','חזרה לעריכה')}</Button></div>
   </>:<form onSubmit={e=>void review(e)}>
    {modal.error&&<p className={styles.error} role="alert">{modal.error}</p>}
-   <Input id={`${id}-amount`} label={modal.kind==='cash'?t('Amount received (USD)','סכום שהתקבל (דולר)'):t('Amount to reverse (USD)','סכום לתיקון (דולר)')} value={modal.amount} inputMode="decimal" dir="ltr" required onChange={e=>update({amount:e.target.value,...(modal.lineIds.length===1?{allocations:{[modal.lineIds[0]!]:e.target.value}}:{})})}/>
+   <Input id={`${id}-amount`} label={modal.kind==='cash'?t('Amount received (USD)','סכום שהתקבל (דולר)'):t('Amount to reverse (USD)','סכום לתיקון (דולר)')} value={modal.amount} inputMode="decimal" dir="ltr" required onChange={e=>update({amount:e.target.value,...(modal.kind==='cash'&&modal.lineIds.length===1?{allocations:{[modal.lineIds[0]!]:e.target.value}}:{})})}/>
    {modal.kind==='cash'&&<Input id={`${id}-date`} label={t('Actual received date · Florida','תאריך קבלה בפועל · פלורידה')} type="date" required value={modal.date} onChange={e=>update({date:e.target.value})} help={t('Date handling is supplied by the approved integration, never your workstation time zone.','התאריך מטופל באמצעות הממשק המאושר, ולא לפי אזור הזמן במחשב.')}/>}
-   <fieldset className={styles.allocationFields}><legend>{t('Allocate to children and periods','חלוקה לילדים ולתקופות')}</legend>{modal.lineIds.map((lineId,i)=>{const l=data.quote.lines.find(l=>l.id===lineId)!;return <Input key={lineId} id={`${id}-line-${i}`} label={`${childName(l.childId)} · ${dateText(l.period.startsAt,locale)}`} value={modal.allocations[lineId]??''} inputMode="decimal" dir="ltr" required onChange={e=>update({allocations:{...modal.allocations,[lineId]:e.target.value}})}/>;})}<p className={styles.help}>{t('Allocation total must equal the real amount received.','סכום החלוקה חייב להיות זהה לסכום שהתקבל בפועל.')}</p></fieldset>
+   <fieldset className={styles.allocationFields}><legend>{t('Allocate to children and periods','חלוקה לילדים ולתקופות')}</legend>{modal.lineIds.map((lineId,i)=>{const l=data.quote.lines.find(l=>l.id===lineId)!;return <Input key={lineId} id={`${id}-line-${i}`} label={`${childName(l.childId)} · ${dateText(l.period.startsAt,locale)}`} value={modal.allocations[lineId]??''} inputMode="decimal" dir="ltr" required onChange={e=>update({allocations:{...modal.allocations,[lineId]:e.target.value}})}/>;})}<p className={styles.help}>{t('Allocations may be lower than the total. Review the unallocated amount separately before confirming.','סכום החלוקה יכול להיות נמוך מהסכום הכולל. יש לבדוק בנפרד את הסכום שלא הוקצה לפני האישור.')}</p></fieldset>
    {modal.kind==='reversal'&&<Textarea id={`${id}-reason`} label={t('Correction reason','סיבת התיקון')} required maxLength={500} rows={3} value={modal.reason} onChange={e=>update({reason:e.target.value})}/>}
    <div className={styles.actions}><Button type="submit" busy={modal.preparing}>{t('Review entry','בדיקת הרישום')}</Button><Button variant="secondary" onClick={close}>{t('Cancel','ביטול')}</Button></div>
   </form>}

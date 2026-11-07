@@ -15,6 +15,9 @@ export type ReversalCommand=Extract<BillingOwnerCommand,{action:'reverse_cash'}>
 export type BillingCommand=CashCommand|ReversalCommand;
 export type CommandKind='cash'|'reversal';
 export type Scope={quoteId:string;familyId:string;workspaceId:string};
+export type PreparationTicket={readonly scope:Scope;readonly revision:number;readonly context:object;readonly generation:symbol};
+export function preparationTicket(scope:Scope,revision:number,context:object):PreparationTicket{return {scope:{...scope},revision,context,generation:Symbol('billing-dialog')};}
+export function samePreparation(current:PreparationTicket,captured:PreparationTicket){return current.generation===captured.generation&&current.context===captured.context&&current.revision===captured.revision&&sameScope(current.scope,captured.scope);}
 export type CommandOutcome=
  | {kind:'confirmed';receipt:BillingOperationReceipt;current:BillingData}
  | {kind:'conflict';current:BillingData}
@@ -55,6 +58,11 @@ export function parseUsd(value:string):number|null{
  return Number.isSafeInteger(amount)&&amount>0&&amount<=100_000_000?amount:null;
 }
 export const inputUsd=(minor:number)=>(minor/100).toFixed(2);
+export function unallocatedAmount(amount:number,allocations:readonly {amountMinor:number}[]){
+ const allocated=allocations.reduce((sum,line)=>sum+line.amountMinor,0);
+ if(!Number.isSafeInteger(amount)||amount<=0||allocations.some(a=>!Number.isSafeInteger(a.amountMinor)||a.amountMinor<0)||allocated>amount)throw Error('INVALID_ALLOCATION_TOTAL');
+ return amount-allocated;
+}
 export const money=(minor:number,locale:'en'|'he')=>new Intl.NumberFormat(locale==='he'?'he-IL':'en-US',{style:'currency',currency:'USD',currencyDisplay:'code'}).format(minor/100);
 export function floridaDate(instant:string):string{
  billingInstant.parse(instant);const p=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date(instant));

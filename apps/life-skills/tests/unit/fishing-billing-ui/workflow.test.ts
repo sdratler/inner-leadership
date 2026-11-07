@@ -1,6 +1,6 @@
 import {describe,it,expect,vi} from 'vitest';
 import {BillingWorkflow} from '../../../src/features/fishing-billing-ui/workflow.ts';
-import {inputUsd,parseUsd,resolvedReceivedDate,floridaDate,ownerOperationResult,type BillingUiPorts,type BillingData,type CommandOutcome} from '../../../src/features/fishing-billing-ui/model.ts';
+import {inputUsd,parseUsd,resolvedReceivedDate,floridaDate,ownerOperationResult,preparationTicket,samePreparation,dataScope,unallocatedAmount,type BillingUiPorts,type BillingData,type CommandOutcome} from '../../../src/features/fishing-billing-ui/model.ts';
 import {syntheticAccepted,syntheticReceipt,syntheticId,syntheticNow} from '../../../src/features/fishing-billing/fixtures.ts';
 import {projectBalance} from '../../../src/features/fishing-billing/domain.ts';
 import {BILLING_DTO_VERSION,type BillingOperationReceipt} from '../../../src/features/fishing-billing/contracts.ts';
@@ -42,6 +42,12 @@ describe('owner billing operation lifecycle',()=>{
   await w.submit('cash',command(),snapshot(3));await w.recover();
   expect(w.getSnapshot()).toMatchObject({phase:'confirmed',data:{balance:{revision:5}}});expect(p.recordCash).toHaveBeenCalledTimes(1);
  });
+ it('treats unavailable rejection as unknown, never permission for a new operation',async()=>{
+  const p=ports();p.recordCash=vi.fn(async():Promise<CommandOutcome>=>({kind:'rejected',code:'UNAVAILABLE'}));const w=new BillingWorkflow(p);
+  await w.submit('cash',command(),snapshot(3));expect(w.getSnapshot().phase).toBe('unknown');expect(w.clear()).toBe(false);
+  expect(await w.submit('cash',{...command(),operationId:syntheticId(501)},snapshot(3))).toBe(false);
+  await w.recover();expect(p.readOperation).toHaveBeenCalledWith(op);expect(p.recordCash).toHaveBeenCalledTimes(1);expect(w.getSnapshot()).toMatchObject({phase:'confirmed',data:{balance:{revision:5}}});
+ });
  it('keeps known receipt separate when current readback is stale, then refreshes only',async()=>{
   const p=ports();p.recordCash=vi.fn(async():Promise<CommandOutcome>=>({kind:'confirmed',receipt:receipt(),current:snapshot(3)}));const w=new BillingWorkflow(p);
   await w.submit('cash',command(),snapshot(3));expect(w.getSnapshot().phase).toBe('refresh_required');
@@ -60,10 +66,32 @@ describe('owner billing operation lifecycle',()=>{
  it('has no default transport when the integration is absent',async()=>{
   const w=new BillingWorkflow(null);expect(await w.submit('cash',command(),snapshot(3))).toBe(false);expect(w.getSnapshot().phase).toBe('idle');
  });
+ it('never replaces a newer authorized balance with a stale conflict response',async()=>{
+  const p=ports(),w=new BillingWorkflow(p);await w.submit('cash',command(),snapshot(3));w.clear();
+  p.recordCash=vi.fn(async():Promise<CommandOutcome>=>({kind:'conflict',current:snapshot(3)}));
+  await w.submit('cash',{...command(),operationId:syntheticId(501),expectedVersion:4},snapshot(4,true));
+  expect(w.getSnapshot().phase).toBe('unknown');expect(w.currentFor(snapshot(3)).balance.revision).toBe(4);
+  expect(w.clear()).toBe(false);
+ });
 });
 describe('presentation-only money/date and root read adapter',()=>{
+ it.each(['reopen','family','workspace','revision'] as const)('discards a deferred date result after dialog %s changes',async change=>{
+  const context={},original=preparationTicket(dataScope(snapshot(3)),3,context);
+  let current=original,release!:()=>void,accepted=false;
+  const pending=new Promise<void>(resolve=>{release=resolve;}).then(()=>{accepted=samePreparation(current,original);});
+  const scope={...original.scope};if(change==='family')scope.familyId=syntheticId(999);if(change==='workspace')scope.workspaceId=syntheticId(999);
+  // Closing destroys the old ticket; reopening always creates a new generation,
+  // even for the same quote and date. A changed context also gets a new token.
+  current=change==='reopen'?preparationTicket(scope,3,context):{...original,scope,revision:change==='revision'?4:3};
+  release();await pending;expect(accepted).toBe(false);
+ });
  it.each(['-1','1e3','0.001','NaN','1,000.00','0'])('rejects ambiguous or nonpositive amount %s',v=>expect(parseUsd(v)).toBeNull());
  it('preserves integer cents without floating decimal drift',()=>{expect(parseUsd('200.05')).toBe(20005);expect(inputUsd(20005)).toBe('200.05');});
+ it('retains an explicit unallocated remainder without inventing a child allocation',()=>{
+  expect(unallocatedAmount(40000,[{amountMinor:30000}])).toBe(10000);
+  expect(unallocatedAmount(10000,[])).toBe(10000);
+  expect(()=>unallocatedAmount(10000,[{amountMinor:10001}])).toThrow('INVALID_ALLOCATION_TOTAL');
+ });
  it('uses explicit Florida date context and refuses guessed/future/mismatched instants',()=>{
   expect(floridaDate('2035-01-03T02:00:00Z')).toBe('2035-01-02');
   expect(resolvedReceivedDate('2035-01-02',{receivedAt:syntheticNow,observedAt:syntheticNow})).toBe(syntheticNow);

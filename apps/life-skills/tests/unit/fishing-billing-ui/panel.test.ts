@@ -1,11 +1,11 @@
 import {it,expect} from 'vitest';
 import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
-import {OwnerBillingPanel,type OwnerBillingPanelProps} from '../../../src/features/fishing-billing-ui/owner-billing-panel.tsx';
+import {OwnerBillingPanel,WorkflowNotice,type OwnerBillingPanelProps} from '../../../src/features/fishing-billing-ui/owner-billing-panel.tsx';
 import {BillingWorkflow} from '../../../src/features/fishing-billing-ui/workflow.ts';
 import {serializedBillingViewFixtures} from '../../../src/features/fishing-billing/view-fixtures.ts';
 import {syntheticId} from '../../../src/features/fishing-billing/fixtures.ts';
-import type {BillingView} from '../../../src/features/fishing-billing-ui/model.ts';
+import {dataScope,sameScope,type BillingView,type BillingUiPorts} from '../../../src/features/fishing-billing-ui/model.ts';
 const views=(JSON.parse(serializedBillingViewFixtures()) as {views:Record<string,BillingView>}).views;
 const subject={familyId:syntheticId(4),label:'SYNTHETIC family',children:[{id:syntheticId(20),name:'SYNTHETIC Ari'},{id:syntheticId(21),name:'SYNTHETIC Noam'}]};
 function render(view:BillingView,extra:Partial<OwnerBillingPanelProps>={}){return renderToStaticMarkup(createElement(OwnerBillingPanel,{locale:'en',view,subject,workflow:new BillingWorkflow(null),...extra}));}
@@ -34,4 +34,21 @@ it('retains truthful cancelled, failed-card and conflict presentation',()=>{
 });
 it('renders Hebrew direction and labels without changing the saved parent data',()=>{
  const html=render(views.twoChildPartial!,{locale:'he'});expect(html).toContain('dir="rtl"');expect(html).toContain('תשלומי המשפחה');expect(html).toContain('SYNTHETIC Noam');expect(html).toContain('<bdi>');
+});
+it('suppresses settled/conflict feedback outside the full family and workspace scope',()=>{
+ const data=(views.twoChildPartial! as Extract<BillingView,{state:'ready'}>).data;
+ const scope=dataScope(data),command={operationId:syntheticId(800),quoteId:data.quote.id,expectedVersion:data.balance.revision,amountMinor:100,currency:'USD' as const,receivedAt:'2035-01-02T15:00:00Z',allocations:[{lineId:data.quote.lines[0]!.id,amountMinor:100}]};
+ const receipt={version:data.quote.version,operationId:command.operationId,entityId:data.quote.id,entityVersion:4,replayed:false,result:{...data,receiptId:syntheticId(850)}};
+ for(const other of [{...scope,familyId:syntheticId(998)},{...scope,workspaceId:syntheticId(999)}])for(const phase of ['confirmed','conflict'] as const){
+  const html=renderToStaticMarkup(createElement(WorkflowNotice,{flow:{scope,kind:'cash',command,phase,data,receipt},workflow:new BillingWorkflow(null),locale:'en',showDetails:sameScope(scope,other)}));
+  expect(html).toBe('');
+ }
+});
+it('uses neutral cross-context unknown feedback without receipt or family details',async()=>{
+ const data=(views.twoChildPartial! as Extract<BillingView,{state:'ready'}>).data;
+ const p:BillingUiPorts={recordCash:async()=>({kind:'unknown'}),reverseCash:async()=>({kind:'unknown'}),readOperation:async()=>null,readBalance:async()=>data,nextOperationId:()=>syntheticId(800),resolveReceivedDate:async()=>null};
+ const w=new BillingWorkflow(p),command={operationId:syntheticId(800),quoteId:data.quote.id,expectedVersion:data.balance.revision,amountMinor:100,currency:'USD' as const,receivedAt:'2035-01-02T15:00:00Z',allocations:[{lineId:data.quote.lines[0]!.id,amountMinor:100}]};
+ await w.submit('cash',command,data);
+ const html=renderToStaticMarkup(createElement(WorkflowNotice,{flow:w.getSnapshot(),workflow:w,locale:'en',showDetails:false}));
+ expect(html).toContain('Earlier operation needs verification');expect(html).not.toContain(command.operationId);expect(html).not.toContain('Recorded');
 });

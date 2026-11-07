@@ -34,8 +34,12 @@ export class BillingWorkflow{
   try{
    const result=await (kind==='cash'?this.ports.recordCash(command as Parameters<BillingUiPorts['recordCash']>[0]):this.ports.reverseCash(command as Parameters<BillingUiPorts['reverseCash']>[0]));
    if(result.kind==='confirmed')await this.accept(operation,result.receipt,result.current);
-   else if(result.kind==='conflict'){this.latest=scopedData(result.current,scope);this.set({...operation,phase:'conflict',data:this.latest});}
-   else if(result.kind==='rejected')this.set({...operation,phase:'rejected',code:result.code});
+   else if(result.kind==='conflict'){
+    const current=scopedData(result.current,scope);
+    if(current.balance.revision<this.currentFor(data).balance.revision)throw Error('STALE_BALANCE');
+    this.latest=current;this.set({...operation,phase:'conflict',data:current});
+   }
+   else if(result.kind==='rejected')this.set(result.code==='UNAVAILABLE'?{...operation,phase:'unknown'}:{...operation,phase:'rejected',code:result.code});
    else this.set({...operation,phase:'unknown'});
   }catch{this.set({...operation,phase:'unknown'});}finally{this.busy=false;}
   return true;
@@ -48,7 +52,7 @@ export class BillingWorkflow{
  private async refreshConfirmed(operation:Operation,receipt:BillingOperationReceipt,current?:BillingData){
   try{
    const data=scopedData(current??await this.ports!.readBalance(operation.scope.quoteId),operation.scope);
-   if(data.balance.revision<receipt.entityVersion)throw Error('STALE_BALANCE');
+   if(data.balance.revision<receipt.entityVersion||data.balance.revision<this.currentFor(data).balance.revision)throw Error('STALE_BALANCE');
    this.latest=data;
    this.set({...operation,phase:'confirmed',receipt,data});
   }catch{this.set({...operation,phase:'refresh_required',receipt});}
