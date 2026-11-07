@@ -66,7 +66,7 @@ await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0
 port=server.address().port;base=`http://127.0.0.1:${port}`;results.base=base;await lifecycle();
 results.browserExecutable={path:chromium.executablePath(),sha256:sha(await readFile(chromium.executablePath()))};
  assert.equal(expected.executionPins[await realpath(chromium.executablePath())],results.browserExecutable.sha256,'BROWSER_EXECUTABLE_PIN');
-browserServer=await chromium.launchServer({headless:true,host:'127.0.0.1',timeout:15000});await lifecycle();
+browserServer=await chromium.launchServer({executablePath:chromium.executablePath(),headless:true,host:'127.0.0.1',timeout:15000});await lifecycle();
 browser=await chromium.connect(browserServer.wsEndpoint(),{timeout:10000});
 const context=await browser.newContext();
 await context.route('**/*',route=>new URL(route.request().url()).origin===base&&route.request().method()==='GET'?route.continue():route.abort());
