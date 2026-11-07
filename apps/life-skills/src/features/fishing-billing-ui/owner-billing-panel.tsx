@@ -147,8 +147,10 @@ export function StateActionConfirmation({locale,action,data,command,allowed,fami
 function useOwnerDialog(){
  const ref=useRef<HTMLDialogElement>(null);
  useEffect(()=>{
-  const d=ref.current;if(!d)return;const focused=document.activeElement;d.showModal();
-  return()=>{d.close();if(focused instanceof HTMLElement&&focused.isConnected&&!focused.hasAttribute('disabled'))focused.focus();else d.closest('[data-billing-owner-panel]')?.querySelector<HTMLElement>('h1')?.focus();};
+  const d=ref.current;if(!d)return;const focused=document.activeElement;
+  const heading=d.closest('[data-billing-owner-panel]')?.querySelector<HTMLElement>('h1');
+  d.showModal();
+  return()=>{d.close();if(focused instanceof HTMLElement&&focused.isConnected&&!focused.hasAttribute('disabled'))focused.focus();else if(heading?.isConnected)heading.focus();};
  },[]);
  return ref;
 }
