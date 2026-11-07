@@ -17,6 +17,7 @@ export type CommandKind='cash'|'reversal';
 export type Scope={quoteId:string;familyId:string;workspaceId:string};
 export type PreparationTicket={readonly scope:Scope;readonly revision:number;readonly context:object;readonly generation:symbol};
 export function preparationTicket(scope:Scope,revision:number,context:object):PreparationTicket{return {scope:{...scope},revision,context,generation:Symbol('billing-dialog')};}
+export const editedPreparation=(ticket:PreparationTicket)=>preparationTicket(ticket.scope,ticket.revision,ticket.context);
 export function samePreparation(current:PreparationTicket,captured:PreparationTicket){return current.generation===captured.generation&&current.context===captured.context&&current.revision===captured.revision&&sameScope(current.scope,captured.scope);}
 export type CommandOutcome=
  | {kind:'confirmed';receipt:BillingOperationReceipt;current:BillingData}

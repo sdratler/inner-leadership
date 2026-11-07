@@ -1,6 +1,4 @@
 /** Finite loopback-only synthetic review. No app route, DB or provider access. */
-import {build} from 'esbuild';
-import {chromium} from '@playwright/test';
 import {createServer} from 'node:http';
 import {mkdir,readFile,writeFile,realpath} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
@@ -20,6 +18,7 @@ await mkdir(target); // Exclusive: never overwrite a previous run.
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
 let server=null,browserServer=null,browser=null,page=null,base=null,port=null,timedOut=false,cleanupPromise=null;
 const errors=[],results={kind:'synthetic_component_only',attempt:process.env.BILLING_UI_ATTEMPT_ID,nodePid:process.pid,checks:[],screenshots:[],consoleErrors:errors,success:false};
+async function verifyExpected(pins){for(const [file,hash] of Object.entries(pins))assert.equal(sha(await readFile(file)),hash,`EXPECTED_INPUT_CHANGED ${file}`);}
 async function lifecycle(){await writeFile(path.join(target,'lifecycle.json'),JSON.stringify({nodePid:process.pid,browserPid:browserServer?.process().pid??null,port,base,timedOut}));}
 async function bounded(promise,ms){let timeout;try{return await Promise.race([promise,new Promise((_,reject)=>{timeout=setTimeout(()=>reject(Error('BOUNDED_SHUTDOWN_TIMEOUT')),ms);})]);}finally{clearTimeout(timeout);}}
 function cleanup(){return cleanupPromise??=(async()=>{
@@ -32,16 +31,29 @@ const deadline=setTimeout(()=>{
 },180000);
 try{
  await lifecycle();
+ const expectedBytes=await readFile(process.env.BILLING_UI_EXPECTED_MANIFEST);
+ assert.equal(sha(expectedBytes),process.env.BILLING_UI_EXPECTED_MANIFEST_SHA256,'EXPECTED_MANIFEST_BINDING');
+ const expected=JSON.parse(expectedBytes);
+ assert.equal(expected.attempt,process.env.BILLING_UI_ATTEMPT_ID);
+ const approvalBytes=await readFile(process.env.BILLING_UI_APPROVAL);
+ assert.equal(sha(approvalBytes),process.env.BILLING_UI_APPROVAL_SHA256,'APPROVAL_RECEIPT_PIN');
+ const approval=JSON.parse(approvalBytes);
+ assert(approval.rootApproved===true&&approval.reviewerApproved===true&&approval.attempt===expected.attempt&&approval.expectedManifestSha256===sha(expectedBytes),'REVIEW_ADMISSION_REQUIRED');
+ await verifyExpected(expected.executionPins);await verifyExpected(expected.inputPins);
+ const {build}=await import('esbuild');const {chromium}=await import('@playwright/test');
  const buildResult=await build({entryPoints:[path.join(here,'browser-entry.tsx')],bundle:true,platform:'browser',format:'iife',jsx:'automatic',metafile:true,outfile:path.join(target,'harness.js'),define:{'process.env.NODE_ENV':'"production"'}});
  const inputPins={};
  for(const name of Object.keys(buildResult.metafile.inputs)){const file=await realpath(path.resolve(name));inputPins[file]=sha(await readFile(file));}
  results.inputPins=inputPins;
+ assert.deepEqual(inputPins,expected.inputPins,'UNEXPECTED_BUNDLE_INPUT');
  results.bundlePins={js:sha(await readFile(path.join(target,'harness.js'))),css:sha(await readFile(path.join(target,'harness.css')))};
+ assert.deepEqual(results.bundlePins,expected.bundlePins,'UNEXPECTED_BUNDLE_BYTES');
  await writeFile(path.join(target,'metafile.json'),JSON.stringify(buildResult.metafile,null,2));
 const html='<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Synthetic Fishing billing component review</title><link rel="stylesheet" href="/harness.css"><style>html{font-family:Arial,sans-serif;background:#f2f5f9}body{margin:0}button,input,textarea{font-family:inherit}</style></head><body><div id="root"></div><script src="/harness.js"></script></body></html>';
 const allowed=new Map([['/harness.js','text/javascript'],['/harness.css','text/css']]);
 server=createServer(async(req,res)=>{
  try{
+ if(req.method!=='GET'){res.statusCode=405;res.end();return;}
  const pathname=new URL(req.url,'http://localhost').pathname;
  if(pathname==='/favicon.ico'){res.statusCode=204;res.end();return;}
  if(pathname==='/'){res.setHeader('content-type','text/html');res.end(html);return;}
@@ -53,10 +65,11 @@ server=createServer(async(req,res)=>{
 await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});
 port=server.address().port;base=`http://127.0.0.1:${port}`;results.base=base;await lifecycle();
 results.browserExecutable={path:chromium.executablePath(),sha256:sha(await readFile(chromium.executablePath()))};
+ assert.equal(expected.executionPins[await realpath(chromium.executablePath())],results.browserExecutable.sha256,'BROWSER_EXECUTABLE_PIN');
 browserServer=await chromium.launchServer({headless:true,host:'127.0.0.1',timeout:15000});await lifecycle();
 browser=await chromium.connect(browserServer.wsEndpoint(),{timeout:10000});
 const context=await browser.newContext();
-await context.route('**/*',route=>new URL(route.request().url()).origin===base?route.continue():route.abort());
+await context.route('**/*',route=>new URL(route.request().url()).origin===base&&route.request().method()==='GET'?route.continue():route.abort());
 page=await context.newPage();page.setDefaultTimeout(8000);page.setDefaultNavigationTimeout(8000);
 page.on('pageerror',error=>errors.push(error.message));
 page.on('console',message=>{if(message.type()==='error')errors.push(message.text());});
@@ -75,6 +88,12 @@ async function cash(locale='en'){
  await check('native dialog focus contained',async()=>{for(let n=0;n<14;n++){await page.keyboard.press('Tab');assert(await page.evaluate(()=>document.querySelector('dialog').contains(document.activeElement)));}});
  await page.keyboard.press('Escape');
  await check('Escape closes and restores original focus',async()=>{assert.equal(await page.getByRole('dialog').count(),0);assert.equal(await page.locator(':focus').innerText(),'Cash received');});
+ await open('locale=en&mode=deferred');await cash();await page.getByRole('button',{name:'Review entry',exact:true}).click();await page.getByLabel('Amount received (USD)',{exact:false}).fill('10');
+ await page.evaluate(()=>window.releaseBillingDate());await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>resolve())));
+ await check('same-dialog editing rejects the late prepared command',async()=>{assert.equal(await page.getByRole('button',{name:'Confirm entry',exact:true}).count(),0);assert.equal(await page.getByLabel('Amount received (USD)',{exact:false}).inputValue(),'10');assert.equal(await page.evaluate(()=>window.billingUiQa.commands.length),0);});
+ await page.keyboard.press('Escape');await cash();await page.getByRole('button',{name:'Review entry',exact:true}).click();await page.keyboard.press('Escape');await cash();await page.evaluate(()=>window.releaseBillingDate());await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>resolve())));
+ await check('same-family close and reopen rejects late preparation',async()=>assert.equal(await page.getByRole('button',{name:'Confirm entry',exact:true}).count(),0));
+ await open('locale=en');
  await cash();await page.getByRole('button',{name:'Review entry',exact:true}).click();await page.getByRole('button',{name:'Confirm entry',exact:true}).waitFor();await capture('en-cash-review');
  await page.getByRole('button',{name:'Confirm entry',exact:true}).evaluate(button=>{button.click();button.click();});await page.getByRole('button',{name:'Done',exact:true}).waitFor();await page.getByRole('button',{name:'Done',exact:true}).click();
  await check('one confirmed command with current paid balance',async()=>{assert.equal(await page.evaluate(()=>window.billingUiQa.commands.length),1);assert.match(await page.locator('[aria-label="Authoritative balance"]').innerText(),/Paid/);});await capture('en-cash-confirmed');
@@ -103,6 +122,7 @@ async function cash(locale='en'){
  await page.emulateMedia({reducedMotion:'reduce'});await noOverflow();results.checks.push('reduced-motion media applied without overflow');
  assert.deepEqual(errors,[]);results.checks.push('no browser page errors');
  for(const [file,hash] of Object.entries(inputPins))assert.equal(sha(await readFile(file)),hash,'IMPORTED_INPUT_CHANGED');
+ await verifyExpected(expected.executionPins);
  results.importedInputsFrozen=true;results.success=true;
 }catch(error){
  results.error=String(error);process.exitCode=1;

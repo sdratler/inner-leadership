@@ -1,6 +1,6 @@
 import {describe,it,expect,vi} from 'vitest';
 import {BillingWorkflow} from '../../../src/features/fishing-billing-ui/workflow.ts';
-import {inputUsd,parseUsd,resolvedReceivedDate,floridaDate,ownerOperationResult,preparationTicket,samePreparation,dataScope,unallocatedAmount,type BillingUiPorts,type BillingData,type CommandOutcome} from '../../../src/features/fishing-billing-ui/model.ts';
+import {inputUsd,parseUsd,resolvedReceivedDate,floridaDate,ownerOperationResult,preparationTicket,editedPreparation,samePreparation,dataScope,unallocatedAmount,type BillingUiPorts,type BillingData,type CommandOutcome} from '../../../src/features/fishing-billing-ui/model.ts';
 import {syntheticAccepted,syntheticReceipt,syntheticId,syntheticNow} from '../../../src/features/fishing-billing/fixtures.ts';
 import {projectBalance} from '../../../src/features/fishing-billing/domain.ts';
 import {BILLING_DTO_VERSION,type BillingOperationReceipt} from '../../../src/features/fishing-billing/contracts.ts';
@@ -75,6 +75,15 @@ describe('owner billing operation lifecycle',()=>{
  });
 });
 describe('presentation-only money/date and root read adapter',()=>{
+ it('discards the real deferred date resolver result after same-dialog editing',async()=>{
+  let release!:(value:{receivedAt:string;observedAt:string})=>void;
+  const resolver:BillingUiPorts['resolveReceivedDate']=vi.fn(()=>new Promise<{receivedAt:string;observedAt:string}>(resolve=>{release=resolve;}));
+  let ticket=preparationTicket(dataScope(snapshot(3)),3,{}),reviewed:string|null=null;
+  const captured=ticket;
+  const pending=resolver('2035-01-02').then(result=>{if(result&&samePreparation(ticket,captured))reviewed=result.receivedAt;});
+  ticket=editedPreparation(ticket);release({receivedAt:syntheticNow,observedAt:syntheticNow});await pending;
+  expect(reviewed).toBeNull();expect(samePreparation(ticket,captured)).toBe(false);
+ });
  it.each(['reopen','family','workspace','revision'] as const)('discards a deferred date result after dialog %s changes',async change=>{
   const context={},original=preparationTicket(dataScope(snapshot(3)),3,context);
   let current=original,release!:()=>void,accepted=false;

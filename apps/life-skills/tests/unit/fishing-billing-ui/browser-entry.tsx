@@ -18,7 +18,10 @@ let current:BillingData=view.state==='ready'?view.data:view.state==='conflict'?v
 let known:BillingOperationReceipt|null=null;
 const ports:BillingUiPorts={
  nextOperationId:()=>{qa.generated++;return syntheticId(800+qa.generated);},
- resolveReceivedDate:async date=>mode!=='date-unavailable'&&date===floridaDate(syntheticNow)?{receivedAt:syntheticNow,observedAt:syntheticNow}:null,
+ resolveReceivedDate:async date=>{
+  if(mode==='deferred')return new Promise(resolve=>{(window as Window&{releaseBillingDate?:()=>void}).releaseBillingDate=()=>resolve({receivedAt:syntheticNow,observedAt:syntheticNow});});
+  return mode!=='date-unavailable'&&date===floridaDate(syntheticNow)?{receivedAt:syntheticNow,observedAt:syntheticNow}:null;
+ },
  async recordCash(command){
   qa.commands.push(command.operationId);
   if(mode==='conflict'){
