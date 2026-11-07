@@ -1,5 +1,5 @@
 import 'server-only';
-import {createHmac} from 'node:crypto';
+import {createHmac,randomUUID} from 'node:crypto';
 import {z} from 'zod';
 import {AppError} from './errors.ts';
 import {freshActor,lockWorkspace} from '../features/identity/data.ts';
@@ -8,23 +8,30 @@ import {one,type IdentityStore,type SqlSession} from '../features/identity/store
 import type {Actor,IdentityClock,WorkspaceId} from '../features/identity/types.ts';
 import type {BillingAuthority,BillingContext,BillingScope} from '../features/fishing-billing/native.ts';
 import {billingId,createFamilyOfferSchema,commandSchema,publishedOfferSchema,reminderIntentSchema} from '../features/fishing-billing/contracts.ts';
-import {ledgerReceiptV2Schema} from '../features/fishing-billing/contracts-v2.ts';
+import {ledgerReceiptV2Schema,newYorkDate,type LedgerReceiptV2} from '../features/fishing-billing/contracts-v2.ts';
 import {cardAttemptSchema,cardExceptionSchema} from '../features/fishing-billing/card-contracts.ts';
-import {createGuestFamilyOffer,issueGuestFamilyOffer,projectGuestBalanceV3} from '../features/fishing-billing/guest-domain-v3.ts';
+import {createGuestFamilyOffer,issueGuestFamilyOffer,projectGuestBalanceV3,validateGuestCashReceipt,validateGuestReversal,changeGuestBillingState} from '../features/fishing-billing/guest-domain-v3.ts';
 import {BILLING_GUEST_V3,guestFamilyOfferSchema,guestOwnerSnapshotV3Schema,type GuestFamilyOffer,type GuestOwnerSnapshotV3} from './fishing-billing-guest-contract-v3.ts';
 import {verifyGuestFamilyOffer} from './fishing-billing-guest-material-v3.ts';
 import {verifyStoredGuestFinancialEvidence} from './fishing-billing-guest-evidence-readback.ts';
+import {billingOwnerCommandV3Schema,ownerMoneyReceiptV3Schema,sameGuestOwnerLineage,type BillingOwnerCommandV3,type OwnerMoneyReceiptV3} from './fishing-billing-owner-contract-v3.ts';
 
 const receiptSchema=z.object({
  version:z.literal(BILLING_GUEST_V3),operationId:billingId,action:z.enum(['create','issue']),
  entityId:billingId,entityVersion:z.number().int().positive(),quote:guestFamilyOfferSchema,replayed:z.boolean(),
 }).strict().refine(r=>r.entityId===r.quote.id&&r.entityVersion===r.quote.revision,'GUEST_OWNER_RECEIPT_SCOPE');
 type Receipt=z.infer<typeof receiptSchema>;
-const journalSchema=z.object({
+const quoteJournalSchema=z.object({
  version:z.literal(BILLING_GUEST_V3),kind:z.literal('owner_quote'),workspaceId:billingId,
  operationId:billingId,actorId:billingId,action:z.enum(['create','issue']),quoteId:billingId,
  digest:z.string().regex(/^[a-f0-9]{64}$/),receipt:receiptSchema,
 }).strict();
+const moneyJournalSchema=z.object({
+ version:z.literal(BILLING_GUEST_V3),kind:z.literal('owner_money'),workspaceId:billingId,
+ operationId:billingId,actorId:billingId,action:z.enum(['cash_date','reverse_cash','state']),quoteId:billingId,
+ digest:z.string().regex(/^[a-f0-9]{64}$/),receipt:ownerMoneyReceiptV3Schema,
+}).strict();
+const journalSchema=z.discriminatedUnion('kind',[quoteJournalSchema,moneyJournalSchema]);
 const canonical=(v:unknown):string=>v===null||typeof v!=='object'?JSON.stringify(v):Array.isArray(v)?'['+v.map(canonical).join(',')+']':'{'+Object.keys(v).sort().map(k=>JSON.stringify(k)+':'+canonical((v as Record<string,unknown>)[k])).join(',')+'}';
 const unavailable=()=>new AppError('UNAVAILABLE');
 const requireFact=(v:unknown)=>{if(!v)throw unavailable();};
@@ -34,13 +41,14 @@ const quoteAad=(w:string,id:string)=>'ls_fishing_billing/guest/v3/quote/'+w+'/'+
 const commandAad=(w:string,id:string)=>'ls_fishing_billing/v1/command/'+w+'/'+id;
 const scope=(q:GuestFamilyOffer):BillingScope=>({programKey:'fishing_monthly_club',familyId:q.familyId,quoteId:q.id,childIds:[...new Set(q.lines.map(l=>l.childId))]});
 type QuoteRow={id:string;familyId:string;definitionId:string;revision:number;createdAt:Date;ciphertext:string};
-type JournalRow={actorId:string;action:string;quoteId:string;digest:string;ciphertext:string};
+type JournalRow={actorId:string;action:string;quoteId:string;digest:string;ciphertext:string;createdAt:Date};
 
-/** Unmounted owner-only creation/issuance of NEW guest quotes in the existing
- * ledger. Actual Academy source/family/child/policy authority is mandatory.
- * No guest grant/parent account, acceptance, obligation, sender, provider,
- * enrollment, migration, runtime fallback or historical conversion is supplied.
- * Issuance is not debt or permission to collect; guest acceptance is separate. */
+/** Unmounted owner planning/current readback and cash/correction/state writes
+ * for NEW guest quotes in the existing ledger. Actual Academy source/family/
+ * child/policy authority is mandatory. No grant/parent account, guest acceptance,
+ * obligation creation, sender/provider, enrollment, migration, runtime fallback
+ * or historical conversion is supplied. Issuance creates no debt; money facts
+ * require the separate existing financial acceptance. */
 export class FishingBillingGuestOwnerStore{
  private readonly key:Buffer;
  private readonly transactions=new WeakMap<object,SqlSession>();
@@ -60,7 +68,7 @@ export class FishingBillingGuestOwnerStore{
   this.contextCurrent(c);
   requireFact(fresh.workspaceId===this.workspaceId&&fresh.role==='practitioner'&&fresh.state==='active');c.actor=fresh;
  }
- private async current(c:BillingContext,actor:Actor,action:'create'|'issue'|'read',s:BillingScope){
+ private async current(c:BillingContext,actor:Actor,action:'create'|'issue'|'read'|'cash'|'reverse'|'state',s:BillingScope){
   await this.owner(c,actor);
   // Authority receives the SAME real SQL transaction through a frozen value
   // snapshot, never our mutable owner/clock context or caller's scope array.
@@ -70,7 +78,7 @@ export class FishingBillingGuestOwnerStore{
   Object.freeze(view.actor);Object.freeze(view);Object.freeze(scopeView.childIds);Object.freeze(scopeView);
   await this.authority.authorize(view,action,scopeView);await this.owner(c,actor);
  }
- private async context<T>(actor:Actor,work:(c:BillingContext)=>Promise<T>):Promise<T>{
+ private async context<T>(actor:Actor,work:(c:BillingContext)=>Promise<T>,moneyErrors=false):Promise<T>{
   try{
    requireFact(actor.workspaceId===this.workspaceId);
    return await this.db.transaction(async tx=>{
@@ -79,18 +87,27 @@ export class FishingBillingGuestOwnerStore{
     this.transactions.set(c,tx);
     try{await this.owner(c,actor);return await work(c);}finally{this.transactions.delete(c);}
    });
-  }catch{throw unavailable();}
+  }catch(error){if(moneyErrors&&error instanceof AppError&&['CONFLICT','INVALID_REQUEST'].includes(error.code))throw error;throw unavailable();}
  }
- private async quote(c:BillingContext,id:string){
+ private async quoteRecord(c:BillingContext,id:string){
   this.contextCurrent(c);
   const r=await one<QuoteRow>(this.tx(c),'SELECT id,family_id AS "familyId",definition_id AS "definitionId",revision,created_at AS "createdAt",payload_ciphertext AS ciphertext FROM ls_fishing_billing.quotes WHERE workspace_id=$1 AND id=$2 FOR UPDATE',[this.workspaceId,billingId.parse(id)]);
   if(!r)throw unavailable();const q=verifyGuestFamilyOffer(JSON.parse(unseal(r.ciphertext,quoteAad(this.workspaceId,id),this.ring)));
-  requireFact(q.workspaceId===this.workspaceId&&q.id===r.id&&q.familyId===r.familyId&&q.definition.id===r.definitionId&&q.revision===r.revision&&Date.parse(q.createdAt)===r.createdAt.valueOf());return q;
+  requireFact(q.workspaceId===this.workspaceId&&q.id===r.id&&q.familyId===r.familyId&&q.definition.id===r.definitionId&&q.revision===r.revision&&Date.parse(q.createdAt)===r.createdAt.valueOf());return {row:r,quote:q};
+ }
+ private async quote(c:BillingContext,id:string){return (await this.quoteRecord(c,id)).quote;}
+ private async commandRecord(c:BillingContext,id:string){
+  const row=await one<JournalRow>(this.tx(c),'SELECT actor_id AS "actorId",action,quote_id AS "quoteId",request_digest AS digest,created_at AS "createdAt",result_ciphertext AS ciphertext FROM ls_fishing_billing.commands WHERE workspace_id=$1 AND operation_id=$2',[this.workspaceId,id]);
+  if(!row)return null;
+  const record=journalSchema.parse(JSON.parse(unseal(row.ciphertext,commandAad(this.workspaceId,id),this.ring)));
+  requireFact(record.workspaceId===this.workspaceId&&record.operationId===id&&record.actorId===row.actorId&&row.action==='guest_'+record.action&&record.quoteId===row.quoteId&&record.digest===row.digest);
+  if(record.kind==='owner_money')requireFact(Date.parse(record.receipt.recordedAt)===row.createdAt.valueOf());
+  return {row,record};
  }
  private async previous(c:BillingContext,actor:Actor,operationId:string,action:'create'|'issue',command:unknown,quoteId:string):Promise<Receipt|null>{
-  const r=await one<JournalRow>(this.tx(c),'SELECT actor_id AS "actorId",action,quote_id AS "quoteId",request_digest AS digest,result_ciphertext AS ciphertext FROM ls_fishing_billing.commands WHERE workspace_id=$1 AND operation_id=$2',[this.workspaceId,operationId]);
-  if(!r)return null;
-  const j=journalSchema.parse(JSON.parse(unseal(r.ciphertext,commandAad(this.workspaceId,operationId),this.ring))),receipt=j.receipt,q=verifyGuestFamilyOffer(receipt.quote);
+  const found=await this.commandRecord(c,operationId);if(!found)return null;
+  const {row:r,record:j}=found;if(j.kind!=='owner_quote')throw unavailable();
+  const receipt=j.receipt,q=verifyGuestFamilyOffer(receipt.quote);
   requireFact(j.workspaceId===this.workspaceId&&j.operationId===operationId&&j.actorId===c.actor.id&&j.actorId===r.actorId&&j.action===action&&r.action==='guest_'+action&&j.quoteId===quoteId&&r.quoteId===quoteId&&j.digest===r.digest&&j.digest===this.digest(action,command));
   requireFact(receipt.operationId===operationId&&receipt.action===action&&receipt.entityId===quoteId&&q.workspaceId===this.workspaceId&&!receipt.replayed);
   const actual=await this.quote(c,quoteId);
@@ -101,7 +118,7 @@ export class FishingBillingGuestOwnerStore{
  }
  private async journal(c:BillingContext,action:'create'|'issue',command:{operationId:string},q:GuestFamilyOffer):Promise<Receipt>{
   const receipt=receiptSchema.parse({version:BILLING_GUEST_V3,operationId:command.operationId,action,entityId:q.id,entityVersion:q.revision,quote:q,replayed:false}),digest=this.digest(action,command);
-  const record=journalSchema.parse({version:BILLING_GUEST_V3,kind:'owner_quote',workspaceId:this.workspaceId,operationId:command.operationId,actorId:c.actor.id,action,quoteId:q.id,digest,receipt});
+  const record=quoteJournalSchema.parse({version:BILLING_GUEST_V3,kind:'owner_quote',workspaceId:this.workspaceId,operationId:command.operationId,actorId:c.actor.id,action,quoteId:q.id,digest,receipt});
   await this.tx(c).query('INSERT INTO ls_fishing_billing.commands(workspace_id,operation_id,actor_id,action,quote_id,request_digest,result_ciphertext,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',[this.workspaceId,command.operationId,c.actor.id,'guest_'+action,q.id,digest,seal(JSON.stringify(record),commandAad(this.workspaceId,command.operationId),this.ring),c.now]);return receipt;
  }
  async createOffer(actor:Actor,raw:unknown):Promise<Receipt>{
@@ -135,8 +152,10 @@ export class FishingBillingGuestOwnerStore{
   * Uses actual Native evidence and one shared ledger; never a payment/consent
   * upgrade, grant access, sender or HTTP/runtime mounting. */
  async readSnapshot(actor:Actor,id:string):Promise<GuestOwnerSnapshotV3>{
-  return this.context(actor,async c=>{
-   const q=await this.quote(c,id);await this.current(c,actor,'read',scope(q));
+  return this.context(actor,async c=>this.snapshot(c,actor,await this.quote(c,id)));
+ }
+ private async snapshot(c:BillingContext,actor:Actor,q:GuestFamilyOffer):Promise<GuestOwnerSnapshotV3>{
+   await this.current(c,actor,'read',scope(q));
    requireFact(Date.parse(q.createdAt)<=c.now.valueOf()&&(!q.issuedAt||Date.parse(q.issuedAt)<=c.now.valueOf())&&(!q.acceptance||Date.parse(q.acceptance.acceptedAt)<=c.now.valueOf()));
    await verifyStoredGuestFinancialEvidence(c,q,this.ring);
    const rows=await this.tx(c).query<{id:string;operationId:string;originalId:string|null;recordedAt:Date;ciphertext:string}>('SELECT id,operation_id AS "operationId",original_receipt_id AS "originalId",recorded_at AS "recordedAt",payload_ciphertext AS ciphertext FROM ls_fishing_billing.receipts WHERE workspace_id=$1 AND quote_id=$2 ORDER BY id LIMIT 1001',[this.workspaceId,q.id]);requireFact(rows.length<=1000);
@@ -162,6 +181,59 @@ export class FishingBillingGuestOwnerStore{
     requireFact(i.id===row.id&&i.state===row.state&&i.quoteId===q.id&&i.familyId===q.familyId&&this.hmac({key:i.key})===row.intentKey&&this.hmac({quoteId:i.quoteId,guardianId:i.guardianId})===row.audienceKey&&Date.parse(i.scheduledAt)===row.scheduledAt.valueOf());return {id:i.id,state:i.state};
    });
    await this.current(c,actor,'read',scope(q));return guestOwnerSnapshotV3Schema.parse({quote:q,balance,receiptId:null});
+ }
+ private moneyDigest(input:BillingOwnerCommandV3){return this.hmac({version:BILLING_GUEST_V3,kind:'owner_money',workspaceId:this.workspaceId,action:input.action,command:input.command});}
+ private async previousMoney(c:BillingContext,input:BillingOwnerCommandV3,current:GuestOwnerSnapshotV3):Promise<OwnerMoneyReceiptV3|null>{
+  const found=await this.commandRecord(c,input.command.operationId);if(!found)return null;
+  const j=found.record;
+  if(j.kind!=='owner_money'||j.actorId!==c.actor.id||j.action!==input.action||j.quoteId!==input.command.quoteId||j.digest!==this.moneyDigest(input))throw new AppError('CONFLICT');
+  requireFact(j.receipt.operationId===input.command.operationId&&j.receipt.action===input.action&&j.receipt.entityId===j.quoteId&&!j.receipt.replayed&&sameGuestOwnerLineage(j.receipt.result,current));
+  return {...j.receipt,replayed:true};
+ }
+ private async suppressQueued(c:BillingContext,q:GuestFamilyOffer,balance:GuestOwnerSnapshotV3['balance']){
+  const reason=q.state==='cancelled'?'cancelled':q.paused?'owner_paused':q.acceptance&&balance.remainingMinor===0?'paid':null;if(!reason)return;
+  const rows=await this.tx(c).query<{id:string;ciphertext:string}>("SELECT id,payload_ciphertext AS ciphertext FROM ls_fishing_billing.reminders WHERE workspace_id=$1 AND quote_id=$2 AND state='queued' ORDER BY id LIMIT 1001 FOR UPDATE",[this.workspaceId,q.id]);requireFact(rows.length<=1000);
+  for(const row of rows){
+   const i=reminderIntentSchema.parse(JSON.parse(unseal(row.ciphertext,'ls_fishing_billing/v1/reminder/'+this.workspaceId+'/'+row.id,this.ring)));
+   requireFact(i.id===row.id&&i.quoteId===q.id&&i.familyId===q.familyId&&i.state==='queued');
+   const after=reminderIntentSchema.parse({...i,state:'suppressed',reason});
+   const changed=await one(this.tx(c),"UPDATE ls_fishing_billing.reminders SET state='suppressed',payload_ciphertext=$3 WHERE workspace_id=$1 AND id=$2 AND quote_id=$4 AND state='queued' AND payload_ciphertext=$5 RETURNING id",[this.workspaceId,i.id,seal(JSON.stringify(after),'ls_fishing_billing/v1/reminder/'+this.workspaceId+'/'+i.id,this.ring),q.id,row.ciphertext]);requireFact(changed);
+  }
+ }
+ private async mutateMoney(actor:Actor,raw:unknown):Promise<OwnerMoneyReceiptV3>{
+  const parsed=billingOwnerCommandV3Schema.safeParse(raw);if(!parsed.success)throw new AppError('INVALID_REQUEST');const input=parsed.data,cmd=input.command;
+  return this.context(actor,async c=>{
+   const {quote:q,row}=await this.quoteRecord(c,cmd.quoteId),before=await this.snapshot(c,actor,q);
+   const prior=await this.previousMoney(c,input,before);if(prior)return prior;
+   if(q.revision!==cmd.expectedVersion)throw new AppError('CONFLICT');
+   await this.current(c,actor,input.action==='cash_date'?'cash':input.action==='reverse_cash'?'reverse':'state',scope(q));
+   const recordedAt=c.now.toISOString(),actorId=c.actor.id;let receipt:LedgerReceiptV2|null=null,after:GuestFamilyOffer;
+   if(input.action==='cash_date'){
+    const m=input.command;
+    if(m.receivedDate>newYorkDate(recordedAt))throw new AppError('INVALID_REQUEST');
+    receipt=validateGuestCashReceipt(q,before.balance.receipts,{id:randomUUID(),operationId:m.operationId,quoteId:q.id,familyId:q.familyId,kind:'cash',currency:'USD',amountMinor:m.amountMinor,allocations:m.allocations,originalReceiptId:null,actorId,receivedPrecision:'date',receivedDate:m.receivedDate,timeZone:m.timeZone,recordedAt,reason:null,provider:null});
+    after=verifyGuestFamilyOffer({...q,revision:q.revision+1});
+   }else if(input.action==='reverse_cash'){
+    const m=input.command;
+    receipt=validateGuestReversal(q,before.balance.receipts,{id:randomUUID(),operationId:m.operationId,quoteId:q.id,familyId:q.familyId,kind:'cash_reversal',currency:'USD',amountMinor:m.amountMinor,allocations:m.allocations,originalReceiptId:m.originalReceiptId,actorId,receivedAt:recordedAt,recordedAt,reason:m.reason,provider:null});
+    after=verifyGuestFamilyOffer({...q,revision:q.revision+1});
+   }else after=changeGuestBillingState(q,cmd.expectedVersion,{paused:input.command.paused,cancel:input.command.cancel});
+   if(receipt)await this.tx(c).query('INSERT INTO ls_fishing_billing.receipts(workspace_id,id,quote_id,operation_id,original_receipt_id,payload_ciphertext,recorded_at) VALUES($1,$2,$3,$4,$5,$6,$7)',[this.workspaceId,receipt.id,q.id,receipt.operationId,receipt.originalReceiptId,seal(JSON.stringify(receipt),'ls_fishing_billing/v1/receipt/'+this.workspaceId+'/'+receipt.id,this.ring),recordedAt]);
+   const saved=await one(this.tx(c),'UPDATE ls_fishing_billing.quotes SET revision=$3,payload_ciphertext=$4 WHERE workspace_id=$1 AND id=$2 AND revision=$5 AND payload_ciphertext=$6 AND family_id=$7 AND definition_id=$8 AND created_at=$9 RETURNING id',[this.workspaceId,q.id,after.revision,seal(JSON.stringify(after),quoteAad(this.workspaceId,q.id),this.ring),row.revision,row.ciphertext,row.familyId,row.definitionId,row.createdAt]);if(!saved)throw new AppError('CONFLICT');
+   const balance=projectGuestBalanceV3(after,receipt?[...before.balance.receipts,receipt]:before.balance.receipts,before.balance.pendingAttemptIds);await this.suppressQueued(c,after,balance);
+   const result=await this.snapshot(c,actor,after),operation=ownerMoneyReceiptV3Schema.parse({version:BILLING_GUEST_V3,operationId:cmd.operationId,action:input.action,entityId:q.id,entityVersion:after.revision,recordedAt,replayed:false,result:{...result,receiptId:receipt?.id??null}}),digest=this.moneyDigest(input);
+   const record=moneyJournalSchema.parse({version:BILLING_GUEST_V3,kind:'owner_money',workspaceId:this.workspaceId,operationId:cmd.operationId,actorId,action:input.action,quoteId:q.id,digest,receipt:operation});
+   await this.tx(c).query('INSERT INTO ls_fishing_billing.commands(workspace_id,operation_id,actor_id,action,quote_id,request_digest,result_ciphertext,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',[this.workspaceId,cmd.operationId,actorId,'guest_'+input.action,q.id,digest,seal(JSON.stringify(record),commandAad(this.workspaceId,cmd.operationId),this.ring),recordedAt]);return operation;
+  },true);
+ }
+ recordCashDate(actor:Actor,raw:unknown){return this.mutateMoney(actor,{action:'cash_date',command:raw});}
+ reverseCash(actor:Actor,raw:unknown){return this.mutateMoney(actor,{action:'reverse_cash',command:raw});}
+ setState(actor:Actor,raw:unknown){return this.mutateMoney(actor,{action:'state',command:raw});}
+ async readMoneyOperationReceipt(actor:Actor,id:string):Promise<OwnerMoneyReceiptV3|null>{
+  billingId.parse(id);return this.context(actor,async c=>{
+   const found=await this.commandRecord(c,id);if(!found)return null;
+   const j=found.record;requireFact(j.kind==='owner_money'&&j.actorId===c.actor.id);if(j.kind!=='owner_money')throw unavailable();
+   const current=await this.snapshot(c,actor,await this.quote(c,j.quoteId));requireFact(j.receipt.operationId===id&&j.receipt.action===j.action&&j.receipt.entityId===j.quoteId&&!j.receipt.replayed&&sameGuestOwnerLineage(j.receipt.result,current));return {...j.receipt,replayed:true};
   });
  }
 }

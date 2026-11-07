@@ -11,7 +11,7 @@ import type {IdentityStore,SqlSession} from '../../src/features/identity/store.t
 import type {BillingAuthority,BillingContext,BillingAction,BillingScope} from '../../src/features/fishing-billing/native.ts';
 import {syntheticDefinition} from '../../src/features/fishing-billing/fixtures.ts';
 import {BILLING_DTO_VERSION,familyOfferSchema,reminderIntentSchema} from '../../src/features/fishing-billing/contracts.ts';
-import {ledgerReceiptV2Schema} from '../../src/features/fishing-billing/contracts-v2.ts';
+import {ledgerReceiptV2Schema,BILLING_DTO_V2} from '../../src/features/fishing-billing/contracts-v2.ts';
 import {CARD_VERSION,cardAttemptSchema} from '../../src/features/fishing-billing/card-contracts.ts';
 import {BILLING_GUEST_V3,type GuestFamilyOffer} from '../../src/lib/fishing-billing-guest-contract-v3.ts';
 import {bindGuestIssuedMaterial,bindGuestDisplayBundle} from '../../src/lib/fishing-billing-guest-material-v3.ts';
@@ -19,6 +19,8 @@ import {guestGrantLifecycleSchema,FishingBillingGuestGrantResolver,type BillingG
 import {FishingBillingGuestNativeV3} from '../../src/features/fishing-billing/guest-native-v3.ts';
 import {changeGuestBillingState} from '../../src/features/fishing-billing/guest-domain-v3.ts';
 import {FishingBillingGuestOwnerStore} from '../../src/lib/fishing-billing-guest-owner-store.ts';
+import {billingOwnerCommandV3Schema,billingOwnerReadV3Schema,ownerMoneyReceiptV3Schema} from '../../src/lib/fishing-billing-owner-contract-v3.ts';
+import {billingOwnerReadV2Schema} from '../../src/lib/fishing-billing-owner-contract-v2.ts';
 
 // Actual memory-only SQL/IdentityStore/fresh session/AEAD/pure-domain/journal.
 // Family authority is synthetic; no actual program/legal/native target, account
@@ -35,7 +37,7 @@ const authority:BillingAuthority={authorize:async(c,a,s)=>{
  if(!s.childIds.length||s.childIds.some(id=>!rows.some(r=>r.id===id)))throw new AppError('FORBIDDEN');
  await onAuthority?.(c,a,s);
 },reminderPermission:async()=>{throw Error('REMINDERS_NOT_ADMITTED');}};
-const store=(now=at)=>new FishingBillingGuestOwnerStore(binder,ws,ring,key,{now:()=>new Date(now)},authority);
+const store=(now=at,dbinder:IdentityStore=binder)=>new FishingBillingGuestOwnerStore(dbinder,ws,ring,key,{now:()=>new Date(now)},authority);
 async function actor(role:'practitioner'|'parent',workspace=ws){
  const id=randomUUID(),digest=id.replaceAll('-','').padEnd(64,'0');
  await db.query("INSERT INTO ls_identity.people(id,workspace_id,kind,profile_ciphertext,created_at) VALUES($1,$2,'adult','SYNTHETIC',$3)",[id,workspace,at]);
@@ -162,6 +164,12 @@ async function seedMoney(q:GuestFamilyOffer){
  const receipts=[ledgerReceiptV2Schema.parse({...common,id:randomUUID(),operationId:randomUUID(),amountMinor:20000,allocations:[{lineId:q.lines[0]!.id,amountMinor:20000}],receivedPrecision:'date',receivedDate:'2035-01-02',timeZone:'America/New_York'}),ledgerReceiptV2Schema.parse({...common,id:randomUUID(),operationId:randomUUID(),amountMinor:10000,allocations:[{lineId:q.lines[1]!.id,amountMinor:10000}],receivedAt:at.toISOString()})];
  for(const r of receipts)await db.query('INSERT INTO ls_fishing_billing.receipts VALUES($1,$2,$3,$4,$5,$6,$7)',[ws,r.id,q.id,r.operationId,null,seal(JSON.stringify(r),'ls_fishing_billing/v1/receipt/'+ws+'/'+r.id,ring),at]);return receipts;
 }
+async function seedReminder(q:GuestFamilyOffer,state:'queued'|'unknown'='queued'){
+ const id=randomUUID(),i=reminderIntentSchema.parse({version:BILLING_DTO_VERSION,id,key:'SYNTHETIC_STATUS_'+id,quoteId:q.id,familyId:q.familyId,guardianId:parent.id,channel:'email',audience:'individual',locale:'he',policyId:'SYNTHETIC_ONLY',policyRevision:1,sequence:0,dueAt:'2035-01-05T22:00:00Z',scheduledAt:'2035-01-05T22:00:00Z',state,dispatchId:state==='unknown'?randomUUID():null,providerId:null,reason:null});
+ const hash=(v:unknown)=>createHmac('sha256',key).update(JSON.stringify(v)).digest('hex'),ciphertext=seal(JSON.stringify(i),'ls_fishing_billing/v1/reminder/'+ws+'/'+id,ring);
+ await db.query('INSERT INTO ls_fishing_billing.reminders VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',[ws,id,q.id,hash({key:i.key}),i.state,ciphertext,'SYNTHETIC_POLICY_NOT_DISPATCHABLE',i.scheduledAt,hash({guardianId:i.guardianId,quoteId:i.quoteId})]);return {intent:i,ciphertext};
+}
+function cashDate(q:GuestFamilyOffer,amount=20000,line=0){return {version:BILLING_GUEST_V3,operationId:randomUUID(),expectedVersion:q.revision,quoteId:q.id,currency:'USD' as const,amountMinor:amount,allocations:[{lineId:q.lines[line]!.id,amountMinor:amount}],receivedPrecision:'date' as const,receivedDate:'2035-01-02',timeZone:'America/New_York' as const};}
 it('current-owner reloads actual Native acceptance and siblings while original owner operation stays original',async()=>{
  const f=await nativeAccepted(),snapshot=await store().readSnapshot(owner,f.command.id),again=await store().readSnapshot(owner,f.command.id);
  expect(snapshot).toEqual(again);expect(snapshot.quote.acceptance?.id).toBe(f.acceptance.acceptanceId);expect(snapshot.quote.acceptance?.parent.submittedName).toBe('SYNTHETIC PARENT ONLY');
@@ -211,4 +219,72 @@ it('current-owner authenticates the complete reminder status set before exposing
  await db.query('INSERT INTO ls_fishing_billing.reminders VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',[ws,id,q.id,hash({key:i.key}),i.state,seal(JSON.stringify(i),'ls_fishing_billing/v1/reminder/'+ws+'/'+id,ring),'SYNTHETIC_POLICY_NOT_DISPATCHABLE',i.scheduledAt,hash({guardianId:i.guardianId,quoteId:i.quoteId})]);
  expect((await store().readSnapshot(owner,q.id)).balance.reminders).toEqual([{id,state:'queued'}]);
  await db.query("UPDATE ls_fishing_billing.reminders SET audience_key=$2 WHERE id=$1",[id,'a'.repeat(64)]);await expect(store().readSnapshot(owner,q.id)).rejects.toMatchObject({code:'UNAVAILABLE'});
+});
+
+it('owner-money records actual owner cash for siblings and reloads the same current result',async()=>{
+ const f=await nativeAccepted(),q=await store().readQuote(owner,f.command.id),cmd={...cashDate(q,30000),allocations:[{lineId:q.lines[0]!.id,amountMinor:20000},{lineId:q.lines[1]!.id,amountMinor:10000}]},r=await store().recordCashDate(owner,cmd),current=await store().readSnapshot(owner,q.id);
+ expect(r.result.balance).toMatchObject({paidMinor:30000,remainingMinor:100000,state:'partial'});expect(r.entityVersion).toBe(q.revision+1);expect(r.recordedAt).toBe(at.toISOString());expect(r.result.receiptId).not.toBeNull();
+ expect(r.result.balance.receipts[0]).toMatchObject({actorId:owner.id,receivedPrecision:'date',receivedDate:'2035-01-02',recordedAt:at.toISOString(),provider:null});expect(r.result.balance.receipts[0]).not.toHaveProperty('receivedAt');
+ expect({...r.result,receiptId:null}).toEqual(current);expect(current.quote.acceptance).toEqual(q.acceptance);
+});
+it('owner-money returns original retry/recovery receipts after a later current balance advances',async()=>{
+ const f=await nativeAccepted(),q=await store().readQuote(owner,f.command.id),cmd=cashDate(q),first=await store().recordCashDate(owner,cmd),after=await store().recordCashDate(owner,cashDate(first.result.quote,5000,1));
+ expect(await store().recordCashDate(owner,cmd)).toEqual({...first,replayed:true});const found=await store().readMoneyOperationReceipt(owner,cmd.operationId);expect(found).toEqual({...first,replayed:true});
+ const current=await store().readSnapshot(owner,q.id);expect(current.balance.paidMinor).toBe(25000);expect(found?.result.balance.paidMinor).toBe(20000);expect(current.quote.revision).toBe(after.entityVersion);
+ expect(billingOwnerReadV3Schema.parse({version:BILLING_GUEST_V3,state:'confirmed',receipt:found,current}).state).toBe('confirmed');expect((await db.query('SELECT id FROM ls_fishing_billing.receipts WHERE quote_id=$1',[q.id])).rows).toHaveLength(2);
+});
+it('owner-money conflicts changed bodies/actions/stale revisions without writing another receipt',async()=>{
+ const f=await nativeAccepted(),q=await store().readQuote(owner,f.command.id),cmd=cashDate(q);await store().recordCashDate(owner,cmd);
+ await expect(store().recordCashDate(owner,{...cmd,amountMinor:20001,allocations:[{lineId:q.lines[0]!.id,amountMinor:20001}]})).rejects.toMatchObject({code:'CONFLICT'});
+ await expect(store().setState(owner,{version:BILLING_GUEST_V3,operationId:cmd.operationId,expectedVersion:q.revision,quoteId:q.id,paused:true})).rejects.toMatchObject({code:'CONFLICT'});
+ const stale=cashDate(q);await expect(store().recordCashDate(owner,stale)).rejects.toMatchObject({code:'CONFLICT'});expect(await store().readMoneyOperationReceipt(owner,stale.operationId)).toBeNull();expect((await db.query('SELECT id FROM ls_fishing_billing.receipts WHERE quote_id=$1',[q.id])).rows).toHaveLength(1);
+});
+it('owner-money never turns an unanswered quote or zero debt into payment',async()=>{
+ const f=await scenario();await store().createOffer(owner,f.command);const issued=await store().issueOffer(owner,issue(f.command.id));const queued=await seedReminder(issued.quote);
+ const state=await store().setState(owner,{version:BILLING_GUEST_V3,operationId:randomUUID(),expectedVersion:issued.entityVersion,quoteId:issued.entityId,paused:false});expect(state.result.balance).toMatchObject({state:'no_debt',paidMinor:0});expect(state.result.balance.reminders).toEqual([{id:queued.intent.id,state:'queued'}]);
+ await expect(store().recordCashDate(owner,cashDate(state.result.quote))).rejects.toMatchObject({code:'INVALID_REQUEST'});expect((await db.query('SELECT id FROM ls_fishing_billing.receipts WHERE quote_id=$1',[issued.entityId])).rows).toHaveLength(0);
+});
+it('owner-money rejects future received dates and preserves a late Florida calendar date exactly',async()=>{
+ const f=await nativeAccepted(),q=await store().readQuote(owner,f.command.id);await expect(store().recordCashDate(owner,{...cashDate(q),receivedDate:'2035-01-03'})).rejects.toMatchObject({code:'INVALID_REQUEST'});
+ const late=new Date('2035-03-12T05:30:00Z'),r=await store(late).recordCashDate(owner,{...cashDate(q),receivedDate:'2035-03-11'});expect(r.result.balance.receipts[0]).toMatchObject({receivedDate:'2035-03-11',timeZone:'America/New_York',recordedAt:late.toISOString()});expect(r.result.balance.receipts[0]).not.toHaveProperty('receivedAt');
+});
+it('owner-money appends a linked correction without rewriting original cash or allowing excess returns',async()=>{
+ const f=await nativeAccepted(),q=await store().readQuote(owner,f.command.id),cash=await store().recordCashDate(owner,cashDate(q)),original=cash.result.balance.receipts[0]!,before=(await db.query<{payload_ciphertext:string}>('SELECT payload_ciphertext FROM ls_fishing_billing.receipts WHERE id=$1',[original.id])).rows[0]!.payload_ciphertext;
+ const command={version:BILLING_GUEST_V3,operationId:randomUUID(),expectedVersion:cash.entityVersion,quoteId:q.id,originalReceiptId:original.id,amountMinor:5000,allocations:[{lineId:q.lines[0]!.id,amountMinor:5000}],reason:'SYNTHETIC amount correction'},r=await store().reverseCash(owner,command);
+ expect(r.result.balance.paidMinor).toBe(15000);expect(r.result.balance.receipts.find(m=>m.id===r.result.receiptId)).toMatchObject({kind:'cash_reversal',originalReceiptId:original.id,receivedAt:at.toISOString(),reason:command.reason,actorId:owner.id,provider:null});
+ expect((await db.query<{payload_ciphertext:string}>('SELECT payload_ciphertext FROM ls_fishing_billing.receipts WHERE id=$1',[original.id])).rows[0]!.payload_ciphertext).toBe(before);
+ await expect(store().reverseCash(owner,{...command,operationId:randomUUID(),expectedVersion:r.entityVersion,amountMinor:16000,allocations:[{lineId:q.lines[0]!.id,amountMinor:16000}]})).rejects.toMatchObject({code:'INVALID_REQUEST'});
+});
+it('owner-money pause/cancel preserves financial facts and suppresses queued reminders while keeping UNKNOWN',async()=>{
+ const f=await nativeAccepted(),q=await store().readQuote(owner,f.command.id),cash=await store().recordCashDate(owner,cashDate(q)),queued=await seedReminder(cash.result.quote),unknown=await seedReminder(cash.result.quote,'unknown');
+ const paused=await store().setState(owner,{version:BILLING_GUEST_V3,operationId:randomUUID(),expectedVersion:cash.entityVersion,quoteId:q.id,paused:true});expect(paused.result.balance).toMatchObject({paidMinor:20000,remainingMinor:110000,paused:true});expect(paused.result.balance.reminders).toContainEqual({id:queued.intent.id,state:'suppressed'});expect(paused.result.balance.reminders).toContainEqual({id:unknown.intent.id,state:'unknown'});
+ const cancelled=await store().setState(owner,{version:BILLING_GUEST_V3,operationId:randomUUID(),expectedVersion:paused.entityVersion,quoteId:q.id,cancel:true});expect(cancelled.result.balance).toMatchObject({paidMinor:20000,remainingMinor:110000,cancelled:true});expect(cancelled.result.quote.acceptance).toEqual(q.acceptance);expect(cancelled.result.balance.receipts).toEqual(cash.result.balance.receipts);
+ expect((await db.query<{payload_ciphertext:string}>('SELECT payload_ciphertext FROM ls_fishing_billing.reminders WHERE id=$1',[unknown.intent.id])).rows[0]!.payload_ciphertext).toBe(unknown.ciphertext);
+});
+it('owner-money full cash suppresses queued debt reminders and never rewrites in-flight UNKNOWN',async()=>{
+ const f=await nativeAccepted(),q=await store().readQuote(owner,f.command.id),queued=await seedReminder(q),unknown=await seedReminder(q,'unknown'),cmd={...cashDate(q,130000),allocations:q.lines.map(l=>({lineId:l.id,amountMinor:65000}))};
+ const r=await store().recordCashDate(owner,cmd);expect(r.result.balance).toMatchObject({state:'paid',remainingMinor:0,paidMinor:130000});expect(r.result.balance.reminders).toContainEqual({id:queued.intent.id,state:'suppressed'});expect(r.result.balance.reminders).toContainEqual({id:unknown.intent.id,state:'unknown'});
+ expect((await db.query<{payload_ciphertext:string}>('SELECT payload_ciphertext FROM ls_fishing_billing.reminders WHERE id=$1',[unknown.intent.id])).rows[0]!.payload_ciphertext).toBe(unknown.ciphertext);
+});
+it.each(['INSERT INTO ls_fishing_billing.receipts','UPDATE ls_fishing_billing.quotes','UPDATE ls_fishing_billing.reminders','INSERT INTO ls_fishing_billing.commands'])('owner-money rolls the whole transaction back on %s failure',async point=>{
+ const f=await nativeAccepted(),q=await store().readQuote(owner,f.command.id),queued=await seedReminder(q),before=(await row(q.id)).rows[0]!,cmd={...cashDate(q,130000),allocations:q.lines.map(l=>({lineId:l.id,amountMinor:65000}))};fault=point;
+ await expect(store().recordCashDate(owner,cmd)).rejects.toMatchObject({code:'UNAVAILABLE'});fault=null;expect((await row(q.id)).rows[0]!).toEqual(before);expect((await db.query('SELECT id FROM ls_fishing_billing.receipts WHERE quote_id=$1',[q.id])).rows).toHaveLength(0);expect(await store().readMoneyOperationReceipt(owner,cmd.operationId)).toBeNull();
+ expect((await db.query<{payload_ciphertext:string}>('SELECT payload_ciphertext FROM ls_fishing_billing.reminders WHERE id=$1',[queued.intent.id])).rows[0]!.payload_ciphertext).toBe(queued.ciphertext);
+});
+it('owner-money recovers a committed lost response through the same operation and another instance',async()=>{
+ const f=await nativeAccepted(),q=await store().readQuote(owner,f.command.id),cmd=cashDate(q);let lose=true;
+ const lost:IdentityStore={transaction:async work=>{const r=await binder.transaction(work);if(lose){lose=false;throw Error('SYNTHETIC_COMMITTED_RESULT_LOST');}return r;}};
+ await expect(store(at,lost).recordCashDate(owner,cmd)).rejects.toMatchObject({code:'UNAVAILABLE'});const found=await store().readMoneyOperationReceipt(owner,cmd.operationId);expect(found?.result.balance.paidMinor).toBe(20000);expect(found?.replayed).toBe(true);expect(await store().recordCashDate(owner,cmd)).toEqual(found);expect((await db.query('SELECT id FROM ls_fishing_billing.receipts WHERE quote_id=$1',[q.id])).rows).toHaveLength(1);
+});
+it('owner-money recovery still requires current owner access while a closed collection gate cannot duplicate history',async()=>{
+ const f=await nativeAccepted(),q=await store().readQuote(owner,f.command.id),cmd=cashDate(q),first=await store().recordCashDate(owner,cmd);onAuthority=async(_,a)=>{if(a==='cash')throw new AppError('FORBIDDEN');};
+ expect(await store().recordCashDate(owner,cmd)).toEqual({...first,replayed:true});await expect(store().recordCashDate(owner,cashDate(first.result.quote,1000))).rejects.toMatchObject({code:'UNAVAILABLE'});await expect(store().readMoneyOperationReceipt(parent,cmd.operationId)).rejects.toMatchObject({code:'UNAVAILABLE'});
+ onAuthority=async()=>{throw new AppError('FORBIDDEN');};await expect(store().readMoneyOperationReceipt(owner,cmd.operationId)).rejects.toMatchObject({code:'UNAVAILABLE'});
+});
+it('owner-money V3 validators keep real original/current scope and reject legacy relabels or false receipt IDs',async()=>{
+ const f=await nativeAccepted(),q=await store().readQuote(owner,f.command.id),cmd=cashDate(q),r=await store().recordCashDate(owner,cmd),current=await store().readSnapshot(owner,q.id),payload={version:BILLING_GUEST_V3,state:'confirmed' as const,receipt:r,current};
+ expect(billingOwnerReadV3Schema.parse(payload)).toEqual(payload);expect(billingOwnerReadV2Schema.safeParse(payload).success).toBe(false);expect(billingOwnerCommandV3Schema.safeParse({action:'cash_date',command:{...cmd,version:BILLING_DTO_V2}}).success).toBe(false);
+ expect(billingOwnerCommandV3Schema.safeParse({action:'state',command:{version:BILLING_GUEST_V3,operationId:randomUUID(),expectedVersion:q.revision,quoteId:q.id}}).success).toBe(false);
+ expect(ownerMoneyReceiptV3Schema.safeParse({...r,result:{...r.result,receiptId:randomUUID()}}).success).toBe(false);expect(ownerMoneyReceiptV3Schema.safeParse({...r,recordedAt:'2034-01-01T00:00:00Z'}).success).toBe(false);
+ const other=await nativeAccepted(),foreignCurrent=await store().readSnapshot(owner,other.command.id);expect(billingOwnerReadV3Schema.safeParse({...payload,current:foreignCurrent}).success).toBe(false);
 });
