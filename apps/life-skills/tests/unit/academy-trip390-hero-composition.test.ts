@@ -176,29 +176,32 @@ describe('HERO-SHORT-CONTACT-R01 readiness before initial/reflow paint',()=>{
 describe('CONTACT-SCROLL-R01 actual layout-hook event lifecycle',()=>{
  // Execute the actual hook with deterministic geometry/RAF primitives. This
  // observes readiness/event ordering, not browser paint or scroll smoothness.
- function mounted(oldScroll=false){
+ type Target={l:number;r:number;t:number;b:number;g:number};
+ function mounted(oldScroll=false,fontSize=17,viewportWidth=1280,oldHighFallback=false,geometry?:{left:number;right:number;top:number;height:number;targets:Target[]}){
   const source=ts.createSourceFile('page.tsx',readFileSync(new URL('../../src/features/group-application/academy-trip390-page.tsx',import.meta.url),'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
   let callback='';const visit=(node:ts.Node)=>{if(ts.isCallExpression(node)&&ts.isIdentifier(node.expression)&&node.expression.text==='useLayoutEffect'&&node.arguments[0]?.getText(source).includes('const link=contact.current'))callback=node.arguments[0].getText(source);ts.forEachChild(node,visit);};visit(source);
   // Controlled bad-before: bind the current actual structural scheduler to
   // scroll, exactly as c3b did. It must fail the clear-scroll readiness rule.
   if(oldScroll)callback=callback.replace("window.addEventListener('scroll',scroll,","window.addEventListener('scroll',schedule,");
+  if(oldHighFallback)callback=callback.replace('||!textReflow','');
   const frames=new Map<number,()=>void>(),windowEvents=new Map<string,()=>void>(),documentEvents=new Map<string,()=>void>(),transitions:string[]=[];
-  let serial=0,lift=0,visibleHero=false,blocked=false,queries=0;
-  const rect=(top:number,bottom:number)=>({left:1100,right:1156,top,bottom,width:56,height:bottom-top});
+  let serial=0,lift=0,visibleHero=false,blocked=false,queries=0,paintedTop:number|null=null;
+  const rect=(top:number,bottom:number)=>({left:geometry?.left??viewportWidth-74,right:geometry?.right??viewportWidth-18,top,bottom,width:56,height:bottom-top});
+  const targetNode=(r:Target)=>({closest:()=>null,matches:()=>false,getClientRects:()=>[r],getBoundingClientRect:()=>({left:r.l,right:r.r,top:r.t,bottom:r.b,width:r.r-r.l,height:r.b-r.t})});
   const link={dataset:new Proxy({contactReady:'false'},{set:(target,key,value)=>{if(key==='contactReady')transitions.push(String(value));return Reflect.set(target,key,value);}}),tabIndex:-1,ariaHidden:'true' as string|null,
-   style:{visibility:'',setProperty:(_key:string,value:string)=>{lift=parseFloat(value);},removeProperty:()=>{lift=0;}},getBoundingClientRect:()=>rect(700-lift,756-lift),
+   style:{visibility:'',setProperty:(_key:string,value:string)=>{lift=parseFloat(value);},removeProperty:()=>{lift=0;}},getBoundingClientRect:()=>rect((geometry?.top??700)-lift,(geometry?.top??700)+56-lift),
    setAttribute:(_key:string,value:string)=>{link.ariaHidden=value;},removeAttribute:()=>{link.ariaHidden=null;}};
   const obstacle={closest:()=>null,matches:()=>false,getClientRects:()=>[rect(400,800)],getBoundingClientRect:()=>rect(400,800)};
   const image={complete:false};
   const dependencies={contact:{current:link},hero:{current:{querySelector:()=>visibleHero?image:null,getBoundingClientRect:()=>({top:visibleHero?0:-500,bottom:visibleHero?800:-100})}},
-   page:{current:{querySelectorAll:(selector:string)=>{queries++;return blocked&&selector==='a,button,summary,input,select,textarea'?[obstacle]:[];}}},header:{current:{getBoundingClientRect:()=>({bottom:80})}},dialog:{current:{open:false}},menuOpen:false,
+   page:{current:{querySelectorAll:(selector:string)=>{queries++;if(geometry)return geometry.targets.filter(r=>selector==='a,button,summary,input,select,textarea'?r.g===12:selector==='[data-jlfa-values] article svg'&&r.g===4).map(targetNode);return blocked&&selector==='a,button,summary,input,select,textarea'?[obstacle]:paintedTop!==null&&selector==='[data-jlfa-values] article svg'?[{getBoundingClientRect:()=>rect(paintedTop!,800)}]:[];}}},header:{current:{getBoundingClientRect:()=>({bottom:80})}},dialog:{current:{open:false}},menuOpen:false,
    registeredHero:()=>null,contactDockState,initialContactDock:contactDockState(false,false,'pending'),ResizeObserver:undefined,
-   requestAnimationFrame:(fn:()=>void)=>{frames.set(++serial,fn);return serial;},cancelAnimationFrame:(id:number)=>{frames.delete(id);},getComputedStyle:()=>({visibility:'visible'}),
-   window:{innerWidth:1280,innerHeight:800,addEventListener:(event:string,fn:()=>void)=>{windowEvents.set(event,fn);},removeEventListener:(event:string,fn:()=>void)=>{if(windowEvents.get(event)===fn)windowEvents.delete(event);}},
+   requestAnimationFrame:(fn:()=>void)=>{frames.set(++serial,fn);return serial;},cancelAnimationFrame:(id:number)=>{frames.delete(id);},getComputedStyle:()=>({visibility:'visible',fontSize:`${fontSize}px`}),
+   window:{innerWidth:viewportWidth,innerHeight:geometry?.height??800,addEventListener:(event:string,fn:()=>void)=>{windowEvents.set(event,fn);},removeEventListener:(event:string,fn:()=>void)=>{if(windowEvents.get(event)===fn)windowEvents.delete(event);}},
    document:{addEventListener:(event:string,fn:()=>void)=>{documentEvents.set(event,fn);},removeEventListener:(event:string,fn:()=>void)=>{if(documentEvents.get(event)===fn)documentEvents.delete(event);}}};
   const emitted=ts.transpileModule(`return (${callback});`,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
   const cleanup=(new Function(...Object.keys(dependencies),emitted)(...Object.values(dependencies)) as ()=>()=>void)();
-  return {link,frames,transitions,windowEvents,documentEvents,cleanup,setHero:(value:boolean)=>{visibleHero=value;},setBlocked:(value:boolean)=>{blocked=value;},queries:()=>queries,
+  return {link,frames,transitions,windowEvents,documentEvents,cleanup,setHero:(value:boolean)=>{visibleHero=value;},setBlocked:(value:boolean)=>{blocked=value;},setPaintedTop:(value:number|null)=>{paintedTop=value;},lift:()=>lift,queries:()=>queries,
    flush:()=>{const pending=[...frames.values()];frames.clear();pending.forEach(fn=>fn());},scroll:()=>windowEvents.get('scroll')!(),resize:()=>windowEvents.get('resize')!(),toggle:()=>documentEvents.get('toggle')!()};
  }
  it('rejects c3b pending-frame reset and preserves clear readiness through repeated current scroll events',()=>{
@@ -218,6 +221,42 @@ describe('CONTACT-SCROLL-R01 actual layout-hook event lifecycle',()=>{
   current.setHero(false);current.setBlocked(true);current.scroll();expect(current.link.dataset.contactReady).toBe('false');expect(current.link.style.visibility).toBe('hidden');
   current.setBlocked(false);current.scroll();expect(current.link).toBe(sameLink);expect(current.link.dataset.contactReady).toBe('true');expect(current.link.style.visibility).toBe('');current.cleanup();
  });
+ it('bounds ordinary desktop to the local band instead of jumping above painted content',()=>{
+  const width=1280;
+  const before=mounted(false,17,width,true);before.flush();before.setPaintedTop(400);before.scroll();expect(before.lift()).toBeGreaterThan(224);before.cleanup();
+  const current=mounted(false,17,width);current.flush();current.setPaintedTop(600);current.scroll();expect(current.link.dataset.contactReady).toBe('true');expect(current.lift()).toBeLessThanOrEqual(224);
+  const clearLocalTop=current.link.getBoundingClientRect().top;current.setPaintedTop(null);current.scroll();expect(current.link.getBoundingClientRect().top).toBe(clearLocalTop);
+  current.setPaintedTop(400);current.scroll();expect(current.link.dataset.contactReady).toBe('false');expect(current.link.style.visibility).toBe('hidden');expect(current.lift()).toBe(0);
+  current.setPaintedTop(null);current.scroll();expect(current.link.dataset.contactReady).toBe('true');expect(current.lift()).toBe(0);current.cleanup();
+ });
+ it('uses the actual Hebrew left-corner clear slot instead of the observed physical-right whole-viewport jump',()=>{
+  // Public c3b HE390x844/scrollY3376 painted Range/icon/control rectangles.
+  // Replaying this geometry tests the actual hook, not a browser CSS engine.
+  const targets:Target[]=[
+   {l:194.796875,r:334,t:64.328125,b:84.328125,g:4},{l:70.609375,r:334,t:103.328125,b:120.328125,g:4},
+   {l:20.734375,r:354.25,t:242.328125,b:278.328125,g:4},{l:21.328125,r:353.65625,t:300.359375,b:319.359375,g:4},
+   {l:45.03125,r:329.96875,t:328.40625,b:347.40625,g:4},{l:60.234375,r:314.765625,t:356.453125,b:375.453125,g:4},
+   {l:315,r:355,t:412.5,b:452.5,g:12},{l:164.921875,r:299,t:414.5,b:436.5,g:4},{l:23.984375,r:299,t:451.5,b:470.5,g:4},
+   {l:233.5,r:299,t:479.546875,b:498.546875,g:4},{l:315,r:355,t:535.59375,b:575.59375,g:12},
+   {l:113.015625,r:299,t:537.59375,b:559.59375,g:4},{l:27.53125,r:299,t:574.59375,b:593.59375,g:4},
+   {l:255.171875,r:299,t:602.640625,b:621.640625,g:4},{l:315,r:355,t:658.6875,b:698.6875,g:12},
+   {l:101.625,r:299,t:660.6875,b:682.6875,g:4},{l:20.5625,r:299,t:697.6875,b:716.6875,g:4},
+   {l:140.609375,r:299,t:725.734375,b:744.734375,g:4},{l:315,r:355,t:781.78125,b:821.78125,g:12},
+   {l:166,r:299,t:783.78125,b:805.78125,g:4},{l:63.359375,r:299,t:820.78125,b:839.78125,g:4},{l:193.640625,r:299,t:848.828125,b:867.828125,g:4},
+  ];
+  const at=(left:number,right:number)=>({left,right,top:770,height:844,targets});
+  const before=mounted(false,17,390,true,at(301,357));before.flush();expect(before.lift()).toBeGreaterThan(224);before.cleanup();
+  let logicalEnd=false,physicalRight=false,rtlSafeArea=false;
+  css.walkRules(rule=>{if(rule.selector==='.page .whatsapp')rule.walkDecls(d=>{if(d.prop==='inset-inline-end')logicalEnd=true;if(d.prop==='right')physicalRight=true;});if(rule.selector==='.page[dir=rtl] .whatsapp')rule.walkDecls('inset-inline-end',d=>{rtlSafeArea=d.value.includes('safe-area-inset-left');});});
+  expect(logicalEnd).toBe(true);expect(physicalRight).toBe(false);expect(rtlSafeArea).toBe(true);
+  const current=mounted(false,17,390,false,logicalEnd&&!physicalRight?at(18,74):at(301,357));current.flush();
+  expect(current.link.dataset.contactReady).toBe('true');expect(current.lift()).toBeCloseTo(9.21875);expect(current.link.getBoundingClientRect().left).toBe(18);
+  const priorTop=current.link.getBoundingClientRect().top;current.scroll();expect(current.link.getBoundingClientRect().top).toBe(priorTop);current.cleanup();
+ });
+ it('preserves higher same-node restoration only in the existing enlarged text-reflow layout',()=>{
+  const current=mounted(false,34,390),sameLink=current.link;current.flush();current.setPaintedTop(400);current.scroll();
+  expect(current.link).toBe(sameLink);expect(current.link.dataset.contactReady).toBe('true');expect(current.link.style.visibility).toBe('');expect(current.lift()).toBeGreaterThan(224);expect(current.link.getBoundingClientRect().top).toBeGreaterThan(92);current.cleanup();
+ });
 });
 
 describe('R08 source-qualified enlarged photo contact and actual-scroll restoration',()=>{
@@ -234,6 +273,14 @@ describe('R08 source-qualified enlarged photo contact and actual-scroll restorat
  it('R08 admits the measured source-rectangle no-slot case without enlarging the224 budget',()=>{
   const {primary,dock}=blocked();expect(dock.box.top-(dock.protectedPhoto!.top-dock.box.height-12)).toBeCloseTo(233.932);
   expect(admittedEnlargedPhotoBlock(primary,dock)).toBe(true);
+ });
+ it('R08 qualifies the actual inline-end corner and rejects the wrong side in each direction',()=>{
+  const {primary,dock}=blocked(),left={...dock,box:rect(18,770,56,56)};
+  expect(admittedEnlargedPhotoBlock(primary,{...left,direction:'rtl'})).toBe(true);
+  expect(admittedEnlargedPhotoBlock(primary,{...dock,direction:'ltr'})).toBe(true);
+  expect(admittedEnlargedPhotoBlock(primary,{...dock,direction:'rtl'})).toBe(false);
+  expect(admittedEnlargedPhotoBlock(primary,{...left,direction:'ltr'})).toBe(false);
+  expect(admittedEnlargedPhotoBlock(primary,{...left,direction:'unknown'})).toBe(false);
  });
  it('R08 rejects ordinary, declaration-only and forged-flow hidden states',()=>{
   const {primary,dock}=blocked();

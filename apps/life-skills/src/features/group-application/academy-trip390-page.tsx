@@ -239,7 +239,15 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, reser
     }
    }
    const headerFloor=(header.current?.getBoundingClientRect().bottom??0)+gap;
+   // Match the existing text-reflow layout, not an ordinary scroll position.
+   // Only enlarged text may need R08's higher same-node body restoration.
+   const textReflow=Boolean(page.current&&parseFloat(getComputedStyle(page.current).fontSize)>=26);
    let top=baseTop,floor=Math.max(headerFloor,baseTop-168),metText=false;
+   // Keep a still-clear local slot instead of snapping back down on each tick.
+   const priorTop=baseTop-lift;
+   if(lift>0&&lift<=224&&priorTop>=headerFloor&&!obstacles.some(rect=>rect.top<priorTop+box.height+rect.gap&&rect.bottom>priorTop-rect.gap)){
+    top=priorTop;floor=Math.min(floor,priorTop);
+   }
    for(let index=0;index<=obstacles.length;index++){
     const overlap=obstacles.filter(rect=>rect.top<top+box.height+rect.gap&&rect.bottom>top-rect.gap);
     if(!overlap.length)break;
@@ -249,7 +257,7 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, reser
     if(top>=floor)continue;
     // Exhaust the lower band first. Above it, use the closest clear body slot
     // only after the hero has scrolled behind the header and the menu is closed.
-    if(top<headerFloor||!metText||menuOpen||!hero.current||hero.current.getBoundingClientRect().bottom>headerFloor-gap)break;
+    if(top<headerFloor||!metText||!textReflow||menuOpen||!hero.current||hero.current.getBoundingClientRect().bottom>headerFloor-gap)break;
     floor=headerFloor;
     // A higher dock must also leave supporting photos and their captions clear.
     page.current?.querySelectorAll('main img,main figcaption').forEach(node=>{
