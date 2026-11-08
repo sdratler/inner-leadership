@@ -143,12 +143,15 @@ describe('reviewed V3 client / injected synthetic wire with retained workflow',(
 });
 
 describe('guest card boundary remains disabled without the new transport',()=>{
- it('exposes no legacy card link/action even with capability and historical client supplied',async()=>{
+ it.each(['en','he'] as const)('exposes no legacy card link/action with plain %s wording even with capability and historical client supplied',async locale=>{
   const legacy=syntheticDateCashFixtures(),transport=vi.fn(async()=>{throw Error('NO_CARD_REQUEST');});
   const card=createFishingBillingCardOwnerClient({origin:'https://synthetic-account-card.invalid',scope:dataScope(legacy),csrf:async()=>'a'.repeat(43),transport,readCurrent:async()=>({...legacy,receiptId:null})});
   const x=setup(async()=>{throw Error('NO_MONEY_REQUEST');}),workflow=new BillingWorkflow(x.ports,card);
   expect(workflow.canPrepareCard(f.pending)).toBe(false);expect(workflow.canCreateCheckout(f.pending)).toBe(false);expect(workflow.checkoutUrl(f.pending)).toBeNull();
   expect(await workflow.readCard(f.pending,f.pending.balance.pendingAttemptIds[0])).toBe(false);expect(await workflow.prepareCard({operationId:syntheticId(2999)},f.pending)).toBe(false);
-  const html=render(f.pending,workflow);expect(html).toContain('Guest card collection unavailable');expect(html).not.toContain('Open TEST Checkout');expect(html).not.toContain('Check existing attempt');expect(transport).not.toHaveBeenCalled();
+  const html=render(f.pending,workflow,locale);
+  expect(html).toContain(locale==='en'?'Card payment unavailable':'תשלום בכרטיס אינו זמין');expect(html).toContain(locale==='en'?'Card payment is unavailable for this offer.':'תשלום בכרטיס אינו זמין עבור הצעה זו.');
+  expect(html).not.toContain('Guest card');expect(html).not.toContain('guest offer');expect(html).not.toContain('גביית כרטיס לאורח');expect(html).not.toContain('הצעת אורח');
+  expect(html).not.toContain('Open TEST Checkout');expect(html).not.toContain('Check existing attempt');expect(transport).not.toHaveBeenCalled();
  });
 });
