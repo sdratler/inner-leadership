@@ -2,6 +2,7 @@ import {z} from 'zod';
 import {billingId,reminderPolicySchema,type FamilyOffer,type ReminderIntent,type ReminderPolicy} from './contracts.ts';
 import type {BillingLedgerContext,BillingScope,BillingOutboxReservation} from './native.ts';
 import type {DispatchPermission} from './reminders.ts';
+import type {BillingCurrentReminderServiceAuthorityV3} from '../../lib/fishing-billing-current-ledger-v3.ts';
 
 export const REMINDER_SERVICE_VERSION='JLFA-FISHING-REMINDER-SERVICE-v1' as const;
 export const reminderServiceBindingSchema=z.object({
@@ -42,6 +43,9 @@ export interface BillingReminderServiceAuthority{
  permission(context:BillingLedgerContext,binding:ReminderServiceBinding,quote:FamilyOffer,policy:ReminderPolicy,audience:ReminderServiceAudience):Promise<DispatchPermission>;
 }
 export type BillingReminderServiceConfiguration={binding:ReminderServiceBinding;authority:BillingReminderServiceAuthority};
+/** Additive current-source binding. Missing configuration denies; it never
+ * selects the legacy FamilyOffer permission callback for a guest successor. */
+export type BillingCurrentReminderServiceConfigurationV3={binding:ReminderServiceBinding;authority:BillingCurrentReminderServiceAuthorityV3};
 export type ReminderOutboxPayload=Parameters<BillingOutboxReservation['reserve']>[1];
 /** Additional methods on the SAME existing outbox binding. Reserve must write
  * only in context.tx; no transport. Read must return its actually verified
