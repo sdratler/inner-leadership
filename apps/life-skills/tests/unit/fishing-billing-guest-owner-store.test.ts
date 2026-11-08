@@ -29,6 +29,9 @@ import {projectBillingCurrentLedgerV3} from '../../src/lib/fishing-billing-curre
 import {projectHistoricalAccountPayableBasis} from '../../src/lib/fishing-billing-guest-material-v3.ts';
 import {decodeBillingCurrentQuoteV3,readHistoricalFinancialOriginalV3,type CurrentBillingQuoteRowV3} from '../../src/lib/fishing-billing-current-readback-v3.ts';
 import {syntheticGuestOwnerMoneyFixturesV3} from '../fixtures/fishing-billing-owner-v3.ts';
+import {FishingBillingCards,type BillingStripeTestProvider} from '../../src/features/fishing-billing/cards.ts';
+import {fishingBillingCardOwnerHttpV3,type FishingBillingCardOwnerDepsV3} from '../../src/lib/fishing-billing-card-owner-http-v3.ts';
+import {createFishingBillingCardOwnerClientV3} from '../../src/lib/fishing-billing-card-owner-client-v3.ts';
 
 // Actual memory-only SQL/IdentityStore/fresh session/AEAD/pure-domain/journal.
 // Family authority is synthetic; no actual program/legal/native target, account
@@ -488,6 +491,54 @@ it('current-native-read returns no acceptance for an actual unanswered account q
 it('current-native-read captures its actual transaction and workspace before asynchronous historical reads',async()=>{
  const f=await historicalAccepted();let redirected=false;
  await binder.transaction(async tx=>{const c={tx,workspaceId:ws,now:new Date(at)};afterSql=async sql=>{if(sql.includes('FROM ls_fishing_billing.obligations')){c.tx={query:async()=>{redirected=true;return [];}};c.workspaceId=other;}};expect(await readHistoricalFinancialOriginalV3(c,f.current,ring,historicalCommandDigest)).toEqual(f.accepted.result.quote);});expect(redirected).toBe(false);
+});
+// Connected actual Native/Card -> existing HTTP/client, in-process only.
+// Identity lookup, proxy/CSRF/rate and current legal/family/service admission
+// remain synthetic. Native/Card methods are real; provider calls are mocked.
+function actualCardPipeline(q:GuestFamilyOffer,initialActor:Actor=owner){
+ let currentActor=initialActor;
+ const binding={accountId:'acct_SYNTHETIC',livemode:false as const,apiVersion:'2026-09-30.endive' as const,verifiedBindingId:'SYNTHETIC-CURRENT-CARD'};
+ const native=new FishingBillingStore(binder,ws,ring,key,authority,{now:()=>new Date(at)},null,{authorize:async(c,b,s)=>{
+  if(c.workspaceId!==ws||b.accountId!==binding.accountId||b.verifiedBindingId!==binding.verifiedBindingId||!s.familyId)throw new AppError('FORBIDDEN');
+  const children=await c.tx.query<{id:string}>("SELECT person_id AS id FROM ls_cases.family_members WHERE workspace_id=$1 AND family_id=$2 AND role='child'",[ws,s.familyId]);
+  if(!s.childIds.length||s.childIds.some(id=>!children.some(row=>row.id===id)))throw new AppError('FORBIDDEN');
+ }});
+ const provider:BillingStripeTestProvider={createCheckout:vi.fn<BillingStripeTestProvider['createCheckout']>(async request=>({accountId:binding.accountId,livemode:false,apiVersion:binding.apiVersion,quoteId:request.quoteId,attemptId:request.operationId,id:'cs_SYNTHETIC',amountMinor:request.amountMinor,currency:'USD',url:'https://checkout.stripe.com/c/pay/SYNTHETIC',paymentStatus:'unpaid'})),readPayment:vi.fn(async()=>{throw Error('PROVIDER_READ_NOT_ADMITTED');})};
+ const cards=new FishingBillingCards(native,ring,key,{binding,cardOnlyConfigurationId:'pmc_SYNTHETIC',approvedProductLabel:'SYNTHETIC ONLY'},{authorize:async()=>{throw Error('INBOX_NOT_ADMITTED');}},provider);
+ const deps:FishingBillingCardOwnerDepsV3={origin:ownerOrigin,actor:async token=>{if(token!==ownerToken)throw new AppError('UNAUTHENTICATED');return currentActor;},csrf:()=>ownerCsrf,limits:{consume:async()=>({count:1,retryAfterMs:0})},rateLimitKey:'d'.repeat(32),cards,readCurrent:native.readCurrentLedgerV3.bind(native)};
+ const transport=vi.fn(async(request:Request)=>{
+  const headers=new Headers(request.headers);for(const [k,v] of Object.entries({host:'fishing-owner-v3.example.invalid','x-forwarded-host':'fishing-owner-v3.example.invalid','x-forwarded-proto':'https',cookie:'__Host-ls-session='+ownerToken,...(request.method==='POST'?{origin:ownerOrigin,'sec-fetch-site':'same-origin'}:{})}))headers.set(k,v);
+  return fishingBillingCardOwnerHttpV3(new Request(request.clone(),{headers}),async()=>deps);
+ });
+ const client=createFishingBillingCardOwnerClientV3({origin:ownerOrigin,scope:{quoteId:q.id,familyId:q.familyId,workspaceId:q.workspaceId},csrf:async()=>ownerCsrf,transport,readCurrent:id=>deps.readCurrent(currentActor,id)});
+ const command={operationId:randomUUID(),quoteId:q.id,expectedVersion:q.revision,selection:q.lines.map(l=>({lineId:l.id,amountMinor:10000}))};
+ return {native,cards,provider,deps,transport,client,command,setActor:(actor:Actor)=>{currentActor=actor;}};
+}
+it('actual-card-transport binds immutable preparation and later current money through Native and HTTP/client',async()=>{
+ const f=await nativeAccepted(),q=await store().readQuote(owner,f.command.id),p=actualCardPipeline(q),prepared=await p.client.prepare(p.command);
+ expect(prepared.kind).toBe('prepared');if(prepared.kind!=='prepared')throw Error('EXPECTED_PREPARED');
+ expect(prepared.data.receipt).toMatchObject({version:CARD_VERSION,operationId:p.command.operationId,entityVersion:q.revision+1});expect(prepared.data.current.source.kind).toBe('guest_successor');expect(prepared.data.current.balance.pendingAttemptIds).toEqual([p.command.operationId]);expect(prepared.data.attempt.command.selection).toEqual(p.command.selection);
+ const checkout=await p.client.createCheckout(p.command.operationId);expect(checkout.kind).toBe('attempt');if(checkout.kind!=='attempt')throw Error('EXPECTED_ATTEMPT');expect(checkout.data.checkoutUrl).toBe('https://checkout.stripe.com/c/pay/SYNTHETIC');expect(p.provider.createCheckout).toHaveBeenCalledOnce();
+ const latest=await store().readQuote(owner,q.id);await store().recordCashDate(owner,cashDate(latest,5000,1));
+ const recovered=await p.client.readOperation(p.command.operationId);expect(recovered?.receipt.entityVersion).toBe(q.revision+1);expect(recovered?.current.source.quote.revision).toBe(latest.revision+1);expect(recovered?.current.balance).toMatchObject({paidMinor:5000,state:'partial'});expect(recovered?.checkoutUrl).toBeNull();expect(recovered?.current.balance.receipts[0]).toMatchObject({receivedDate:'2035-01-02',timeZone:'America/New_York'});expect(p.provider.createCheckout).toHaveBeenCalledOnce();
+ expect((await db.query('SELECT id FROM ls_fishing_billing.card_attempts WHERE quote_id=$1',[q.id])).rows).toHaveLength(1);
+});
+it('actual-card-transport recovers a lost preparation reply without a second native save or provider call',async()=>{
+ const f=await nativeAccepted(),q=await store().readQuote(owner,f.command.id),p=actualCardPipeline(q),send=p.transport.getMockImplementation()!;
+ p.transport.mockImplementationOnce(async request=>{await send(request);throw Error('SYNTHETIC_LOST_REPLY_AFTER_ACTUAL_COMMIT');});
+ expect(await p.client.prepare(p.command)).toEqual({kind:'unknown'});expect(p.transport).toHaveBeenCalledOnce();
+ const before=(await row(q.id)).rows[0]!,recovered=await p.client.readOperation(p.command.operationId);expect(recovered?.receipt.operationId).toBe(p.command.operationId);expect(recovered?.receipt.entityVersion).toBe(q.revision+1);expect((await row(q.id)).rows[0]).toEqual(before);expect((await db.query('SELECT id FROM ls_fishing_billing.card_attempts WHERE quote_id=$1',[q.id])).rows).toHaveLength(1);expect(p.provider.createCheckout).not.toHaveBeenCalled();
+});
+it('actual-card-transport preserves committed preparation as UNKNOWN on session revocation and recovers with fresh owner session',async()=>{
+ const f=await nativeAccepted(),q=await store().readQuote(owner,f.command.id),session=await ownerSession(),p=actualCardPipeline(q,session);let reads=0;
+ p.deps.readCurrent=async(a,id)=>{if(++reads===2)await db.query('DELETE FROM ls_identity.sessions WHERE token_digest=$1',[session.sessionDigest]);return p.native.readCurrentLedgerV3(a,id);};
+ expect(await p.client.prepare(p.command)).toEqual({kind:'unknown'});expect((await db.query('SELECT id FROM ls_fishing_billing.card_attempts WHERE quote_id=$1',[q.id])).rows).toHaveLength(1);
+ await expect(p.client.readOperation(p.command.operationId)).rejects.toThrow('BILLING_CARD_READBACK_UNAVAILABLE');
+ p.setActor(await ownerSession());const recovered=await p.client.readOperation(p.command.operationId);expect(recovered?.receipt.operationId).toBe(p.command.operationId);expect(recovered?.current.source.quote.revision).toBe(q.revision+1);expect(p.provider.createCheckout).not.toHaveBeenCalled();
+});
+it('actual-card-transport reports current stale revision before creating a native attempt',async()=>{
+ const f=await nativeAccepted(),q=await store().readQuote(owner,f.command.id),p=actualCardPipeline(q);await store().recordCashDate(owner,cashDate(q,1000));
+ const before=(await row(q.id)).rows[0]!,result=await p.client.prepare(p.command);expect(result.kind).toBe('conflict');if(result.kind!=='conflict')throw Error('EXPECTED_CONFLICT');expect(result.current.source.quote.revision).toBe(q.revision+1);expect((await row(q.id)).rows[0]).toEqual(before);expect((await db.query('SELECT id FROM ls_fishing_billing.card_attempts WHERE quote_id=$1',[q.id])).rows).toHaveLength(0);expect(p.provider.createCheckout).not.toHaveBeenCalled();
 });
 it('owner-ui-fixtures preserve exact V3 commands, compact originals, later current and synthetic provenance',()=>{
  const f=syntheticGuestOwnerMoneyFixturesV3();expect(f.syntheticOnly).toBe(true);expect(f.evidenceKind).toBe('PURE_DATA_NOT_NATIVE_OR_LIVE');expect(JSON.parse(JSON.stringify(f))).toEqual(f);
