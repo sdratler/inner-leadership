@@ -3,7 +3,8 @@ import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {readFileSync} from 'node:fs';
 import postcss from 'postcss';
-import {AcademyTrip390Page,desktopHeroBands} from '../../src/features/group-application/academy-trip390-page.tsx';
+import ts from 'typescript';
+import {AcademyTrip390Page,desktopHeroBands,contactDockState} from '../../src/features/group-application/academy-trip390-page.tsx';
 import assets from '../../src/features/group-application/academy-hero-assets.json';
 import {academyR2Copy} from '../../src/features/group-application/academy-r2-copy.ts';
 
@@ -77,5 +78,38 @@ describe('ordinary hero composition without the typed-attr/aspect support cliff'
    if(rule.selector.includes('[data-master-height]')&&rule.selector.endsWith(' h1'))rule.walkDecls('font-size',d=>{usesBandFont=d.value.includes('--upper-band')&&d.value.includes('36px');});
    if(rule.selector.includes('[data-master-height]')&&rule.selector.endsWith(' .heroAction'))rule.walkDecls('gap',d=>{gapWithinSource=d.value.startsWith('clamp(12px,')&&d.value.endsWith(',16px)');});
   });expect(frameFromPicture).toBe(true);expect(usesBandFont).toBe(true);expect(gapWithinSource).toBe(true);
+ });
+});
+
+describe('HERO-SHORT-CONTACT-R01 readiness before initial/reflow paint',()=>{
+ it('R01 keeps pending/unloaded/blocked geometry inert and permits the same dock after a clear measurement',()=>{
+  const inert={ready:false,tabIndex:-1,ariaHidden:true},ready={ready:true,tabIndex:0,ariaHidden:false};
+  expect(contactDockState(true,false,'pending')).toEqual(inert); // initial
+  expect(contactDockState(true,true,'pending')).toEqual(inert); // image loaded, not yet placed
+  expect(contactDockState(true,false,'clear')).toEqual(inert); // no authenticated photo geometry
+  expect(contactDockState(true,true,'clear')).toEqual(ready);
+  expect(contactDockState(true,true,'pending')).toEqual(inert); // reflow invalidates old placement
+  expect(contactDockState(true,true,'blocked')).toEqual(inert);
+  expect(contactDockState(true,true,'clear')).toEqual(ready); // settles clear again
+  expect(contactDockState(false,false,'clear')).toEqual(ready); // usable below the hero
+ });
+ it.each(['en','he'] as const)('R01 renders the %s floating badge inert before hydration while keeping footer contact reachable',initialLocale=>{
+  const html=renderToStaticMarkup(createElement(AcademyTrip390Page,{initialLocale}));
+  const dock=html.match(/<a[^>]*data-contact-ready="false"[^>]*>/)![0];expect(dock).toContain('tabindex="-1"');expect(dock).toContain('aria-hidden="true"');expect(dock).toContain('https://wa.me/13054916674');
+  const footer=html.slice(html.indexOf('<footer'),html.indexOf('</footer>'));expect(footer).toContain('https://wa.me/13054916674');
+  let pendingHidden=false,fixedDock=false;
+  css.walkRules(rule=>{
+   if(rule.selector==='.page .whatsapp:not([data-contact-ready=true])')rule.walkDecls('visibility',d=>{pendingHidden=d.value==='hidden';});
+   if(rule.selector==='.page .whatsapp')rule.walkDecls('position',d=>{fixedDock=d.value==='fixed';});
+  });expect(pendingHidden).toBe(true);expect(fixedDock).toBe(true);
+ });
+ it('R01 invalidates synchronously before queued measurement and on hero reflow in a pre-paint layout hook',()=>{
+  const source=ts.createSourceFile('academy-trip390-page.tsx',readFileSync(new URL('../../src/features/group-application/academy-trip390-page.tsx',import.meta.url),'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
+  const calls:ts.CallExpression[]=[],visit=(n:ts.Node)=>{if(ts.isCallExpression(n))calls.push(n);ts.forEachChild(n,visit);};visit(source);
+  const hook=calls.find(c=>ts.isIdentifier(c.expression)&&c.expression.text==='useLayoutEffect'&&c.arguments[0]?.getText(source).includes('const link=contact.current'))!;
+  expect(hook).toBeDefined();const deps=hook.arguments[1];expect(deps&&ts.isArrayLiteralExpression(deps)?deps.elements.map(e=>e.getText(source)):[]).toEqual(['locale','dialogOpen','menuOpen','heroReflow']);
+  const schedule:ts.VariableDeclaration[]=[];const find=(n:ts.Node)=>{if(ts.isVariableDeclaration(n)&&n.name.getText(source)==='schedule')schedule.push(n);ts.forEachChild(n,find);};find(hook.arguments[0]!);
+  const arrow=schedule[0]!.initializer!;expect(ts.isArrowFunction(arrow)).toBe(true);
+  const body=ts.isArrowFunction(arrow)&&ts.isBlock(arrow.body)?arrow.body:null;expect(body?.statements[0]?.getText(source)).toBe('invalidate();');expect(body?.getText(source)).toContain('requestAnimationFrame(measure)');
  });
 });
