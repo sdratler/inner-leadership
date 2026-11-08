@@ -30,12 +30,31 @@ const recordSchema=z.object({version:z.literal(FISHING_INQUIRY_FAMILY_PROPOSAL_V
  financialAcceptance:z.literal(false),outboundEligible:z.literal(false),
 }).strict();
 export type FishingInquiryFamilyProposal=z.infer<typeof recordSchema>;
-type Row={id:string;reference:string;familyId:string;guardianId:string;operationId:string;recordedBy:string;
- sourceDigest:string;nativeDigest:string;requestDigest:string;ciphertext:string;createdAt:Date};
+export type FishingInquiryFamilyProposalRow=Readonly<{id:string;reference:string;familyId:string;guardianId:string;operationId:string;recordedBy:string;
+ sourceDigest:string;nativeDigest:string;requestDigest:string;ciphertext:string;createdAt:Date}>;
+type Row=FishingInquiryFamilyProposalRow;
 const select='SELECT id,application_id AS reference,family_id AS "familyId",guardian_person_id AS "guardianId",operation_id AS "operationId",recorded_by AS "recordedBy",source_digest AS "sourceDigest",native_digest AS "nativeDigest",request_digest AS "requestDigest",payload_ciphertext AS ciphertext,created_at AS "createdAt" FROM ls_fishing_billing.inquiry_family_proposals';
 type Selection=z.infer<typeof selection>;
 function fail(code:'CONFLICT'|'UNAVAILABLE'='UNAVAILABLE'):never{throw new AppError(code);}
 const aad=(workspace:string,id:string)=>`ls_fishing_billing/inquiry_family_proposal/v1/${workspace}/${id}`;
+const proposalRequestDigest=(workspace:WorkspaceId,integrityKey:string,actorId:string,command:FishingFamilyProposalCommand)=>
+ privateDigest({domain:'fishing-inquiry-family-proposal-command/v1',workspace,value:{actorId,command}},integrityKey);
+
+/** Stored-byte integrity ONLY. A decoded proposal remains proposed, with all
+ * four approval flags false. This pure decoder checks no current session,
+ * source, native membership, guardian, recipient or runtime authorization.
+ * Callers must separately establish access and current authority in their TX. */
+export function decodeFishingInquiryFamilyProposalRecord(row:FishingInquiryFamilyProposalRow,
+ context:{workspaceId:WorkspaceId;keyring:Keyring;integrityKey:string}):FishingInquiryFamilyProposal{
+ try{
+  const value=recordSchema.parse(JSON.parse(unseal(row.ciphertext,aad(context.workspaceId,row.id),context.keyring))),c=value.command;
+  if(value.id!==row.id||value.workspaceId!==context.workspaceId||c.selection.reference!==row.reference||c.selection.familyId!==row.familyId||
+   value.guardianPersonId!==row.guardianId||c.operationId!==row.operationId||value.recordedBy!==row.recordedBy||
+   c.expectedSourceDigest!==row.sourceDigest||c.expectedNativeDigest!==row.nativeDigest||
+   proposalRequestDigest(context.workspaceId,context.integrityKey,value.recordedBy,c)!==row.requestDigest||value.recordedAt!==row.createdAt.toISOString())fail();
+  return value;
+ }catch{fail();}
+}
 
 /** Internal preparation only. This associates an authentic current inquiry and
  * its already admitted Academy adult contact with explicitly selected EXISTING
@@ -54,7 +73,7 @@ export class FishingBillingInquiryFamilyProposals{
   if(owner.workspaceId!==this.workspace)throw new AppError('FORBIDDEN');return owner;
  }
  private hash(domain:string,value:unknown){return privateDigest({domain,workspace:this.workspace,value},this.integrityKey);}
- private request(actorId:string,command:FishingFamilyProposalCommand){return this.hash('fishing-inquiry-family-proposal-command/v1',{actorId,command});}
+ private request(actorId:string,command:FishingFamilyProposalCommand){return proposalRequestDigest(this.workspace,this.integrityKey,actorId,command);}
  private fields(record:GroupApplicationRecord):Trip390CurrentInterest{
   if(!isTrip390Interest(record.fields)||!isCurrentTrip390Interest(record.fields))throw new AppError('NOT_FOUND');
   return record.fields;
@@ -76,14 +95,7 @@ export class FishingBillingInquiryFamilyProposals{
   return this.hash('fishing-inquiry-family-proposal-native/v1',{family:{...family,createdAt:family.createdAt.toISOString()},children});
  }
  private decode(row:Row):FishingInquiryFamilyProposal{
-  try{
-   const value=recordSchema.parse(JSON.parse(unseal(row.ciphertext,aad(this.workspace,row.id),this.ring))),c=value.command;
-   if(value.id!==row.id||value.workspaceId!==this.workspace||c.selection.reference!==row.reference||c.selection.familyId!==row.familyId||
-    value.guardianPersonId!==row.guardianId||c.operationId!==row.operationId||value.recordedBy!==row.recordedBy||
-    c.expectedSourceDigest!==row.sourceDigest||c.expectedNativeDigest!==row.nativeDigest||
-    this.request(value.recordedBy,c)!==row.requestDigest||value.recordedAt!==row.createdAt.toISOString())fail();
-   return value;
-  }catch{fail();}
+  return decodeFishingInquiryFamilyProposalRecord(row,{workspaceId:this.workspace,keyring:this.ring,integrityKey:this.integrityKey});
  }
  async preview(actor:Actor,input:{expectedEpoch:number;selection:Selection}){
   const owner=this.owner(actor),c=z.object({expectedEpoch:epoch,selection}).strict().parse(input);

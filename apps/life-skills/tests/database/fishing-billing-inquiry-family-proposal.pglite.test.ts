@@ -14,7 +14,7 @@ import {AcademyCrmStore} from '../../src/features/contact-ops/server/academy-crm
 import {PublicGroupApplicationStore} from '../../src/features/group-application/store.ts';
 import {groupApplicationRequestDigest} from '../../src/features/group-application/group-application-record.ts';
 import {TRIP390_V1_INTEREST_VERSION,TRIP390_V1_NOTICE_VERSION,TRIP390_V1_OFFER,type Trip390V1Interest} from '../../src/features/group-application/academy-trip390-v1.ts';
-import {FishingBillingInquiryFamilyProposals,type FishingFamilyProposalCommand} from '../../src/lib/fishing-billing-inquiry-family-proposal.ts';
+import {decodeFishingInquiryFamilyProposalRecord,FishingBillingInquiryFamilyProposals,type FishingFamilyProposalCommand,type FishingInquiryFamilyProposalRow} from '../../src/lib/fishing-billing-inquiry-family-proposal.ts';
 vi.mock('server-only',()=>({}));
 
 // New no-URL memory DB, real committed DDL/stores/crypto and synthetic data.
@@ -88,6 +88,41 @@ async function reloadActor(f:Awaited<ReturnType<typeof fixture>>){
  const sessions=new IdentitySessions(db,{enabled:true,workspaceId:f.workspace,origin:'https://synthetic.example.invalid',keyring:ring,csrfKey:Buffer.alloc(32,8),lookupKey:Buffer.alloc(32,9),rateLimitKey:key,sessionSeconds:3600},clock);
  return sessions.actor(token);
 }
+
+async function storedProposal(f:Awaited<ReturnType<typeof fixture>>){
+ return (await engine.query<FishingInquiryFamilyProposalRow>('SELECT id,application_id AS reference,family_id AS "familyId",guardian_person_id AS "guardianId",operation_id AS "operationId",recorded_by AS "recordedBy",source_digest AS "sourceDigest",native_digest AS "nativeDigest",request_digest AS "requestDigest",payload_ciphertext AS ciphertext,created_at AS "createdAt" FROM ls_fishing_billing.inquiry_family_proposals WHERE workspace_id=$1',[f.workspace])).rows[0]!;
+}
+it('pure integrity decoder authenticates the actual stored proposal without granting authority or changing records',async()=>{
+ const f=await fixture(),saved=await f.store().propose(f.owner,await f.prepare()),row=await storedProposal(f),source=await f.source(),counts=await f.counts();
+ const context={workspaceId:f.workspace,keyring:ring,integrityKey:key},decoded=decodeFishingInquiryFamilyProposalRecord(row,context);
+ expect(decoded).toEqual(saved.record);expect(decoded).toMatchObject({state:'proposed',guardianVerified:false,recipientVerified:false,financialAcceptance:false,outboundEligible:false});
+ // Integrity decoding remains possible after session revocation; the actual
+ // current-authority reader still denies that same owner. These are different.
+ await engine.query('UPDATE ls_identity.sessions SET revoked_at=$2 WHERE token_digest=$1',[f.owner.sessionDigest,now]);
+ expect(decodeFishingInquiryFamilyProposalRecord(row,context)).toEqual(saved.record);
+ await expect(f.store().read(f.owner,{reference:f.saved.item.id,expectedEpoch:1})).rejects.toThrow('UNAUTHENTICATED');
+ expect(await storedProposal(f)).toEqual(row);expect(await f.source()).toEqual(source);expect(await f.counts()).toEqual(counts);
+});
+it.each(['workspace','keyring','integrityKey'] as const)('pure integrity decoder rejects wrong %s binding',async binding=>{
+ const f=await fixture();await f.store().propose(f.owner,await f.prepare());const row=await storedProposal(f);
+ const context={workspaceId:binding==='workspace'?asId(randomUUID(),'workspace'):f.workspace,
+  keyring:binding==='keyring'?{activeKeyId:'synthetic',keys:{synthetic:Buffer.alloc(32,9)}}:ring,
+  integrityKey:binding==='integrityKey'?'SYNTHETIC-WRONG-INTEGRITY-KEY':key};
+ expect(()=>decodeFishingInquiryFamilyProposalRecord(row,context)).toThrow('UNAVAILABLE');
+});
+it.each(['recordedBy','requestDigest','createdAt'] as const)('pure integrity decoder rejects changed %s metadata',async field=>{
+ const f=await fixture();await f.store().propose(f.owner,await f.prepare());const row=await storedProposal(f);
+ const corrupt={...row,...(field==='recordedBy'?{recordedBy:f.parent.id}:field==='requestDigest'?{requestDigest:'f'.repeat(64)}:{createdAt:new Date(now.getTime()+1)})};
+ expect(()=>decodeFishingInquiryFamilyProposalRecord(corrupt,{workspaceId:f.workspace,keyring:ring,integrityKey:key})).toThrow('UNAVAILABLE');
+});
+it.each(['version','guardianVerified','recipientVerified','financialAcceptance','outboundEligible'] as const)('pure integrity decoder rejects authenticated but unsupported %s payload',async field=>{
+ const f=await fixture(),saved=await f.store().propose(f.owner,await f.prepare()),row=await storedProposal(f);
+ // Fixture-only keys can create a valid envelope; neither that envelope nor
+ // recorded metadata may turn proposed association into independently approved data.
+ const payload={...saved.record,[field]:field==='version'?'SYNTHETIC-UNSUPPORTED-VERSION':true};
+ const corrupt={...row,ciphertext:seal(JSON.stringify(payload),`ls_fishing_billing/inquiry_family_proposal/v1/${f.workspace}/${row.id}`,ring)};
+ expect(()=>decodeFishingInquiryFamilyProposalRecord(corrupt,{workspaceId:f.workspace,keyring:ring,integrityKey:key})).toThrow('UNAVAILABLE');
+});
 
 it('stores and new-session reloads a real source/native association while keeping every approval false',async()=>{
  const f=await fixture(),source=await f.source(),counts=await f.counts(),command=await f.prepare();
