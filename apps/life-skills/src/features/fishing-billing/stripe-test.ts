@@ -8,6 +8,7 @@ import type {WorkspaceId,IdentityClock} from '../identity/types.ts';
 import {billingId,billingAmount,billingInstant,type FamilyOffer,type BillingBalance} from './contracts.ts';
 import {requireBilling} from './domain.ts';
 import {billingStripeBindingSchema,type BillingStripeBinding} from './card-binding.ts';
+import {currentLedgerFrameV3Schema,type CurrentLedgerFrameV3} from '../../lib/fishing-billing-current-contract-v3.ts';
 export type {BillingStripeBinding} from './card-binding.ts';
 
 /** Reuse PR189's reviewed SDK verifier through a server-created closure. This
@@ -91,6 +92,20 @@ export function prepareBillingTestCheckout(input:{
  selection:{lineId:string;amountMinor:number}[];
  binding:BillingStripeBinding;cardOnlyConfigurationId:string;approvedProductLabel:string;
 }){
+ return prepareTestCheckoutRequest(input);
+}
+/** Current source-aware preparation remains inert: this frame must come from
+ * the actual Native port. A parsed frame never authorizes a provider effect. */
+export function prepareBillingCurrentTestCheckoutV3(input:Omit<Parameters<typeof prepareBillingTestCheckout>[0],'quote'|'balance'>&{frame:CurrentLedgerFrameV3}){
+ const frame=currentLedgerFrameV3Schema.parse(input.frame);
+ requireBilling(frame.payableBasis!==null&&!['review_required','overpaid'].includes(frame.balance.state),'UNAVAILABLE');
+ return prepareTestCheckoutRequest({...input,quote:frame.source.quote,balance:frame.balance});
+}
+type TestCheckoutRequestInput=Omit<Parameters<typeof prepareBillingTestCheckout>[0],'quote'>&{
+ quote:Pick<FamilyOffer,'id'|'familyId'|'revision'|'state'|'paused'>&{acceptance:unknown|null;definition:Pick<FamilyOffer['definition'],'environment'>};
+};
+// Both public helpers use the same selection/amount/request calculation.
+function prepareTestCheckoutRequest(input:TestCheckoutRequestInput){
  const {quote:q,balance:b}=input,selection=selectionSchema.parse(input.selection),binding=bindingSchema.parse(input.binding);
  billingId.parse(input.operationId);
  requireBilling(q.state==='accepted'&&q.acceptance&&!q.paused&&b.cancelled===false&&b.missingPolicy.length===0,'UNAVAILABLE');
