@@ -6,7 +6,11 @@ import {asId} from '../../src/lib/ids.ts';
 import {AppError} from '../../src/lib/errors.ts';
 import {seal,unseal,tokenDigest} from '../../src/features/identity/crypto.ts';
 import type {IdentityStore,SqlSession} from '../../src/features/identity/store.ts';
-import type {BillingLedgerContext} from '../../src/features/fishing-billing/native.ts';
+import {FishingBillingStore,type BillingLedgerContext,type BillingAuthority} from '../../src/features/fishing-billing/native.ts';
+import type {Actor} from '../../src/features/identity/types.ts';
+import {ledgerReceiptSchema} from '../../src/features/fishing-billing/contracts.ts';
+import {FishingBillingGuestOwnerStore} from '../../src/lib/fishing-billing-guest-owner-store.ts';
+import {OWNER_MONEY_V3} from '../../src/lib/fishing-billing-owner-contract-v3.ts';
 import {syntheticDefinition,syntheticDraft,syntheticAccepted,syntheticId,syntheticOwner,syntheticWorkspace} from '../../src/features/fishing-billing/fixtures.ts';
 import {createGuestFamilyOffer,issueGuestFamilyOffer,changeGuestBillingState,projectGuestBalanceV3} from '../../src/features/fishing-billing/guest-domain-v3.ts';
 import {FishingBillingGuestNativeV3,guestFinancialEvidenceEnvelopeSchema} from '../../src/features/fishing-billing/guest-native-v3.ts';
@@ -32,6 +36,7 @@ let swapAtRead:''|'quote'|'operation'|'evidence'|'obligations'='';
 let expireAtRead:''|'evidence'|'obligations'='',revokeAtRead:''|'evidence'|'obligations'='';
 const trace:{sql:string;values:readonly unknown[]}[]=[];
 const clock={now:()=>{clockCalls++;return new Date(clockCalls>=expireOnRead?'2035-01-03T15:00:00.000Z':currentTime);}};
+const currentOwner:Actor={id:asId(syntheticOwner,'account'),workspaceId:ws,personId:asId(syntheticOwner,'person'),role:'practitioner',state:'active',locale:'en',sessionDigest:'c'.repeat(64),expiresAt:Date.parse('2036-01-01T00:00:00Z')};
 const query=async<T extends object=Record<string,unknown>>(sql:string,values:unknown[]=[])=> (await db.query<T>(sql,values)).rows;
 let seeded:Awaited<ReturnType<typeof seed>>;
 
@@ -132,6 +137,7 @@ beforeAll(async()=>{
  for(const [id,kind] of [[syntheticOwner,'adult'],[syntheticId(20),'minor'],[syntheticId(21),'minor']])await query('INSERT INTO ls_identity.people(id,workspace_id,kind,profile_ciphertext,created_at) VALUES($1,$2,$3,$4,$5)',[id,ws,kind,'SYNTHETIC ONLY',initial]);
  await query("INSERT INTO ls_identity.accounts(id,workspace_id,role,state,locale,email_blind,email_ciphertext,email_verified_at,password_hash,created_at,updated_at) VALUES($1,$2,'practitioner','active','en',$3,'SYNTHETIC',$4,'SYNTHETIC-NONLOGIN',$4,$4)",[syntheticOwner,ws,'a'.repeat(64),initial]);
  await query('INSERT INTO ls_identity.account_subjects VALUES($1,$2,$2)',[ws,syntheticOwner]);
+ await query('INSERT INTO ls_identity.sessions(token_digest,workspace_id,account_id,created_at,expires_at) VALUES($1,$2,$3,$4,$5)',[currentOwner.sessionDigest,ws,syntheticOwner,initial,'2036-01-01T00:00:00Z']);
  const family=syntheticDraft().familyId;await query('INSERT INTO ls_cases.families(id,workspace_id,label_ciphertext,created_at) VALUES($1,$2,$3,$4)',[family,ws,'SYNTHETIC ONLY',initial]);
  for(const id of [syntheticId(20),syntheticId(21)])await query("INSERT INTO ls_cases.family_members VALUES($1,$2,$3,'child')",[ws,family,id]);
 },20000);
@@ -141,6 +147,53 @@ beforeEach(async()=>{
  seeded=await seed();
 });
 afterAll(async()=>{await db.close();});
+
+const currentAuthority:BillingAuthority={
+ authorize:async(c,_action,s)=>{
+  if(denyCurrent||c.actor.id!==currentOwner.id||s.familyId!==seeded.quote.familyId||s.quoteId!==seeded.quote.id)throw new AppError('FORBIDDEN');
+  const admissions=await c.tx.query('SELECT family_id FROM synthetic_guest.admissions WHERE workspace_id=$1 AND family_id=$2 AND active=true',[c.workspaceId,s.familyId]);
+  const members=await c.tx.query<{id:string}>("SELECT person_id AS id FROM ls_cases.family_members WHERE workspace_id=$1 AND family_id=$2 AND role='child'",[c.workspaceId,s.familyId]);
+  if(admissions.length!==1||s.childIds.length!==2||!s.childIds.every(id=>members.some(m=>m.id===id)))throw new AppError('FORBIDDEN');
+ },
+ reminderPermission:async()=>{throw new AppError('UNAVAILABLE');},
+};
+const currentNative=()=>new FishingBillingStore(binder,ws,ring,digestKey,currentAuthority,clock);
+it('current V3 guest owner read consumes actual Native acceptance without creating an account acceptance',async()=>{
+ const accepted=await accept(),frame=await currentNative().readCurrentLedgerV3(currentOwner,seeded.quote.id);
+ expect(frame.source.kind).toBe('guest_successor');expect(frame.source.quote.version).toBe(BILLING_GUEST_V3);expect(frame.balance.version).toBe(BILLING_GUEST_V3);
+ expect(frame.balance).toMatchObject({state:'unpaid',dueMinor:130000,remainingMinor:130000});
+ expect(frame.payableBasis?.acceptance).toMatchObject({kind:'guest_successor',evidence:{id:accepted.acceptanceId}});
+ expect(frame.payableBasis?.acceptance).not.toHaveProperty('actorAccountId');expect(await counts()).toEqual({operations:1,evidence:1,obligations:2});
+});
+it('current V3 guest original financial history stays owner-readable after its guest link expires',async()=>{
+ await accept();currentTime=Date.parse('2035-01-04T15:00:00Z');const before=await snapshot();
+ const frame=await currentNative().readCurrentLedgerV3(currentOwner,seeded.quote.id);
+ expect(frame.source.kind).toBe('guest_successor');expect(frame.balance.remainingMinor).toBe(130000);expect(await snapshot()).toEqual(before);
+});
+it.each(['statement','journal'] as const)('current V3 guest rejects corrupted actual original %s evidence without writes',async kind=>{
+ await accept();const before=await snapshot();corruptReplay=kind;
+ try{await expect(currentNative().readCurrentLedgerV3(currentOwner,seeded.quote.id)).rejects.toThrow();}finally{corruptReplay='';}
+ expect(await snapshot()).toEqual(before);
+});
+it('current V3 guest authenticated quote cannot be relinked by a changed revision index',async()=>{
+ await accept();await query('UPDATE ls_fishing_billing.quotes SET revision=4');const before=await snapshot();
+ await expect(currentNative().readCurrentLedgerV3(currentOwner,seeded.quote.id)).rejects.toThrow('UNAVAILABLE');expect(await snapshot()).toEqual(before);
+});
+it('current V3 guest card-shaped test fact and actual Root date cash share the original financial ledger',async()=>{
+ const accepted=await accept();
+ const partial=await currentNative().withCurrentCardActorV3(currentOwner,seeded.quote.id,async l=>l.advance([ledgerReceiptSchema.parse({
+  id:syntheticId(1850),operationId:syntheticId(1851),quoteId:seeded.quote.id,familyId:seeded.quote.familyId,kind:'card',currency:'USD',amountMinor:65000,
+  allocations:[{lineId:seeded.quote.lines[0]!.id,amountMinor:65000}],originalReceiptId:null,actorId:null,receivedAt:initial,recordedAt:l.context.now.toISOString(),reason:null,
+  provider:{accountId:'acct_Synthetic',mode:'test',transactionId:'pi_SYNTHETIC_ONLY'},
+ })]));
+ expect(partial.source.quote.revision).toBe(4);expect(partial.balance.remainingMinor).toBe(65000);
+ const money=new FishingBillingGuestOwnerStore(binder,ws,ring,digestKey,clock,currentAuthority);
+ await money.recordCashDate(currentOwner,{version:OWNER_MONEY_V3,operationId:syntheticId(1852),quoteId:seeded.quote.id,expectedVersion:4,currency:'USD',amountMinor:20000,allocations:[{lineId:seeded.quote.lines[1]!.id,amountMinor:20000}],receivedPrecision:'date',receivedDate:'2035-01-02',timeZone:'America/New_York'});
+ const frame=await currentNative().readCurrentLedgerV3(currentOwner,seeded.quote.id);
+ expect(frame.source.kind).toBe('guest_successor');expect(frame.source.quote.revision).toBe(5);expect(frame.balance).toMatchObject({paidMinor:85000,remainingMinor:45000});
+ expect(frame.balance.receipts).toHaveLength(2);expect(frame.balance.receipts.some(r=>r.kind==='cash'&&'receivedDate' in r&&r.receivedDate==='2035-01-02')).toBe(true);
+ expect(frame.payableBasis?.acceptance).toMatchObject({kind:'guest_successor',evidence:{id:accepted.acceptanceId}});expect(await counts()).toEqual({operations:1,evidence:1,obligations:2});
+});
 
 it('durably saves actual encrypted evidence, journal, two child/period obligations and consumed grant together',async()=>{
  const receipt=await accept();expect(receipt).toMatchObject({quoteId:seeded.quote.id,acceptedRevision:3,acceptedAt:initial,replayed:false,paymentStateAtAcceptance:'unpaid'});

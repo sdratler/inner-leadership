@@ -3,10 +3,14 @@ import {readFile} from 'node:fs/promises';
 import {PGlite} from '@electric-sql/pglite';
 import {beforeAll,afterAll,it,expect,vi} from 'vitest';
 import {asId} from '../../src/lib/ids.ts';
+import {seal,unseal} from '../../src/features/identity/crypto.ts';
+import {ledgerReceiptSchema} from '../../src/features/fishing-billing/contracts.ts';
+import {billingStripeBindingSchema} from '../../src/features/fishing-billing/card-binding.ts';
+import type {BillingCurrentCardLedgerV3} from '../../src/lib/fishing-billing-current-ledger-v3.ts';
 import {AppError} from '../../src/lib/errors.ts';
 import type {Actor} from '../../src/features/identity/types.ts';
 import type {IdentityStore,SqlSession} from '../../src/features/identity/store.ts';
-import {FishingBillingStore,type BillingAuthority,type BillingOutboxReservation} from '../../src/features/fishing-billing/native.ts';
+import {FishingBillingStore,type BillingAuthority,type BillingOutboxReservation,type BillingFinancialServiceAuthority} from '../../src/features/fishing-billing/native.ts';
 import {syntheticDefinition} from '../../src/features/fishing-billing/fixtures.ts';
 import type {CreateFamilyOffer,FamilyOffer,ReminderPolicy} from '../../src/features/fishing-billing/contracts.ts';
 import {BILLING_DTO_V2} from '../../src/features/fishing-billing/contracts-v2.ts';
@@ -346,4 +350,109 @@ it('rejects a plaintext digest rewrite that disagrees with the encrypted stored 
  const changedBody='CHANGED_AUTHENTICATED_BYTES',changedDigest=createHash('sha256').update(changedBody).digest('hex');
  await db.query('UPDATE ls_fishing_billing.stripe_events SET body_digest=$2 WHERE event_id=$1',[eventId,changedDigest]);
  await expect(inbox().ingest(signedTestEvent(eventId,changedBody))).rejects.toThrow('CONFLICT');
+});
+
+// Changed current-reader/atomic-port cases only. Provider-shaped facts below
+// are synthetic trusted test inputs, not SDK/payment or live-source evidence.
+function currentV3Payment(l:BillingCurrentCardLedgerV3,amountMinor=20000,allLines=false){
+ const q=l.frame.source.quote;
+ return ledgerReceiptSchema.parse({id:randomUUID(),operationId:randomUUID(),quoteId:q.id,familyId:q.familyId,kind:'card',currency:'USD',amountMinor,
+  allocations:allLines?q.lines.map(line=>({lineId:line.id,amountMinor:line.amountMinor})):[{lineId:q.lines[0]!.id,amountMinor}],
+  originalReceiptId:null,actorId:null,receivedAt:now.toISOString(),recordedAt:l.context.now.toISOString(),reason:null,
+  provider:{accountId:'acct_Synthetic',mode:'test',transactionId:'pi_'+randomUUID()},
+ });
+}
+it('current V3 owner read authenticates original parent evidence after a later owner money revision',async()=>{
+ const f=await scenario();await store().recordCash(owner,cash(f.quote));
+ const original=(await db.query<{operation_id:string}>("SELECT operation_id FROM ls_fishing_billing.commands WHERE quote_id=$1 AND action='accept'",[f.quote.id])).rows[0]!;
+ await expect(store().readOperationReceiptV2(owner,original.operation_id)).rejects.toThrow('FORBIDDEN');
+ const frame=await store().readCurrentLedgerV3(owner,f.quote.id);
+ expect(frame.source.kind).toBe('historical_account');expect(frame.source.quote.revision).toBe(4);
+ expect(frame.payableBasis?.acceptance).toMatchObject({kind:'historical_account',actorAccountId:parent.id,quoteRevision:2});
+ expect(frame.balance).toMatchObject({paidMinor:20000,remainingMinor:110000});
+});
+it('current V3 actor advance appends a synthetic provider fact to the same ledger and original source',async()=>{
+ const f=await scenario(),result=await store().withCurrentCardActorV3(owner,f.quote.id,async l=>{
+  expect(l.actor.id).toBe(owner.id);expect(Object.isFrozen(l.context)).toBe(true);
+  return l.advance([currentV3Payment(l)]);
+ });
+ expect(result.source.kind).toBe('historical_account');expect(result.source.quote.revision).toBe(4);
+ expect(result.balance).toMatchObject({paidMinor:20000,remainingMinor:110000});
+ expect((await store().readBalanceV2(owner,f.quote.id)).balance.receipts).toEqual(result.balance.receipts);
+});
+it('current V3 full payment suppresses queued reminders and preserves actual UNKNOWN history',async()=>{
+ const f=await scenario(),intents=await queue(f.quote),unknown=intents.find(i=>Date.parse(i.scheduledAt)<=now.valueOf())!;
+ expect(unknown).toBeDefined();expect((await store().reserveReminder(owner,unknown.id,randomUUID())).reserved).toBe(true);
+ const result=await store().withCurrentCardActorV3(owner,f.quote.id,async l=>l.advance([currentV3Payment(l,130000,true)]));
+ expect(result.balance).toMatchObject({state:'paid',remainingMinor:0});
+ expect(result.balance.reminders.find(i=>i.id===unknown.id)?.state).toBe('unknown');
+ expect(result.balance.reminders.filter(i=>i.id!==unknown.id).every(i=>i.state==='suppressed')).toBe(true);
+ expect((await db.query('SELECT * FROM synthetic_billing.existing_outbox WHERE intent_id=$1',[unknown.id])).rows).toHaveLength(1);
+});
+it('current V3 service requires a real configured service authority and does not borrow the owner',async()=>{
+ const f=await scenario(),binding=billingStripeBindingSchema.parse({accountId:'acct_Synthetic',livemode:false,apiVersion:'2026-09-30.endive',verifiedBindingId:'SYNTHETIC_CURRENT'});
+ await expect(store().withCurrentCardServiceV3(binding,f.quote.id,async()=>undefined)).rejects.toThrow('UNAVAILABLE');
+ expect((await store().readBalanceV2(owner,f.quote.id)).quote.revision).toBe(3);
+});
+it('current V3 service uses actual independent native authority even while owner and parent sessions are revoked',async()=>{
+ const f=await scenario(),binding=billingStripeBindingSchema.parse({accountId:'acct_Synthetic',livemode:false,apiVersion:'2026-09-30.endive',verifiedBindingId:'SYNTHETIC_CURRENT'});let calls=0;
+ const financial:BillingFinancialServiceAuthority={authorize:async(c,b,s)=>{
+  calls++;expect('actor' in c).toBe(false);expect(Object.isFrozen(c)).toBe(true);expect(Object.isFrozen(b)).toBe(true);
+  expect(b).toEqual(binding);expect(s.familyId).toBe(f.familyId);expect(s.quoteId).toBe(f.quote.id);
+  const rows=await c.tx.query('SELECT family_id FROM synthetic_billing.program_families WHERE workspace_id=$1 AND family_id=$2 AND revoked=false',[c.workspaceId,s.familyId]);
+  if(rows.length!==1)throw new AppError('FORBIDDEN');
+ }};
+ const native=new FishingBillingStore(binder,workspace,ring,Buffer.alloc(32,9),authority,{now:()=>now},outbox,financial);
+ await db.query('UPDATE ls_identity.sessions SET revoked_at=$2 WHERE token_digest IN($1,$3)',[owner.sessionDigest,now,parent.sessionDigest]);
+ try{
+  const result=await native.withCurrentCardServiceV3(binding,f.quote.id,async l=>l.advance([currentV3Payment(l)]));
+  expect(result.balance.paidMinor).toBe(20000);expect(result.source.quote.revision).toBe(4);expect(calls).toBeGreaterThanOrEqual(4);
+ }finally{await db.query('UPDATE ls_identity.sessions SET revoked_at=NULL WHERE token_digest IN($1,$2)',[owner.sessionDigest,parent.sessionDigest]);}
+ expect((await store().readCurrentLedgerV3(owner,f.quote.id)).balance.paidMinor).toBe(20000);
+});
+it('current V3 denies access revoked during the actual original-evidence reads',async()=>{
+ const f=await scenario();let changed=false;
+ const revoked:IdentityStore={transaction:work=>binder.transaction(tx=>work({query:async<T extends object>(sql:string,values:readonly unknown[]=[])=>{
+  const rows=await tx.query<T>(sql,values);if(!changed&&sql.startsWith('SELECT line_id AS')){changed=true;authorityRevoked=true;}return rows;
+ }}))};
+ try{await expect(store(revoked).readCurrentLedgerV3(owner,f.quote.id)).rejects.toThrow('FORBIDDEN');expect(changed).toBe(true);}finally{authorityRevoked=false;}
+ expect((await store().readBalanceV2(owner,f.quote.id)).quote.revision).toBe(3);
+});
+it('current V3 exact ciphertext CAS failure rolls back the new receipt and quote',async()=>{
+ const f=await scenario();let changed=false;
+ const altered:IdentityStore={transaction:work=>binder.transaction(tx=>work({query:async<T extends object>(sql:string,values:readonly unknown[]=[])=>{
+  if(!changed&&sql.startsWith('UPDATE ls_fishing_billing.quotes SET revision=$3,payload_ciphertext=$4')){
+   changed=true;const row=(await tx.query<{ciphertext:string}>('SELECT payload_ciphertext AS ciphertext FROM ls_fishing_billing.quotes WHERE workspace_id=$1 AND id=$2',[workspace,f.quote.id]))[0]!;
+   const key='ls_fishing_billing/v1/quote/'+workspace+'/'+f.quote.id;
+   await tx.query('UPDATE ls_fishing_billing.quotes SET payload_ciphertext=$3 WHERE workspace_id=$1 AND id=$2',[workspace,f.quote.id,seal(unseal(row.ciphertext,key,ring),key,ring)]);
+  }
+  return tx.query<T>(sql,values);
+ }}))};
+ await expect(store(altered).withCurrentCardActorV3(owner,f.quote.id,async l=>l.advance([currentV3Payment(l)]))).rejects.toThrow('CONFLICT');
+ expect(changed).toBe(true);const current=await store().readCurrentLedgerV3(owner,f.quote.id);
+ expect(current.source.quote.revision).toBe(3);expect(current.balance.receipts).toHaveLength(0);
+});
+it('current V3 a caught second advance poisons and rolls back the first advance',async()=>{
+ const f=await scenario();
+ await expect(store().withCurrentCardActorV3(owner,f.quote.id,async l=>{
+  await l.advance([currentV3Payment(l)]);await expect(l.advance()).rejects.toThrow('CONFLICT');
+ })).rejects.toThrow('CONFLICT');
+ const current=await store().readCurrentLedgerV3(owner,f.quote.id);expect(current.source.quote.revision).toBe(3);expect(current.balance.receipts).toHaveLength(0);
+});
+it('current V3 an escaped advance capability cannot run after its transaction',async()=>{
+ const f=await scenario(),advance=await store().withCurrentCardActorV3(owner,f.quote.id,async l=>l.advance);
+ await expect(advance()).rejects.toThrow('CONFLICT');expect((await store().readCurrentLedgerV3(owner,f.quote.id)).source.quote.revision).toBe(3);
+});
+it('current V3 an unawaited advance drains and rolls back before the transaction closes',async()=>{
+ const f=await scenario();
+ await expect(store().withCurrentCardActorV3(owner,f.quote.id,async l=>{void l.advance([currentV3Payment(l)]);})).rejects.toThrow('CONFLICT');
+ const current=await store().readCurrentLedgerV3(owner,f.quote.id);
+ expect(current.source.quote.revision).toBe(3);expect(current.balance.receipts).toHaveLength(0);
+});
+it('current V3 detached frame and date mutation cannot rewrite the trusted source',async()=>{
+ const f=await scenario(),current=await store().withCurrentCardActorV3(owner,f.quote.id,async l=>{
+  l.frame.source.quote.revision=999;l.frame.source.quote.lines[0]!.amountMinor=1;l.context.now.setUTCFullYear(2099);
+  return l.advance();
+ });
+ expect(current.source.quote.revision).toBe(4);expect(current.source.quote.lines[0]!.amountMinor).toBe(65000);expect(current.balance.remainingMinor).toBe(130000);
 });

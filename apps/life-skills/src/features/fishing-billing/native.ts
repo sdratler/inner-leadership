@@ -20,6 +20,7 @@ import {planPaymentReminders,checkReminderDispatch,reminderSuppression,type Disp
 import type {BillingStripeBinding} from './stripe-test.ts';
 import {LEDGER_HISTORY_VERSION,ledgerHistoryQuerySchema,ledgerHistoryPageSchema} from './history-contracts.ts';
 import {cardAttemptSchema,cardExceptionSchema} from './card-contracts.ts';
+import {billingStripeBindingSchema} from './card-binding.ts';
 import {billingStateCommandV2Schema} from './state-contracts-v2.ts';
 import {
  REMINDER_SERVICE_VERSION,reminderServiceBindingSchema,reminderBatchCommandSchema,reminderOutcomeLookupSchema,verifiedReminderOutcomeSchema,serviceDispatchPermissionSchema,
@@ -31,6 +32,10 @@ import {
  projectBalanceV2,operationReceiptV2Schema,upgradeOperationReceipt,reversalCommandV2Schema,ledgerHistoryV2Schema,
  type LedgerReceiptV2,
 } from './contracts-v2.ts';
+import {currentLedgerFrameV3Schema,currentLedgerSourceV3Schema,type CurrentLedgerFrameV3,type CurrentLedgerSourceV3} from '../../lib/fishing-billing-current-contract-v3.ts';
+import {projectBillingCurrentLedgerV3,type BillingCurrentCardLedgerV3,type BillingCurrentCardLedgerAccessV3} from '../../lib/fishing-billing-current-ledger-v3.ts';
+import {decodeBillingCurrentQuoteV3,readHistoricalFinancialOriginalV3,type CurrentBillingQuoteRowV3} from '../../lib/fishing-billing-current-readback-v3.ts';
+import {verifyStoredGuestFinancialEvidence} from '../../lib/fishing-billing-guest-evidence-readback.ts';
 
 export type BillingLedgerContext={tx:SqlSession;workspaceId:WorkspaceId;now:Date};
 export type BillingContext=BillingLedgerContext&{actor:AccountFacts};
@@ -64,12 +69,14 @@ export type BillingCardLedger={
 };
 type QuoteRow={id:string;familyId:string;revision:number;ciphertext:string};
 type CommandRow={actorId:string;action:string;quoteId:string|null;digest:string;ciphertext:string};
+type CurrentQuoteRecord={row:CurrentBillingQuoteRowV3&{createdAt:Date};source:CurrentLedgerSourceV3};
+type CurrentLedgerState=CurrentQuoteRecord&{frame:CurrentLedgerFrameV3;exceptions:ReturnType<typeof cardExceptionSchema.parse>[];original:FamilyOffer|null};
 type IntentRow={id:string;quoteId:string;intentKey:string;audienceKey:string;scheduledAt:Date|string;ciphertext:string;state:ReminderIntent['state']};
 const qSelect='SELECT id,family_id AS "familyId",revision,payload_ciphertext AS ciphertext FROM ls_fishing_billing.quotes';
 const iSelect='SELECT id,quote_id AS "quoteId",intent_key AS "intentKey",audience_key AS "audienceKey",scheduled_at AS "scheduledAt",payload_ciphertext AS ciphertext,state FROM ls_fishing_billing.reminders';
 const iPolicySelect=iSelect.replace(' FROM ',',policy_ciphertext AS "policyCiphertext" FROM ');
 const aad=(kind:string,workspace:string,id:string)=>'ls_fishing_billing/v1/'+kind+'/'+workspace+'/'+id;
-const scope=(q:FamilyOffer):BillingScope=>({programKey:'fishing_monthly_club',quoteId:q.id,familyId:q.familyId,childIds:[...new Set(q.lines.map(l=>l.childId))]});
+const scope=(q:Pick<FamilyOffer,'id'|'familyId'|'lines'>):BillingScope=>({programKey:'fishing_monthly_club',quoteId:q.id,familyId:q.familyId,childIds:[...new Set(q.lines.map(l=>l.childId))]});
 const canonical=(value:unknown):string=>{
  if(value===null||typeof value!=='object')return JSON.stringify(value);
  if(Array.isArray(value))return '['+value.map(canonical).join(',')+']';
@@ -80,7 +87,7 @@ export const commandRecordSchema=z.object({
  version:z.literal('JLFA-BILLING-JOURNAL-v1'),workspaceId:billingId,operationId:billingId,actorId:billingId,
  action:z.string().min(1).max(40),quoteId:billingId.nullable(),digest:z.string().regex(/^[a-f0-9]{64}$/),result:z.unknown(),
 }).strict();
-export class FishingBillingStore{
+export class FishingBillingStore implements BillingCurrentCardLedgerAccessV3{
  private readonly key:Buffer;
  private readonly reminderService:BillingReminderServiceConfiguration|null;
  constructor(
@@ -371,6 +378,141 @@ export class FishingBillingStore{
    });
    const last=selected.at(-1),next=rows.length>query.limit&&last?{workspaceId:c.workspaceId,quoteId:q.id,familyId:q.familyId,revision:q.revision,recordedAt:last.recordedAt.toISOString(),id:last.id}:null;
    return {version:v2?'JLFA-FISHING-LEDGER-HISTORY-v2':LEDGER_HISTORY_VERSION,quoteId:q.id,familyId:q.familyId,asOfVersion:q.revision,items,nextCursor:next?Buffer.from(seal(JSON.stringify(next),cursorAad,this.ring)).toString('base64url'):null};
+  });
+ }
+ private currentNow(){
+  const now=this.clock.now();requireBilling(now instanceof Date&&Number.isFinite(now.valueOf()),'UNAVAILABLE');return new Date(now.valueOf());
+ }
+ private currentView(c:BillingLedgerContext):Readonly<BillingLedgerContext>{
+  return Object.freeze({tx:c.tx,workspaceId:c.workspaceId,now:new Date(c.now.valueOf())});
+ }
+ private async currentQuoteRecord(c:BillingLedgerContext,id:string):Promise<CurrentQuoteRecord>{
+  billingId.parse(id);
+  const row=await one<CurrentQuoteRecord['row']>(c.tx,'SELECT id,family_id AS "familyId",definition_id AS "definitionId",revision,created_at AS "createdAt",payload_ciphertext AS ciphertext FROM ls_fishing_billing.quotes WHERE workspace_id=$1 AND id=$2 FOR UPDATE',[c.workspaceId,id]);
+  if(!row)throw new AppError('NOT_FOUND');
+  const source=decodeBillingCurrentQuoteV3(c.workspaceId,id,row,this.ring),q=source.quote;
+  requireBilling(Date.parse(q.createdAt)<=c.now.valueOf()&&(!q.issuedAt||Date.parse(q.issuedAt)<=c.now.valueOf())&&(!q.acceptance||Date.parse(q.acceptance.acceptedAt)<=c.now.valueOf()),'UNAVAILABLE');
+  return {row,source};
+ }
+ /** The actual stored acceptance and COMPLETE bounded fact sets are checked
+  * before projection. A status index is never permission to skip decryption. */
+ private async currentLedgerState(c:BillingLedgerContext,record:CurrentQuoteRecord):Promise<CurrentLedgerState>{
+  const {source}=record,q=source.quote;
+  let original:FamilyOffer|null=null;
+  if(source.kind==='historical_account')original=await readHistoricalFinancialOriginalV3(c,source.quote,this.ring,command=>this.digest(command));
+  else await verifyStoredGuestFinancialEvidence(c,q,this.ring);
+  const rows=await c.tx.query<{id:string;operationId:string;originalId:string|null;recordedAt:Date;ciphertext:string}>('SELECT id,operation_id AS "operationId",original_receipt_id AS "originalId",recorded_at AS "recordedAt",payload_ciphertext AS ciphertext FROM ls_fishing_billing.receipts WHERE workspace_id=$1 AND quote_id=$2 ORDER BY id LIMIT 1001',[c.workspaceId,q.id]);
+  requireBilling(rows.length<=1000,'UNAVAILABLE');
+  const receipts=rows.map(row=>{
+   const r=ledgerReceiptV2Schema.parse(JSON.parse(unseal(row.ciphertext,aad('receipt',c.workspaceId,row.id),this.ring)));
+   requireBilling(r.id===row.id&&r.operationId===row.operationId&&r.originalReceiptId===row.originalId&&r.quoteId===q.id&&r.familyId===q.familyId&&Date.parse(r.recordedAt)===row.recordedAt.valueOf()&&row.recordedAt.valueOf()<=c.now.valueOf(),'UNAVAILABLE');return r;
+  });
+  const attempts=await c.tx.query<{id:string;state:string;revision:number;ciphertext:string}>('SELECT id,state,revision,payload_ciphertext AS ciphertext FROM ls_fishing_billing.card_attempts WHERE workspace_id=$1 AND quote_id=$2 ORDER BY id LIMIT 1001',[c.workspaceId,q.id]);
+  requireBilling(attempts.length<=1000,'UNAVAILABLE');
+  const pending=attempts.map(row=>{
+   const a=cardAttemptSchema.parse(JSON.parse(unseal(row.ciphertext,'ls_fishing_billing/card/v1/attempt/'+c.workspaceId+'/'+row.id,this.ring)));
+   requireBilling(a.id===row.id&&a.state===row.state&&a.revision===row.revision&&a.workspaceId===c.workspaceId&&a.quoteId===q.id&&a.familyId===q.familyId,'UNAVAILABLE');return a;
+  }).filter(a=>['prepared','unknown','open','pending'].includes(a.state)).map(a=>a.id);
+  const exceptionRows=await c.tx.query<{id:string;state:string;ciphertext:string}>('SELECT id,state,payload_ciphertext AS ciphertext FROM ls_fishing_billing.card_exceptions WHERE workspace_id=$1 AND quote_id=$2 ORDER BY id LIMIT 1001',[c.workspaceId,q.id]);
+  requireBilling(exceptionRows.length<=1000,'UNAVAILABLE');
+  const exceptions=exceptionRows.map(row=>{
+   const e=cardExceptionSchema.parse(JSON.parse(unseal(row.ciphertext,'ls_fishing_billing/card/v1/exception/'+c.workspaceId+'/'+row.id,this.ring)));
+   requireBilling(e.id===row.id&&e.state===row.state&&e.workspaceId===c.workspaceId&&e.quoteId===q.id&&e.familyId===q.familyId,'UNAVAILABLE');return e;
+  });
+  const intentRows=await c.tx.query<IntentRow>(iSelect+' WHERE workspace_id=$1 AND quote_id=$2 ORDER BY id LIMIT 1001',[c.workspaceId,q.id]);
+  requireBilling(intentRows.length<=1000,'UNAVAILABLE');
+  const reminders=intentRows.map(row=>{const i=this.decodeIntent(c,row);requireBilling(i.quoteId===q.id&&i.familyId===q.familyId,'UNAVAILABLE');return {id:i.id,state:i.state};});
+  const frame=projectBillingCurrentLedgerV3({source,receipts,exceptions,pendingAttemptIds:pending,reminders,...(original?{originalAccountSnapshot:original}:{})});
+  return {...record,frame,exceptions,original};
+ }
+ private async currentActorGuard(c:BillingLedgerContext,actor:Actor,action:'read'|'card',s:BillingScope){
+  const now=this.currentNow(),current=await freshActor(c.tx,actor,now);
+  requireBilling(current.workspaceId===this.workspaceId&&current.state==='active'&&(action==='read'?current.role==='practitioner':['practitioner','parent'].includes(current.role)),'FORBIDDEN');
+  const view=Object.freeze({...this.currentView({...c,now}),actor:Object.freeze({...current})}),scopeView={...s,childIds:[...s.childIds]};
+  Object.freeze(scopeView.childIds);Object.freeze(scopeView);
+  await this.authority.authorize(view,action,scopeView);
+  const after=await freshActor(c.tx,actor,this.currentNow());
+  requireBilling(after.workspaceId===this.workspaceId&&after.state==='active'&&after.role===current.role&&after.id===current.id,'FORBIDDEN');return after;
+ }
+ private async currentServiceGuard(c:BillingLedgerContext,binding:BillingStripeBinding,s:BillingScope){
+  requireBilling(this.financialService,'UNAVAILABLE');
+  const scopeView={...s,childIds:[...s.childIds]};Object.freeze(scopeView.childIds);Object.freeze(scopeView);
+  await this.financialService!.authorize(this.currentView({...c,now:this.currentNow()}),binding,scopeView);
+ }
+ /** Owner read is not collection authority and does not impersonate the
+  * original acceptor. Root's owner-card V3 transport may project this frame. */
+ async readCurrentLedgerV3(actor:Actor,quoteId:string):Promise<CurrentLedgerFrameV3>{
+  const identity=Object.freeze({...actor});requireBilling(identity.workspaceId===this.workspaceId,'FORBIDDEN');
+  return this.db.transaction(async tx=>{
+   await lockWorkspace(tx,this.workspaceId);const c=Object.freeze({tx,workspaceId:this.workspaceId,now:this.currentNow()});
+   const current=await freshActor(tx,identity,this.currentNow());requireBilling(current.state==='active'&&current.role==='practitioner'&&current.workspaceId===this.workspaceId,'FORBIDDEN');
+   const record=await this.currentQuoteRecord(c,quoteId),s=scope(record.source.quote);
+   await this.currentActorGuard(c,identity,'read',s);const state=await this.currentLedgerState(c,record);
+   await this.currentActorGuard(c,identity,'read',s);return currentLedgerFrameV3Schema.parse(state.frame);
+  });
+ }
+ private async suppressCurrentQueued(c:BillingLedgerContext,frame:CurrentLedgerFrameV3){
+  const q=frame.source.quote,b=frame.balance,reason=q.state==='cancelled'?'cancelled':q.paused?'owner_paused':q.acceptance&&b.remainingMinor===0?'paid':null;
+  if(!reason)return;
+  const rows=await c.tx.query<IntentRow>(iSelect+' WHERE workspace_id=$1 AND quote_id=$2 ORDER BY id LIMIT 1001 FOR UPDATE',[c.workspaceId,q.id]);
+  requireBilling(rows.length<=1000,'UNAVAILABLE');
+  const intents=rows.map(row=>{const i=this.decodeIntent(c,row);requireBilling(i.quoteId===q.id&&i.familyId===q.familyId,'UNAVAILABLE');return {row,intent:i};});
+  for(const {row,intent:i} of intents){
+   if(i.state!=='queued')continue;
+   const next=reminderIntentSchema.parse({...i,state:'suppressed',reason});
+   const changed=await one(c.tx,"UPDATE ls_fishing_billing.reminders SET state='suppressed',payload_ciphertext=$3 WHERE workspace_id=$1 AND id=$2 AND quote_id=$4 AND state='queued' AND payload_ciphertext=$5 AND intent_key=$6 AND audience_key=$7 AND scheduled_at=$8 RETURNING id",[c.workspaceId,i.id,seal(JSON.stringify(next),aad('reminder',c.workspaceId,i.id),this.ring),q.id,row.ciphertext,row.intentKey,row.audienceKey,row.scheduledAt]);
+   requireBilling(changed,'CONFLICT');
+  }
+ }
+ private currentCardLedger(c:BillingLedgerContext,state:CurrentLedgerState,guard:()=>Promise<unknown>){
+  let advanced=false,failed=false,completed=false,active=true;
+  const pending=new Set<Promise<CurrentLedgerFrameV3>>();
+  const ledger:BillingCurrentCardLedgerV3={context:this.currentView(c),frame:currentLedgerFrameV3Schema.parse(state.frame),advance:async(raw=[])=>{
+   try{
+    requireBilling(active&&!advanced,'CONFLICT');advanced=true;
+    const q=state.source.quote,actual=await this.currentQuoteRecord(c,q.id),a=actual.row,b=state.row;
+    requireBilling(actual.source.kind===state.source.kind&&a.revision===b.revision&&a.ciphertext===b.ciphertext&&a.familyId===b.familyId&&a.definitionId===b.definitionId&&a.createdAt.valueOf()===b.createdAt.valueOf(),'CONFLICT');
+    const live=await this.currentLedgerState(c,actual);
+    requireBilling(canonical(live.frame.balance.receipts)===canonical(state.frame.balance.receipts),'CONFLICT');
+    const additions=raw.map(r=>ledgerReceiptSchema.parse(r));
+    requireBilling(additions.every(r=>r.kind!=='cash'&&r.kind!=='cash_reversal'&&r.actorId===null&&r.recordedAt===c.now.toISOString()),'UNAVAILABLE');
+    projectBillingCurrentLedgerV3({source:actual.source,receipts:[...live.frame.balance.receipts,...additions],exceptions:live.exceptions,pendingAttemptIds:live.frame.balance.pendingAttemptIds,reminders:live.frame.balance.reminders,...(live.original?{originalAccountSnapshot:live.original}:{})});
+    await guard();
+    for(const r of additions)await this.receipt(c,r);
+    const source=currentLedgerSourceV3Schema.parse({...actual.source,quote:{...actual.source.quote,revision:q.revision+1}}),prefix=source.kind==='historical_account'?'ls_fishing_billing/v1/quote/':'ls_fishing_billing/guest/v3/quote/';
+    const saved=await one(c.tx,'UPDATE ls_fishing_billing.quotes SET revision=$3,payload_ciphertext=$4 WHERE workspace_id=$1 AND id=$2 AND revision=$5 AND payload_ciphertext=$6 AND family_id=$7 AND definition_id=$8 AND created_at=$9 RETURNING id',[c.workspaceId,q.id,source.quote.revision,seal(JSON.stringify(source.quote),prefix+c.workspaceId+'/'+q.id,this.ring),b.revision,b.ciphertext,b.familyId,b.definitionId,b.createdAt]);
+    requireBilling(saved,'CONFLICT');
+    const updated=await this.currentLedgerState(c,await this.currentQuoteRecord(c,q.id));await this.suppressCurrentQueued(c,updated.frame);
+    const result=await this.currentLedgerState(c,await this.currentQuoteRecord(c,q.id));await guard();completed=true;return currentLedgerFrameV3Schema.parse(result.frame);
+   }catch(error){failed=true;throw error;}
+  }};
+  const advance=ledger.advance;
+  ledger.advance=raw=>{
+   const task=advance(raw);pending.add(task);
+   void task.then(()=>pending.delete(task),()=>pending.delete(task));return task;
+  };
+  // A callback must not let an unfinished advance escape the transaction. If
+  // check rejects, drain its SQL while this TX is still open, then roll back.
+  return {ledger,check:()=>requireBilling(!failed&&(!advanced||completed),'CONFLICT'),close:async()=>{active=false;await Promise.allSettled([...pending]);}};
+ }
+ async withCurrentCardActorV3<T>(actor:Actor,quoteId:string,work:(ledger:BillingCurrentCardLedgerV3&{actor:AccountFacts})=>Promise<T>):Promise<T>{
+  const identity=Object.freeze({...actor});requireBilling(identity.workspaceId===this.workspaceId,'FORBIDDEN');
+  return this.db.transaction(async tx=>{
+   await lockWorkspace(tx,this.workspaceId);const c=Object.freeze({tx,workspaceId:this.workspaceId,now:this.currentNow()});
+   const initial=await freshActor(tx,identity,this.currentNow());requireBilling(initial.workspaceId===this.workspaceId&&initial.state==='active'&&['practitioner','parent'].includes(initial.role),'FORBIDDEN');
+   const record=await this.currentQuoteRecord(c,quoteId),s=scope(record.source.quote),guard=()=>this.currentActorGuard(c,identity,'card',s);
+   await guard();const state=await this.currentLedgerState(c,record),actual=await guard(),port=this.currentCardLedger(c,state,guard);
+   try{const result=await work({...port.ledger,actor:Object.freeze({...actual})});port.check();await guard();return result;}finally{await port.close();}
+  });
+ }
+ async withCurrentCardServiceV3<T>(binding:BillingStripeBinding,quoteId:string,work:(ledger:BillingCurrentCardLedgerV3)=>Promise<T>):Promise<T>{
+  requireBilling(this.financialService,'UNAVAILABLE');
+  const actualBinding=Object.freeze(billingStripeBindingSchema.parse(binding));
+  return this.db.transaction(async tx=>{
+   await lockWorkspace(tx,this.workspaceId);const c=Object.freeze({tx,workspaceId:this.workspaceId,now:this.currentNow()});
+   const record=await this.currentQuoteRecord(c,quoteId),s=scope(record.source.quote),guard=()=>this.currentServiceGuard(c,actualBinding,s);
+   await guard();const state=await this.currentLedgerState(c,record);await guard();const port=this.currentCardLedger(c,state,guard);
+   try{const result=await work(port.ledger);port.check();await guard();return result;}finally{await port.close();}
   });
  }
  private async cardLedger(c:BillingLedgerContext,q:FamilyOffer):Promise<BillingCardLedger>{
