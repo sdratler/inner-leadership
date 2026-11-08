@@ -106,6 +106,18 @@ it('replays only the original operation and never duplicates or silently rebinds
  await expect(f.store().propose(f.owner,{...command,selection:{...command.selection,children:[...command.selection.children].reverse()}})).rejects.toThrow('CONFLICT');
  expect((await engine.query('SELECT * FROM ls_fishing_billing.inquiry_family_proposals WHERE workspace_id=$1',[f.workspace])).rows).toEqual(before);expect(await f.count()).toBe(1);
 });
+it('keeps the original authenticated author when the caller actor changes during awaited native reads',async()=>{
+ const f=await fixture(),command=await f.prepare(),caller={...f.owner};let changed=0;
+ const barrier:IdentityStore={transaction:work=>db.transaction(tx=>work({query:async<T extends object>(sql:string,values:readonly unknown[]=[])=>{
+  const rows=await tx.query<T>(sql,values);
+  if(sql.startsWith('SELECT f.id,f.label_ciphertext')){changed++;caller.id=f.parent.id;}
+  return rows;
+ }}))};
+ const saved=await f.store(barrier).propose(caller,command);expect(changed).toBe(1);
+ expect.soft(saved.record.recordedBy).toBe(f.owner.id);
+ const actor=await reloadActor(f);
+ await expect(f.store().read(actor,{reference:f.saved.item.id,expectedEpoch:1})).resolves.toMatchObject({id:saved.record.id,recordedBy:f.owner.id});
+});
 it.each(['source','native'] as const)('rejects a stale %s preview without an association write',async which=>{
  const f=await fixture(),command=await f.prepare();
  await expect(f.store().propose(f.owner,{...command,...(which==='source'?{expectedSourceDigest:'f'.repeat(64)}:{expectedNativeDigest:'f'.repeat(64)})})).rejects.toThrow('CONFLICT');expect(await f.count()).toBe(0);
