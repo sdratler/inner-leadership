@@ -12,6 +12,7 @@ import {lockWorkspace} from '../../src/features/identity/data.ts';
 import {IdentitySessions} from '../../src/features/identity/session-adapter.ts';
 import {PostgresIdentityRateStore} from '../../src/features/identity/rate-store.ts';
 import {SESSION_COOKIE} from '../../src/lib/security/session.ts';
+import {AppError} from '../../src/lib/errors.ts';
 import {ContactCutoverStore} from '../../src/features/contact-ops/server/cutover-store.ts';
 import {AcademyCrmStore} from '../../src/features/contact-ops/server/academy-crm-store.ts';
 import {PublicGroupApplicationStore} from '../../src/features/group-application/store.ts';
@@ -145,6 +146,19 @@ it('owner proposal HTTP exact retries retain the original proposal and conflicti
  const replayState=await f.cutover.read(f.owner);expect(replayState.nativeWritesSinceSwitch).toBe(state.nativeWritesSinceSwitch+1);
  const conflict=await http.call({action:'propose',command:{...command,operationId:randomUUID()}});expect(conflict.status).toBe(409);
  expect(await storedProposal(f)).toEqual(row);expect(await f.count()).toBe(1);expect(await f.cutover.read(f.owner)).toEqual(replayState);
+});
+it.each(['CONFLICT','INVALID_REQUEST','FORBIDDEN','UNAUTHENTICATED'] as const)('owner proposal HTTP post-COMMIT %s remains uncertain with durable fresh-session recovery',async code=>{
+ const f=await fixture(),preview=await ownerHttpHarness(f),command=await ownerHttpCommand(f,preview),source=await f.source();let committed=0;
+ const afterCommit:IdentityStore={transaction:async work=>{await db.transaction(work);committed++;throw new AppError(code);}};
+ const http=await ownerHttpHarness(f,f.owner,db,f.store(afterCommit)),response=await http.call({action:'propose',command});
+ // Establish the actual committed row, independent new-session readback and
+ // duplicate-safe original-command replay BEFORE asserting error classification.
+ expect(committed).toBe(1);expect(await f.count()).toBe(1);const original=await storedProposal(f),fresh=await ownerHttpHarness(f);
+ const read=await fresh.call(null,{method:'GET',query:`?reference=${f.saved.item.id}&expectedEpoch=1`});expect(read.status).toBe(200);
+ const saved=fishingInquiryFamilyProposalSchema.parse((await read.json()).data.record);expect(saved.id).toBe(original.id);expect(saved.command).toEqual(command);
+ const replay=await fresh.call({action:'propose',command});expect(replay.status).toBe(200);expect((await replay.json()).data).toMatchObject({replayed:true,record:saved});
+ expect(await f.count()).toBe(1);expect(await storedProposal(f)).toEqual(original);expect(await f.source()).toEqual(source);
+ expect(response.status).toBe(503);expect((await response.json()).error.code).toBe('UNAVAILABLE');
 });
 it.each(['missing','malformed','duplicate'] as const)('owner proposal HTTP rejects %s session cookies without a proposal',async kind=>{
  const f=await fixture(),http=await ownerHttpHarness(f),state=await f.cutover.read(f.owner);
