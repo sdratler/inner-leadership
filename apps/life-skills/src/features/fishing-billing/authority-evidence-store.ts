@@ -143,9 +143,10 @@ export class FishingBillingAuthorityEvidenceStore{
     const proposals=await c.tx.query<FishingInquiryFamilyProposalRow>(proposalSelect,[c.workspace,proposalIds]);
     if(proposals.length!==proposalIds.length||new Set(proposals.map(r=>r.id)).size!==proposals.length)unavailable();
     const decoded=new Map(proposals.map(row=>[row.id,decodeFishingInquiryFamilyProposalRecord(row,{workspaceId:c.workspace,keyring:this.keyring,integrityKey:this.integrityKey})]));
-    for(const f of families){const p=decoded.get(f.proposalId);
+    for(const r of records.values()){const f=r.family;if(!f)continue;const p=decoded.get(f.proposalId);
      if(!p||p.command.selection.reference!==f.reference||p.command.selection.familyId!==f.familyId||p.guardianPersonId!==f.guardianPersonId||
       p.command.expectedSourceDigest!==f.sourceDigest||p.command.expectedNativeDigest!==f.nativeDigest||!same(p.command.selection.children,f.children))unavailable();
+     if(r.purpose==='email_recipient'&&r.body.locale!==p.messageLanguage)unavailable();
     }
    }
    const revoked=await c.tx.query<RevocationRow>(revocationSelect,[c.workspace,ids]);
@@ -168,7 +169,7 @@ export class FishingBillingAuthorityEvidenceStore{
   const {c,records,revocations}=await this.load(context,input);
   return freeze(c.input.lookups.map(l=>{const r=records.get(l.id);
    if(!r||!this.matches(r,l)||r.state!=='released'||!r.releaseEvidence||!r.releasedAt||!r.expiresAt||
-    Date.parse(r.releasedAt)>c.now||Date.parse(r.expiresAt)<=c.now||revocations.has(r.id))return null;
+    Date.parse(r.recordedAt)>c.now||Date.parse(r.releasedAt)>c.now||Date.parse(r.expiresAt)<=c.now||revocations.has(r.id))return null;
    return {classification:'integrity_only_not_authority' as const,consistency:c.input.lock,record:r as ReleasedEvidence};
   }));
  }
