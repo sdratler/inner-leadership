@@ -9,10 +9,11 @@ import {
  billingId,ledgerReceiptSchema,type LedgerReceipt,type FamilyOffer,
 } from './contracts.ts';
 import {requireBilling} from './domain.ts';
-import {projectBalanceV2} from './contracts-v2.ts';
-import {FishingBillingStore,type BillingCardLedger,type BillingLedgerContext} from './native.ts';
+import type {FishingBillingStore,BillingLedgerContext} from './native.ts';
+import type {BillingCurrentCardLedgerV3} from '../../lib/fishing-billing-current-ledger-v3.ts';
+import type {CurrentLedgerFrameV3} from '../../lib/fishing-billing-current-contract-v3.ts';
 import {
- prepareBillingTestCheckout,billingStripeSignedReceiptSchema,
+ prepareBillingCurrentTestCheckoutV3,billingStripeSignedReceiptSchema,
  type BillingStripeSignedReceipt,type BillingStripeInboxAuthority,
 } from './stripe-test.ts';
 import {billingStripeBindingSchema,type BillingStripeBinding} from './card-binding.ts';
@@ -49,6 +50,11 @@ export interface BillingRefundAllocationAuthority{
   * policy and no refund request is executed here. Null means hold for review. */
  allocations(context:BillingLedgerContext,quote:FamilyOffer,refund:ProviderRefund,original:LedgerReceipt):Promise<Allocation[]|null>;
 }
+export interface BillingCurrentRefundAllocationAuthorityV3{
+ /** Current source/provenance and full authenticated balance, with the same
+  * separately approved native allocation. No inferred or executed refund. */
+ allocations(context:BillingLedgerContext,frame:CurrentLedgerFrameV3,refund:ProviderRefund,original:LedgerReceipt):Promise<Allocation[]|null>;
+}
 type AttemptRow={id:string;quoteId:string;revision:number;state:CardAttempt['state'];ciphertext:string};
 type EventRow={workspaceId:string;digest:string;ciphertext:string;state:string;processedCiphertext:string|null};
 type SettlementRow={workspaceId:string;quoteId:string;attemptId:string;receiptId:string;ciphertext:string};
@@ -70,6 +76,7 @@ export class FishingBillingCards{
   private readonly inboxAuthority:BillingStripeInboxAuthority,
   private readonly provider:BillingStripeTestProvider|null=null,
   private readonly refundAuthority:BillingRefundAllocationAuthority|null=null,
+  private readonly currentRefundAuthority:BillingCurrentRefundAllocationAuthorityV3|null=null,
  ){
   this.binding=billingStripeBindingSchema.parse(configuration.binding);requireBilling(digestKey.length>=32,'UNAVAILABLE');this.key=Buffer.from(digestKey);
  }
@@ -103,23 +110,23 @@ export class FishingBillingCards{
  }
  async prepare(actor:Actor,raw:unknown){
   const cmd=prepareCardCommandSchema.parse(raw);
-  return this.ledger.withCardActor(actor,cmd.quoteId,async l=>{
+  return this.ledger.withCurrentCardActorV3(actor,cmd.quoteId,async l=>{
    const exists=await one(l.context.tx,'SELECT id FROM ls_fishing_billing.card_attempts WHERE workspace_id=$1 AND id=$2',[l.context.workspaceId,cmd.operationId]);
    if(exists){
     const a=await this.attempt(l.context,cmd.operationId,cmd.quoteId);
     requireBilling(a.actorId===l.actor.id&&a.requestDigest===this.digest(cmd),'CONFLICT');
     return {...a.preparation,replayed:true};
    }
-   requireBilling(l.quote.revision===cmd.expectedVersion,'CONFLICT');
-   requireBilling(!['review_required','overpaid'].includes(l.balance.state),'UNAVAILABLE');
-   const active=await l.context.tx.query("SELECT id FROM ls_fishing_billing.card_attempts WHERE workspace_id=$1 AND quote_id=$2 AND state IN('prepared','unknown','open','pending')",[l.context.workspaceId,l.quote.id]);
+   requireBilling(l.frame.source.quote.revision===cmd.expectedVersion,'CONFLICT');
+   requireBilling(!['review_required','overpaid'].includes(l.frame.balance.state),'UNAVAILABLE');
+   const active=await l.context.tx.query("SELECT id FROM ls_fishing_billing.card_attempts WHERE workspace_id=$1 AND quote_id=$2 AND state IN('prepared','unknown','open','pending')",[l.context.workspaceId,l.frame.source.quote.id]);
    requireBilling(active.length===0,'CONFLICT');
-   const draft=prepareBillingTestCheckout({quote:l.quote,balance:l.balance,operationId:cmd.operationId,selection:cmd.selection,...this.configuration});
+   const draft=prepareBillingCurrentTestCheckoutV3({frame:l.frame,operationId:cmd.operationId,selection:cmd.selection,...this.configuration});
    const identifier='jlfa_monthly_'+Array.from({length:8},()=>String.fromCharCode(97+randomInt(26))).join('');
    const request=frozenRequestSchema.parse({...draft,params:{...draft.params,integration_identifier:identifier}});
-   const preparation=cardPreparationReceiptSchema.parse({version:CARD_VERSION,operationId:cmd.operationId,quoteId:cmd.quoteId,entityVersion:l.quote.revision+1,replayed:false,result:{attemptId:cmd.operationId,amountMinor:request.amountMinor,allocations:request.allocations}});
+   const preparation=cardPreparationReceiptSchema.parse({version:CARD_VERSION,operationId:cmd.operationId,quoteId:cmd.quoteId,entityVersion:l.frame.source.quote.revision+1,replayed:false,result:{attemptId:cmd.operationId,amountMinor:request.amountMinor,allocations:request.allocations}});
    const a=cardAttemptSchema.parse({
-    version:CARD_VERSION,id:cmd.operationId,workspaceId:l.context.workspaceId,quoteId:l.quote.id,familyId:l.quote.familyId,
+    version:CARD_VERSION,id:cmd.operationId,workspaceId:l.context.workspaceId,quoteId:l.frame.source.quote.id,familyId:l.frame.source.quote.familyId,
     actorId:l.actor.id,revision:1,balanceVersion:preparation.entityVersion,binding:this.binding,command:cmd,
     requestDigest:this.digest(cmd),preparation,createdAt:l.context.now.toISOString(),state:'prepared',
     dispatchId:null,sessionId:null,checkoutUrl:null,paymentIntentId:null,
@@ -132,13 +139,13 @@ export class FishingBillingCards{
  }
  async readAttempt(actor:Actor,quoteId:string,attemptId:string){
   billingId.parse(quoteId);billingId.parse(attemptId);
-  return this.ledger.withCardActor(actor,quoteId,async l=>{
+  return this.ledger.withCurrentCardActorV3(actor,quoteId,async l=>{
    const a=await this.attempt(l.context,attemptId,quoteId);requireBilling(a.actorId===l.actor.id,'FORBIDDEN');return a;
   });
  }
  async readPreparationReceipt(actor:Actor,quoteId:string,operationId:string){
   billingId.parse(operationId);
-  return this.ledger.withCardActor(actor,quoteId,async l=>{
+  return this.ledger.withCurrentCardActorV3(actor,quoteId,async l=>{
    const exists=await one(l.context.tx,'SELECT id FROM ls_fishing_billing.card_attempts WHERE workspace_id=$1 AND id=$2',[l.context.workspaceId,operationId]);if(!exists)return null;
    const a=await this.attempt(l.context,operationId,quoteId);requireBilling(a.actorId===l.actor.id,'FORBIDDEN');return {...a.preparation,replayed:true};
   });
@@ -146,17 +153,17 @@ export class FishingBillingCards{
  async createCheckout(actor:Actor,quoteId:string,attemptId:string){
   requireBilling(this.provider,'UNAVAILABLE');
   // Reject missing/revoked service binding BEFORE reserving or calling a provider.
-  await this.ledger.withCardService(this.binding,quoteId,async()=>undefined);
-  const reserved=await this.ledger.withCardActor(actor,quoteId,async l=>{
+  await this.ledger.withCurrentCardServiceV3(this.binding,quoteId,async()=>undefined);
+  const reserved=await this.ledger.withCurrentCardActorV3(actor,quoteId,async l=>{
    const a=await this.attempt(l.context,attemptId,quoteId);requireBilling(a.actorId===l.actor.id,'FORBIDDEN');
    if(a.state!=='prepared')return {dispatch:false as const,attempt:a};
-   if(l.quote.revision!==a.balanceVersion||l.quote.state!=='accepted'||l.quote.paused||['review_required','overpaid'].includes(l.balance.state)){
-    const stale={...a,state:'stale' as const,revision:a.revision+1,balanceVersion:l.quote.revision+1};
+   if(l.frame.source.quote.revision!==a.balanceVersion||l.frame.source.quote.state!=='accepted'||l.frame.source.quote.paused||['review_required','overpaid'].includes(l.frame.balance.state)){
+    const stale={...a,state:'stale' as const,revision:a.revision+1,balanceVersion:l.frame.source.quote.revision+1};
     await this.save(l.context,a,stale);await l.advance();return {dispatch:false as const,attempt:stale};
    }
    const request=await this.frozenRequest(l.context,a);
-   requireBilling(request.allocations.every(x=>x.amountMinor<=(l.balance.lines.find(line=>line.lineId===x.lineId)?.remainingMinor??0)),'CONFLICT');
-   const unknown={...a,state:'unknown' as const,dispatchId:randomUUID(),revision:a.revision+1,balanceVersion:l.quote.revision+1};
+   requireBilling(request.allocations.every(x=>x.amountMinor<=(l.frame.balance.lines.find(line=>line.lineId===x.lineId)?.remainingMinor??0)),'CONFLICT');
+   const unknown={...a,state:'unknown' as const,dispatchId:randomUUID(),revision:a.revision+1,balanceVersion:l.frame.source.quote.revision+1};
    await this.save(l.context,a,unknown);await l.advance();return {dispatch:true as const,attempt:unknown,request};
   });
   if(!reserved.dispatch)return reserved.attempt;
@@ -166,14 +173,14 @@ export class FishingBillingCards{
   requireBilling(session.accountId===this.binding.accountId&&session.livemode===false&&session.apiVersion===this.binding.apiVersion&&
    session.quoteId===quoteId&&session.attemptId===attemptId&&session.amountMinor===reserved.request.amountMinor&&session.currency==='USD'&&session.paymentStatus!=='no_payment_required','CONFLICT');
   const url=new URL(session.url);requireBilling(url.origin==='https://checkout.stripe.com'&&!url.username&&!url.password,'UNAVAILABLE');
-  return this.ledger.withCardService(this.binding,quoteId,async l=>{
+  return this.ledger.withCurrentCardServiceV3(this.binding,quoteId,async l=>{
    const a=await this.attempt(l.context,attemptId,quoteId);
    requireBilling(a.dispatchId===reserved.attempt.dispatchId,'CONFLICT');
    if(a.state!=='unknown'){
     requireBilling(a.sessionId===session.id&&['paid','pending','failed'].includes(a.state),'CONFLICT');return a;
    }
-   const stale=l.quote.revision!==a.balanceVersion||l.quote.state!=='accepted'||l.quote.paused||l.balance.remainingMinor===0;
-   const after={...a,revision:a.revision+1,balanceVersion:l.quote.revision+1,state:stale?'stale' as const:'open' as const,sessionId:session.id,checkoutUrl:session.url};
+   const stale=l.frame.source.quote.revision!==a.balanceVersion||l.frame.source.quote.state!=='accepted'||l.frame.source.quote.paused||l.frame.balance.remainingMinor===0;
+   const after={...a,revision:a.revision+1,balanceVersion:l.frame.source.quote.revision+1,state:stale?'stale' as const:'open' as const,sessionId:session.id,checkoutUrl:session.url};
    await this.save(l.context,a,after);await l.advance();return after;
   });
  }
@@ -195,7 +202,7 @@ export class FishingBillingCards{
    return {row,receipt,processed};
   });
  }
- private async finish(l:BillingCardLedger,event:BillingStripeSignedReceipt,result:Processing){
+ private async finish(l:BillingCurrentCardLedgerV3,event:BillingStripeSignedReceipt,result:Processing){
   const fresh=await one<EventRow>(l.context.tx,eventSelect+' WHERE account_id=$1 AND livemode=false AND event_id=$2 FOR UPDATE',[this.binding.accountId,event.eventId]);
   requireBilling(fresh&&fresh.workspaceId===l.context.workspaceId&&fresh.digest===event.digest,'CONFLICT');
   const eventAad='ls_fishing_billing/stripe_event/v1/'+l.context.workspaceId+'/'+this.binding.accountId+'/'+event.eventId;
@@ -227,10 +234,10 @@ export class FishingBillingCards{
   const fact=settlementSchema.parse({workspaceId:c.workspaceId,quoteId:a.quoteId,attemptId:a.id,receiptId:r.id,kind,transactionId,amountMinor:r.amountMinor,accountId:this.binding.accountId,livemode:false});
   await c.tx.query('INSERT INTO ls_fishing_billing.card_settlements(account_id,livemode,kind,transaction_id,workspace_id,quote_id,attempt_id,receipt_id,fact_ciphertext) VALUES($1,false,$2,$3,$4,$5,$6,$7,$8)',[this.binding.accountId,kind,transactionId,c.workspaceId,a.quoteId,a.id,r.id,seal(JSON.stringify(fact),aad('settlement',c.workspaceId,kind+'/'+transactionId),this.ring)]);
  }
- private processing(l:BillingCardLedger,a:CardAttempt,event:BillingStripeSignedReceipt,review:boolean,receiptIds:string[],reason:string|null):Processing{
+ private processing(l:BillingCurrentCardLedgerV3,a:CardAttempt,event:BillingStripeSignedReceipt,review:boolean,receiptIds:string[],reason:string|null):Processing{
   return processedSchema.parse({version:CARD_VERSION,workspaceId:l.context.workspaceId,accountId:this.binding.accountId,eventId:event.eventId,digest:event.digest,quoteId:a.quoteId,attemptId:a.id,review,receiptIds,reason});
  }
- private async hold(l:BillingCardLedger,a:CardAttempt,event:BillingStripeSignedReceipt,snapshot:ProviderPaymentSnapshot,reason:string){
+ private async hold(l:BillingCurrentCardLedgerV3,a:CardAttempt,event:BillingStripeSignedReceipt,snapshot:ProviderPaymentSnapshot,reason:string){
   const id=randomUUID(),record=cardExceptionSchema.parse({version:'JLFA-FISHING-CARD-EXCEPTION-v1',id,workspaceId:l.context.workspaceId,quoteId:a.quoteId,familyId:a.familyId,eventId:event.eventId,eventDigest:event.digest,reason,snapshot,state:'open',recordedAt:l.context.now.toISOString()});
   const old=await one<{id:string;state:string;ciphertext:string}>(l.context.tx,'SELECT id,state,payload_ciphertext AS ciphertext FROM ls_fishing_billing.card_exceptions WHERE workspace_id=$1 AND quote_id=$2 AND event_id=$3',[l.context.workspaceId,a.quoteId,event.eventId]);
   if(!old)await l.context.tx.query("INSERT INTO ls_fishing_billing.card_exceptions(workspace_id,id,quote_id,event_id,state,payload_ciphertext) VALUES($1,$2,$3,$4,'open',$5)",[l.context.workspaceId,id,a.quoteId,event.eventId,seal(JSON.stringify(record),aad('exception',l.context.workspaceId,id),this.ring)]);
@@ -239,7 +246,7 @@ export class FishingBillingCards{
    requireBilling(previous.id===old.id&&previous.workspaceId===l.context.workspaceId&&previous.quoteId===a.quoteId&&previous.familyId===a.familyId&&previous.eventId===event.eventId&&previous.eventDigest===event.digest&&previous.state===old.state,'UNAVAILABLE');
    await l.context.tx.query("UPDATE ls_fishing_billing.card_exceptions SET state='open',payload_ciphertext=$3 WHERE workspace_id=$1 AND id=$2",[l.context.workspaceId,old.id,seal(JSON.stringify({...previous,state:'open'}),aad('exception',l.context.workspaceId,old.id),this.ring)]);
   }
-  const after={...a,state:'review_required' as const,revision:a.revision+1,balanceVersion:l.quote.revision+1};
+  const after={...a,state:'review_required' as const,revision:a.revision+1,balanceVersion:l.frame.source.quote.revision+1};
   await this.save(l.context,a,after);await l.advance();
   const result=this.processing(l,a,event,true,[],reason);await this.finish(l,event,result);return result;
  }
@@ -247,8 +254,8 @@ export class FishingBillingCards{
   requireBilling(this.provider,'UNAVAILABLE');
   const event=await this.event(eventId);
   if(event.processed){
-   return this.ledger.withCardService(this.binding,event.processed.quoteId,async l=>{
-    const p=await this.committedProcessing(l.context,event.receipt);requireBilling(p&&p.quoteId===l.quote.id,'UNAVAILABLE');return p!;
+   return this.ledger.withCurrentCardServiceV3(this.binding,event.processed.quoteId,async l=>{
+    const p=await this.committedProcessing(l.context,event.receipt);requireBilling(p&&p.quoteId===l.frame.source.quote.id,'UNAVAILABLE');return p!;
    });
   }
   // Provider GET outside native locks. Root's adapter reads current official
@@ -258,11 +265,11 @@ export class FishingBillingCards{
   requireBilling(event.receipt.objectId.startsWith('cs_')?snapshot.sessionId===event.receipt.objectId:
    event.receipt.objectId.startsWith('pi_')?snapshot.paymentIntentId===event.receipt.objectId:
    event.receipt.objectId.startsWith('re_')?snapshot.refunds.some(r=>r.id===event.receipt.objectId):false,'CONFLICT');
-  return this.ledger.withCardService(this.binding,snapshot.quoteId,async l=>{
+  return this.ledger.withCurrentCardServiceV3(this.binding,snapshot.quoteId,async l=>{
    const completed=await this.committedProcessing(l.context,event.receipt);
-   if(completed){requireBilling(completed.quoteId===l.quote.id&&completed.attemptId===snapshot.attemptId,'FORBIDDEN');return completed;}
+   if(completed){requireBilling(completed.quoteId===l.frame.source.quote.id&&completed.attemptId===snapshot.attemptId,'FORBIDDEN');return completed;}
    const a=await this.attempt(l.context,snapshot.attemptId,snapshot.quoteId);
-   requireBilling(a.familyId===l.quote.familyId&&l.quote.acceptance,'FORBIDDEN');
+   requireBilling(a.familyId===l.frame.source.quote.familyId&&l.frame.source.quote.acceptance,'FORBIDDEN');
    if(!a.dispatchId)return this.hold(l,a,event.receipt,snapshot,'never_dispatched_funds');
    if(a.sessionId!==null&&a.sessionId!==snapshot.sessionId)return this.hold(l,a,event.receipt,snapshot,'session_mismatch');
    if(snapshot.amountMinor!==a.preparation.result.amountMinor)return this.hold(l,a,event.receipt,snapshot,'amount_mismatch');
@@ -273,7 +280,7 @@ export class FishingBillingCards{
    if(snapshot.status!=='paid'&&snapshot.receivedMinor!==0)return this.hold(l,a,event.receipt,snapshot,'received_funds_unreconciled');
    if(snapshot.status==='paid'&&(!snapshot.paidAt||snapshot.receivedMinor!==a.preparation.result.amountMinor))return this.hold(l,a,event.receipt,snapshot,'received_amount_mismatch');
    const additions:LedgerReceipt[]=[],settlements:{r:LedgerReceipt;kind:'payment'|'refund';id:string}[]=[];
-   const matching=known?l.receipts.find(r=>r.id===known.receiptId):undefined;
+   const matching=known?l.frame.balance.receipts.find(r=>r.id===known.receiptId):undefined;
    let payment=matching?ledgerReceiptSchema.parse(matching):undefined;
    if(known)requireBilling(payment&&payment.kind==='card'&&payment.provider?.accountId===this.binding.accountId&&payment.provider.transactionId===snapshot.paymentIntentId&&payment.amountMinor===known.fact.amountMinor,'UNAVAILABLE');
    if(snapshot.status==='paid'&&!payment){
@@ -287,7 +294,8 @@ export class FishingBillingCards{
     const prior=await this.existingSettlement(l.context,'refund',refund.id);
     if(prior){requireBilling(prior.quoteId===a.quoteId&&prior.attemptId===a.id&&prior.fact.amountMinor===refund.amountMinor,'CONFLICT');continue;}
     if(!payment){holdReason='refund_before_payment_unresolved';break;}
-    const allocations=this.refundAuthority?await this.refundAuthority.allocations(l.context,l.quote,refund,payment):null;
+    const allocations=this.currentRefundAuthority?await this.currentRefundAuthority.allocations(l.context,l.frame,refund,payment):
+     l.frame.source.kind==='historical_account'&&this.refundAuthority?await this.refundAuthority.allocations(l.context,l.frame.source.quote,refund,payment):null;
     if(!allocations||allocations.reduce((s,x)=>s+x.amountMinor,0)!==refund.amountMinor){holdReason='refund_allocation_required';break;}
     const r=ledgerReceiptSchema.parse({id:randomUUID(),operationId:randomUUID(),quoteId:a.quoteId,familyId:a.familyId,kind:'refund',currency:'USD',
      amountMinor:refund.amountMinor,allocations,originalReceiptId:payment.id,actorId:null,reason:'Verified provider refund; native allocation',
@@ -295,10 +303,11 @@ export class FishingBillingCards{
     additions.push(r);settlements.push({r,kind:'refund',id:refund.id});
    }
    if(holdReason)return this.hold(l,a,event.receipt,snapshot,holdReason);
-   projectBalanceV2(l.quote,[...l.receipts,...additions]);
+   // Native advance validates additions against the complete current fact set
+   // in this same transaction before persisting them; no V1 quote conversion.
    const nextState=snapshot.status==='paid'?'paid' as const:snapshot.status==='failed'?'failed' as const:'pending' as const;
    if(additions.length||a.state!==nextState){
-    const after={...a,state:nextState,revision:a.revision+1,balanceVersion:l.quote.revision+1,sessionId:snapshot.sessionId,paymentIntentId:snapshot.paymentIntentId};
+    const after={...a,state:nextState,revision:a.revision+1,balanceVersion:l.frame.source.quote.revision+1,sessionId:snapshot.sessionId,paymentIntentId:snapshot.paymentIntentId};
     await this.save(l.context,a,after);await l.advance(additions);
     for(const s of settlements)await this.saveSettlement(l.context,a,s.r,s.kind,s.id);
    }

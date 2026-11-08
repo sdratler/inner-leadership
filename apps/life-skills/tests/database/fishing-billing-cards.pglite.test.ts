@@ -1,4 +1,4 @@
-import {randomUUID,createHash} from 'node:crypto';
+import {randomUUID,randomBytes,createHash} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
 import {PGlite} from '@electric-sql/pglite';
 import {beforeAll,afterAll,it,expect,vi} from 'vitest';
@@ -7,13 +7,19 @@ import {AppError} from '../../src/lib/errors.ts';
 import type {Actor} from '../../src/features/identity/types.ts';
 import type {IdentityStore,SqlSession} from '../../src/features/identity/store.ts';
 import {FishingBillingStore,type BillingAuthority,type BillingFinancialServiceAuthority,type BillingOutboxReservation} from '../../src/features/fishing-billing/native.ts';
-import {FishingBillingCards,type BillingStripeTestProvider,type BillingRefundAllocationAuthority} from '../../src/features/fishing-billing/cards.ts';
+import {FishingBillingCards,type BillingStripeTestProvider,type BillingRefundAllocationAuthority,type BillingCurrentRefundAllocationAuthorityV3} from '../../src/features/fishing-billing/cards.ts';
 import {FishingBillingStripeInbox,verifyBillingStripeTestEvent,type BillingStripeInboxAuthority} from '../../src/features/fishing-billing/stripe-test.ts';
 import {syntheticDefinition} from '../../src/features/fishing-billing/fixtures.ts';
 import type {FamilyOffer,CreateFamilyOffer,ReminderPolicy} from '../../src/features/fishing-billing/contracts.ts';
-import type {ProviderPaymentSnapshot} from '../../src/features/fishing-billing/card-contracts.ts';
+import type {ProviderPaymentSnapshot,CardAttempt} from '../../src/features/fishing-billing/card-contracts.ts';
 import {BILLING_DTO_V2} from '../../src/features/fishing-billing/contracts-v2.ts';
-import {unseal} from '../../src/features/identity/crypto.ts';
+import {seal,unseal,tokenDigest} from '../../src/features/identity/crypto.ts';
+import {FishingBillingGuestOwnerStore} from '../../src/lib/fishing-billing-guest-owner-store.ts';
+import {OWNER_MONEY_V3} from '../../src/lib/fishing-billing-owner-contract-v3.ts';
+import {BILLING_GUEST_V3} from '../../src/lib/fishing-billing-guest-contract-v3.ts';
+import {bindGuestIssuedMaterial,bindGuestDisplayBundle,verifyGuestFamilyOffer} from '../../src/lib/fishing-billing-guest-material-v3.ts';
+import {FishingBillingGuestGrantResolver,guestGrantLifecycleSchema,guestPresentationEvidenceSchema,type BillingGuestGrantAuthority} from '../../src/lib/fishing-billing-guest-grant-resolver.ts';
+import {FishingBillingGuestNativeV3} from '../../src/features/fishing-billing/guest-native-v3.ts';
 vi.mock('server-only',()=>({}));
 // Memory-only native SQL; test provider ports below never connect to Stripe.
 // PGlite queues transactions: real multi-connection contention remains separate.
@@ -76,12 +82,13 @@ beforeAll(async()=>{
  await db.exec('CREATE SCHEMA ls_control');
  for(const file of ['0001_ls_foundation.sql','0010_ls_identity_cases_20260906.sql'])await db.exec(await readFile('migrations/'+file,'utf8'));
  await db.exec(await readFile('tests/fixtures/fishing-billing.sql','utf8'));
- await db.exec('CREATE SCHEMA synthetic_cards;CREATE TABLE synthetic_cards.admission(family_id uuid PRIMARY KEY,revoked boolean DEFAULT false);CREATE TABLE synthetic_cards.refund_allocations(refund_id text PRIMARY KEY,allocations jsonb NOT NULL);CREATE TABLE synthetic_cards.existing_outbox(dispatch_id uuid PRIMARY KEY,intent_id uuid UNIQUE,payload jsonb NOT NULL)');
+ await db.exec(await readFile('migrations/proposals/UNNUMBERED_ls_fishing_billing_guest_v3.sql','utf8'));
+ await db.exec('CREATE SCHEMA synthetic_cards;CREATE TABLE synthetic_cards.admission(family_id uuid PRIMARY KEY,revoked boolean DEFAULT false,recipient_id uuid,assurance_id uuid);CREATE TABLE synthetic_cards.guest_presentations(grant_id uuid PRIMARY KEY,body jsonb,challenge text);CREATE TABLE synthetic_cards.refund_allocations(refund_id text PRIMARY KEY,allocations jsonb NOT NULL);CREATE TABLE synthetic_cards.existing_outbox(dispatch_id uuid PRIMARY KEY,intent_id uuid UNIQUE,payload jsonb NOT NULL)');
  for(const w of [workspace,otherWorkspace])await db.query('INSERT INTO ls_identity.workspaces(id,created_at) VALUES($1,$2)',[w,now]);
  owner=await actor('practitioner');parent=await actor('parent');outsider=await actor('practitioner',otherWorkspace);
 },20000);
 afterAll(async()=>{await db.close();});
-async function family(accept=true){
+async function familyInput(){
  const familyId=randomUUID(),children=[randomUUID(),randomUUID()],d=syntheticDefinition(),definitionId=randomUUID();
  await db.query('INSERT INTO ls_cases.families(id,workspace_id,label_ciphertext,created_at) VALUES($1,$2,$3,$4)',[familyId,workspace,'SYNTHETIC',now]);
  await db.query('INSERT INTO synthetic_cards.admission(family_id) VALUES($1)',[familyId]);
@@ -91,6 +98,10 @@ async function family(accept=true){
  }
  await native().publishOffer(owner,{operationId:randomUUID(),offer:{version:d.version,id:definitionId,programKey:d.programKey,environment:d.environment,currency:d.currency,unitAmountMinor:d.unitAmountMinor,effectiveAt:d.effectiveAt,source:d.source,terms:d.terms,policies:d.policies}});
  const cmd:CreateFamilyOffer={operationId:randomUUID(),id:randomUUID(),familyId,definitionId,override:null,children:children.map(childId=>({lineId:randomUUID(),childId,groupId:null,period:{id:randomUUID(),startsAt:'2035-01-01T05:00:00Z',endsAt:'2035-02-01T05:00:00Z',timeZone:'America/New_York'},dueAt:'2035-01-05T22:00:00Z'}))};
+ return cmd;
+}
+async function family(accept=true){
+ const cmd=await familyInput();
  await native().createOffer(owner,cmd);const issued=await native().issueOffer(owner,{operationId:randomUUID(),expectedVersion:1,quoteId:cmd.id});
  const q=accept?(await native().acceptOffer(parent,{operationId:randomUUID(),expectedVersion:2,quoteId:cmd.id,terms:issued.result.quote.definition.terms,acknowledged:true})).result.quote:issued.result.quote;return q;
 }
@@ -101,7 +112,7 @@ async function prepared(q?:FamilyOffer,amount=65000){
 async function opened(){
  const f=await prepared(),attempt=await cards().createCheckout(parent,f.quote.id,f.command.operationId);return {...f,attempt};
 }
-function payment(f:Awaited<ReturnType<typeof opened>>,change:Partial<ProviderPaymentSnapshot>={}):ProviderPaymentSnapshot{
+function payment(f:{quote:{id:string};attempt:Pick<CardAttempt,'id'|'sessionId'>},change:Partial<ProviderPaymentSnapshot>={}):ProviderPaymentSnapshot{
  return {accountId:binding.accountId,livemode:false,apiVersion:binding.apiVersion,quoteId:f.quote.id,attemptId:f.attempt.id,sessionId:f.attempt.sessionId!,
   paymentIntentId:'pi_'+f.attempt.id.replaceAll('-',''),currency:'USD',amountMinor:65000,receivedMinor:65000,status:'paid',method:'card',paidAt:now.toISOString(),observedAt:now.toISOString(),refunds:[],dispute:'none',...change};
 }
@@ -111,6 +122,86 @@ async function event(snapshot:ProviderPaymentSnapshot,kind:'checkout.session.com
  const cap=verifyBillingStripeTestEvent({rawBody:bytes,signatureHeader:'SYNTHETIC_ADAPTER',binding,now,sdk:{verify:()=>({kind:'stripe_test_signature_only',receipt})}});
  await new FishingBillingStripeInbox(binder,workspace,ring,clock,inboxAuthority).ingest(cap);snapshots.set(eventId,snapshot);return eventId;
 }
+// Actual new guest owner/native acceptance and concrete card coordinator, with
+// synthetic SQL admission/display records and the existing MOCK provider only.
+const guestMoney=()=>new FishingBillingGuestOwnerStore(binder,workspace,ring,key,clock,authority);
+const guestAuthority:BillingGuestGrantAuthority={
+ target:async c=>{const rows=await c.tx.query('SELECT id FROM ls_identity.workspaces WHERE id=$1',[workspace]);if(c.workspaceId!==workspace||rows.length!==1)throw new AppError('UNAVAILABLE');},
+ current:async(c,g,mode)=>{
+  await admitted(c.tx,g.offer.material.familyId,g.offer.material.lines.map(l=>l.childId));
+  const rows=await c.tx.query<{recipient:string;assurance:string}>('SELECT recipient_id AS recipient,assurance_id AS assurance FROM synthetic_cards.admission WHERE family_id=$1 AND revoked=false',[g.offer.material.familyId]);
+  const issuers=await c.tx.query("SELECT id FROM ls_identity.accounts WHERE workspace_id=$1 AND id=$2 AND role='practitioner' AND state='active'",[workspace,g.issuedByAccountId]);
+  const quotes=await c.tx.query<{ciphertext:string}>('SELECT payload_ciphertext AS ciphertext FROM ls_fishing_billing.quotes WHERE workspace_id=$1 AND id=$2',[workspace,g.offer.material.quoteId]);
+  if(rows.length!==1||!rows[0]!.recipient||!rows[0]!.assurance||issuers.length!==1||quotes.length!==1)throw new AppError('FORBIDDEN');
+  const q=verifyGuestFamilyOffer(JSON.parse(unseal(quotes[0]!.ciphertext,'ls_fishing_billing/guest/v3/quote/'+workspace+'/'+g.offer.material.quoteId,ring)));
+  if(mode==='fresh'?q.state!=='issued':q.acceptance?.grantId!==g.id)throw new AppError('FORBIDDEN');
+  return {workspaceId:workspace,familyId:q.familyId,quoteId:q.id,grantId:g.id,recipientBindingEvidenceId:rows[0]!.recipient,assuranceEvidenceId:rows[0]!.assurance,admissionPolicy:q.definition.source};
+ },
+ display:async(c,g,challenge)=>{
+  const rows=await c.tx.query<{body:unknown;challenge:string}>('SELECT body,challenge FROM synthetic_cards.guest_presentations WHERE grant_id=$1',[g.id]);
+  if(rows.length!==1||challenge!==rows[0]!.challenge)throw new AppError('FORBIDDEN');return guestPresentationEvidenceSchema.parse(rows[0]!.body);
+ },
+};
+async function guestFamily(){
+ calls.created.length=0;calls.reads=0;
+ const cmd=await familyInput();await guestMoney().createOffer(owner,cmd);
+ const q=(await guestMoney().issueOffer(owner,{operationId:randomUUID(),quoteId:cmd.id,expectedVersion:1})).quote;
+ const offer=bindGuestIssuedMaterial({workspaceId:workspace,familyId:q.familyId,quoteId:q.id,issuedRevision:q.revision,definition:q.definition,lines:q.lines,createdAt:q.createdAt,issuedAt:q.issuedAt,override:q.override});
+ const display=bindGuestDisplayBundle({id:randomUUID(),version:'SYNTHETIC FINANCIAL TERMS',locale:'en',offerSnapshotSha256:offer.sha256,documents:[{purpose:'financial_terms',source:q.definition.terms,displayedTextSha256:'b'.repeat(64),releaseEvidenceId:randomUUID()}]});
+ const token=randomBytes(32).toString('base64url'),challenge='z'.repeat(43),recipient=randomUUID(),assurance=randomUUID();
+ const lifecycle=guestGrantLifecycleSchema.parse({version:BILLING_GUEST_V3,state:'active',revokedAt:null,use:null,grant:{version:BILLING_GUEST_V3,id:randomUUID(),action:'accept_financial_offer',offer,displayBundle:display,recipientBindingEvidenceId:recipient,admissionPolicy:q.definition.source,tokenDigest:tokenDigest(token),issuedAt:now.toISOString(),expiresAt:new Date(now.valueOf()+86400000).toISOString(),issuedByAccountId:owner.id}}),g=lifecycle.grant;
+ await db.query('UPDATE synthetic_cards.admission SET recipient_id=$2,assurance_id=$3 WHERE family_id=$1',[q.familyId,recipient,assurance]);
+ await db.query('INSERT INTO ls_fishing_billing.guest_grants VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',[workspace,g.id,q.id,g.action,g.tokenDigest,'active',g.issuedAt,g.expiresAt,seal(JSON.stringify(lifecycle),'ls_fishing_billing/guest_grant/v3/'+workspace+'/'+g.id,ring)]);
+ const presentation={action:'accept_financial_offer',grantId:g.id,displayBundleId:display.id,displayBundleSha256:display.sha256,locale:display.locale,evidenceId:randomUUID(),affirmation:{version:'SYNTHETIC STATEMENT',guardianAuthorityText:'SYNTHETIC GUARDIAN TEXT',financialTermsText:'SYNTHETIC FINANCIAL TEXT'}};
+ await db.query('INSERT INTO synthetic_cards.guest_presentations VALUES($1,$2::jsonb,$3)',[g.id,JSON.stringify(presentation),challenge]);
+ const resolver=new FishingBillingGuestGrantResolver(workspace,ring,key,clock,guestAuthority),acceptance=new FishingBillingGuestNativeV3(binder,workspace,ring,clock,resolver);
+ await acceptance.acceptFinancialOffer(token,{operationId:randomUUID(),expectedVersion:2,displayBundleId:display.id,displayBundleSha256:display.sha256,displayChallenge:challenge,parent:{submittedName:'SYNTHETIC GUEST ONLY',guardianAuthorityAttested:true,financialTermsAffirmed:true}});
+ return guestMoney().readQuote(owner,q.id);
+}
+async function guestOpened(){
+ const quote=await guestFamily(),command={operationId:randomUUID(),quoteId:quote.id,expectedVersion:quote.revision,selection:[{lineId:quote.lines[0]!.id,amountMinor:65000}]};
+ const preparation=await cards().prepare(owner,command),attempt=await cards().createCheckout(owner,quote.id,command.operationId);return {quote,command,preparation,attempt};
+}
+it('current guest card preserves generic preparation and actual guest provenance without a parent account',async()=>{
+ const before=(await db.query('SELECT id FROM ls_identity.accounts WHERE workspace_id=$1',[workspace])).rows.length;
+ const q=await guestFamily(),cmd={operationId:randomUUID(),quoteId:q.id,expectedVersion:3,selection:[{lineId:q.lines[0]!.id,amountMinor:20000}]};
+ const first=await cards().prepare(owner,cmd);expect(first).toMatchObject({version:'JLFA-FISHING-CARD-v1',entityVersion:4,result:{amountMinor:20000}});
+ expect(await cards().prepare(owner,cmd)).toEqual({...first,replayed:true});expect(await cards().readPreparationReceipt(owner,q.id,cmd.operationId)).toEqual({...first,replayed:true});
+ const frame=await native().readCurrentLedgerV3(owner,q.id);expect(frame.source.kind).toBe('guest_successor');expect(frame.source.quote.version).toBe(BILLING_GUEST_V3);expect(frame.balance.pendingAttemptIds).toEqual([cmd.operationId]);
+ expect((await db.query('SELECT id FROM ls_identity.accounts WHERE workspace_id=$1',[workspace])).rows).toHaveLength(before);expect(calls.created).toHaveLength(0);
+});
+it('current guest card reconciles MOCK signed facts and actual Root date cash to the same two-child ledger',async()=>{
+ const f=await guestOpened(),id=await event(payment(f));const paid=await cards().processEvent(id);expect(paid.review).toBe(false);expect(await cards().processEvent(id)).toEqual(paid);
+ let frame=await native().readCurrentLedgerV3(owner,f.quote.id);expect(frame.balance).toMatchObject({paidMinor:65000,remainingMinor:65000});
+ await guestMoney().recordCashDate(owner,{version:OWNER_MONEY_V3,operationId:randomUUID(),quoteId:f.quote.id,expectedVersion:frame.source.quote.revision,currency:'USD',amountMinor:20000,allocations:[{lineId:f.quote.lines[1]!.id,amountMinor:20000}],receivedPrecision:'date',receivedDate:'2035-01-06',timeZone:'America/New_York'});
+ frame=await native().readCurrentLedgerV3(owner,f.quote.id);expect(frame.balance).toMatchObject({paidMinor:85000,remainingMinor:45000});
+ await guestMoney().recordCashDate(owner,{version:OWNER_MONEY_V3,operationId:randomUUID(),quoteId:f.quote.id,expectedVersion:frame.source.quote.revision,currency:'USD',amountMinor:45000,allocations:[{lineId:f.quote.lines[1]!.id,amountMinor:45000}],receivedPrecision:'date',receivedDate:'2035-01-06',timeZone:'America/New_York'});
+ frame=await native().readCurrentLedgerV3(owner,f.quote.id);expect(frame.source.kind).toBe('guest_successor');expect(frame.balance).toMatchObject({state:'paid',paidMinor:130000,remainingMinor:0});expect(frame.balance.receipts).toHaveLength(3);expect(calls.created).toHaveLength(1);
+});
+it('current guest card is stale after an actual cash update and cannot dispatch its old amount',async()=>{
+ const q=await guestFamily(),cmd={operationId:randomUUID(),quoteId:q.id,expectedVersion:3,selection:[{lineId:q.lines[0]!.id,amountMinor:20000}]};await cards().prepare(owner,cmd);
+ await guestMoney().recordCashDate(owner,{version:OWNER_MONEY_V3,operationId:randomUUID(),quoteId:q.id,expectedVersion:4,currency:'USD',amountMinor:10000,allocations:[{lineId:q.lines[0]!.id,amountMinor:10000}],receivedPrecision:'date',receivedDate:'2035-01-06',timeZone:'America/New_York'});
+ expect((await cards().createCheckout(owner,q.id,cmd.operationId)).state).toBe('stale');expect(calls.created).toHaveLength(0);expect((await native().readCurrentLedgerV3(owner,q.id)).balance.paidMinor).toBe(10000);
+});
+it('current guest card open provider exception forces actual current review and blocks a new preparation',async()=>{
+ const f=await guestOpened(),id=await event(payment(f,{amountMinor:65001}));expect((await cards().processEvent(id)).review).toBe(true);
+ const frame=await native().readCurrentLedgerV3(owner,f.quote.id);expect(frame.balance.state).toBe('review_required');expect(frame.cardExceptions.some(e=>e.state==='open')).toBe(true);
+ await expect(cards().prepare(owner,{operationId:randomUUID(),quoteId:f.quote.id,expectedVersion:frame.source.quote.revision,selection:[{lineId:f.quote.lines[1]!.id,amountMinor:100}]})).rejects.toThrow('UNAVAILABLE');
+});
+it('current guest card refund requires explicit current-frame native allocation and retains original facts',async()=>{
+ const f=await guestOpened(),snapshot=payment(f);await cards().processEvent(await event(snapshot));const refundId='re_'+randomUUID().replaceAll('-','');
+ await db.query('INSERT INTO synthetic_cards.refund_allocations VALUES($1,$2::jsonb)',[refundId,JSON.stringify([{lineId:f.quote.lines[0]!.id,amountMinor:10000}])]);
+ const refundEvent=await event({...snapshot,refunds:[{id:refundId,amountMinor:10000,state:'succeeded',occurredAt:now.toISOString()}]},'refund.updated');
+ expect(await cards().processEvent(refundEvent)).toMatchObject({review:true,reason:'refund_allocation_required'});
+ const currentAllocation:BillingCurrentRefundAllocationAuthorityV3={allocations:async(c,frame,r,original)=>{
+  expect(frame.source.kind).toBe('guest_successor');expect(frame.source.quote.id).toBe(f.quote.id);expect(original.kind).toBe('card');
+  const row=(await c.tx.query<{value:{lineId:string;amountMinor:number}[]}>('SELECT allocations AS value FROM synthetic_cards.refund_allocations WHERE refund_id=$1',[r.id]))[0];
+  if(!row||!row.value.every(a=>frame.source.quote.lines.some(l=>l.id===a.lineId)))return null;return row.value;
+ }};
+ const approved=new FishingBillingCards(native(),ring,key,config,inboxAuthority,provider,refundAuthority,currentAllocation);
+ expect((await approved.processEvent(refundEvent)).review).toBe(false);
+ const frame=await native().readCurrentLedgerV3(owner,f.quote.id);expect(frame.balance).toMatchObject({paidMinor:55000,remainingMinor:75000});expect(frame.balance.receipts.filter(r=>r.kind==='refund')).toHaveLength(1);
+});
 it('prepares an immutable partial attempt under a current accepted balance; same command recovers exactly',async()=>{
  const f=await prepared(undefined,20000);
  expect(f.preparation).toMatchObject({entityVersion:4,result:{amountMinor:20000}});
@@ -251,8 +342,8 @@ it('freezes the complete request and eight-letter identifier before dispatch, pr
 it('combines date-only partial cash and a verified card remainder for a two-child family without inventing a receipt instant',async()=>{
  const q=await family(),cash=await native().recordCashDate(owner,{version:BILLING_DTO_V2,operationId:randomUUID(),expectedVersion:3,quoteId:q.id,currency:'USD',amountMinor:20000,allocations:[{lineId:q.lines[0]!.id,amountMinor:20000}],receivedPrecision:'date',receivedDate:'2035-01-06',timeZone:'America/New_York'});
  const command={operationId:randomUUID(),expectedVersion:4,quoteId:q.id,selection:[{lineId:q.lines[0]!.id,amountMinor:45000},{lineId:q.lines[1]!.id,amountMinor:65000}]};
- const preparation=await cards().prepare(parent,command),attempt=await cards().createCheckout(parent,q.id,command.operationId);
- await cards().processEvent(await event(payment({quote:q,command,preparation,attempt},{amountMinor:110000,receivedMinor:110000})));
+ await cards().prepare(parent,command);const attempt=await cards().createCheckout(parent,q.id,command.operationId);
+ await cards().processEvent(await event(payment({quote:q,attempt},{amountMinor:110000,receivedMinor:110000})));
  const b=(await native().readBalanceV2(owner,q.id)).balance;expect(b).toMatchObject({state:'paid',paidMinor:130000,remainingMinor:0,revision:8});
  expect(b.receipts.find(r=>r.id===cash.result.receiptId)).toMatchObject({receivedDate:'2035-01-06',receivedPrecision:'date'});expect(b.receipts.find(r=>r.id===cash.result.receiptId)).not.toHaveProperty('receivedAt');
  expect(b.receipts.find(r=>r.kind==='card')).toMatchObject({receivedAt:now.toISOString(),amountMinor:110000});
