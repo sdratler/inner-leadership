@@ -7,12 +7,13 @@ import type {IdentityStore,SqlSession} from "../../identity/store.ts";
 import {seal,unseal,type Keyring} from "../../identity/crypto.ts";
 import {systemClock,type Actor,type IdentityClock} from "../../identity/types.ts";
 import {PublicGroupApplicationStore} from "../../group-application/store.ts";
-import {isFloridaGroupApplication,isSchoolInquiry,normalizeFloridaLeadContact} from "../../group-application/contract.ts";
+import {isFloridaGroupApplication,isSchoolInquiry,isTrip390Interest,normalizeFloridaLeadContact,type GroupApplicationRecord} from "../../group-application/contract.ts";
 import {ContactCutoverStore} from "./cutover-store.ts";
+import {readCutoverState} from "./cutover-state.ts";
 import {NativeCrmStore,crmProfileAad,crmProfileSchema,type CrmProfile} from "./native-store.ts";
 import {privateDigest} from "./digests.ts";
 import {MAX_NATIVE_CONTACTS} from "../core/limits.ts";
-import {ACADEMY_CRM_PROGRAM,academyActivitySchema,academyAdminFieldsSchema,academyContactOriginSchema,
+import {ACADEMY_CRM_PROGRAM,academyEpoch,academyActivitySchema,academyAdminFieldsSchema,academyContactOriginSchema,
  academyCrmCommandSchema,academyCrmResultSchema,academyManualFieldsSchema,type AcademyActivity,type AcademyContact,
  type AcademyCrmCommand,type AcademyCrmPage,type AcademyCrmResult} from "../core/academy-crm.ts";
 import {nextFishingMembership,fishingLabelDesired} from "../core/fishing-lead.ts";
@@ -24,6 +25,7 @@ type Admission={personId:string;initializationId:string;kind:"manual"|"inquiry";
 type ActivityRow={personId:string;actorId:string;kind:string;version:number;digest:string;ciphertext:string;recordedAt:Date};
 const activityAad=(workspace:string,operation:string)=>`ls_contact_ops/academy-activity/v1/${workspace}/${operation}`;
 const querySchema=z.object({search:z.string().max(200).default(""),page:z.number().int().min(1).max(100000).default(1)}).strict();
+const inquiryContactSchema=z.object({reference:z.string().uuid(),expectedEpoch:academyEpoch,intent:z.enum(["read","write"])}).strict();
 const PAGE_SIZE=12;
 
 /** Academy admission precedes decryption. No workspace-wide phone/email/name
@@ -95,14 +97,75 @@ export class AcademyCrmStore {
    event.kind!==row.kind||event.recordedBy!==row.actorId||event.recordedAt!==row.recordedAt.toISOString())throw new AppError("UNAVAILABLE");
   return event;
  }
- private async inquiry(tx:SqlSession,actor:Actor,sourceApplicationId:string){
+ private async inquiryRecord(tx:SqlSession,actor:Actor,sourceApplicationId:string){
   const source=new PublicGroupApplicationStore({transaction:work=>work(tx)},actor.workspaceId,this.ring,this.integrityKey,
    this.clock,false,undefined,ACADEMY_CRM_PROGRAM);
-  const record=await source.readForOwnerInTransaction(tx,actor,sourceApplicationId);
+  return source.readForOwnerInTransaction(tx,actor,sourceApplicationId);
+ }
+ private inquiryProjection(actor:Actor,sourceApplicationId:string,record:GroupApplicationRecord){
+  if(isTrip390Interest(record.fields))return {sourceApplicationId,
+   sourceDigest:privateDigest({workspaceId:actor.workspaceId,record},this.integrityKey),
+   name:record.fields.guardianName,phone:record.fields.phone??null,email:record.fields.email,language:record.fields.messageLanguage};
   if(!isFloridaGroupApplication(record.fields)||isSchoolInquiry(record.fields)||record.fields.programId!==ACADEMY_CRM_PROGRAM)throw new AppError("NOT_FOUND");
   const raw=record.fields.contact,phone=normalizeFloridaLeadContact(raw),email=raw.includes("@")?raw.trim().toLowerCase():null;
   return {sourceApplicationId,sourceDigest:privateDigest({workspaceId:actor.workspaceId,record},this.integrityKey),
    name:record.fields.parentName,phone,email,language:record.fields.language};
+ }
+ private async inquiry(tx:SqlSession,actor:Actor,sourceApplicationId:string){
+  return this.inquiryProjection(actor,sourceApplicationId,await this.inquiryRecord(tx,actor,sourceApplicationId));
+ }
+ private async rawOwner(tx:SqlSession,actor:Actor,lock:boolean){
+  const rows=await tx.query<{id:string}>(`SELECT a.id FROM ls_identity.sessions s
+   JOIN ls_identity.accounts a ON a.workspace_id=s.workspace_id AND a.id=s.account_id
+   JOIN ls_identity.account_subjects subject ON subject.workspace_id=a.workspace_id AND subject.account_id=a.id
+   WHERE s.workspace_id=$1 AND s.account_id=$2 AND s.token_digest=$3 AND subject.person_id=$4
+    AND s.revoked_at IS NULL AND s.expires_at>GREATEST($5::timestamptz,clock_timestamp())
+    AND a.state='active' AND a.role='practitioner'${lock?" FOR SHARE OF s,a,subject":""}`,
+   [actor.workspaceId,actor.id,actor.sessionDigest,actor.personId,this.clock.now()]);
+  if(rows.length!==1)throw new AppError("UNAUTHENTICATED");
+ }
+ private async inquiryContact(tx:SqlSession,actor:Actor,state:Authority,reference:string,lock:boolean){
+  const record=await this.inquiryRecord(tx,actor,reference),source=this.inquiryProjection(actor,reference,record);
+  const admitted=await tx.query<{personId:string}>(`SELECT a.person_id AS "personId" FROM ls_contact_ops.academy_crm_contacts a
+   JOIN ls_contact_ops.profiles p ON p.workspace_id=a.workspace_id AND p.person_id=a.person_id
+   JOIN ls_identity.people i ON i.workspace_id=a.workspace_id AND i.id=a.person_id
+   JOIN ls_service_interest.public_applications r ON r.workspace_id=a.workspace_id AND r.id=a.source_application_id
+   WHERE a.workspace_id=$1 AND a.initialization_id=$2 AND a.program_key='sunday_fishing_academy'
+    AND a.source_kind='inquiry' AND a.source_application_id=$3${lock?" FOR SHARE OF a,p,i,r":""}`,
+   [actor.workspaceId,state.academy.operationId,reference]);
+  if(!admitted.length)throw new AppError("NOT_FOUND");if(admitted.length!==1)throw new AppError("UNAVAILABLE");
+  const contact=await this.contact(tx,actor,state,admitted[0]!.personId);
+  if(contact.origin.kind!=="inquiry"||contact.origin.sourceApplicationId!==reference||
+   contact.origin.sourceDigest!==source.sourceDigest)throw new AppError("CONFLICT");
+  return {record,sourceDigest:source.sourceDigest,contact};
+ }
+ /** Internal provenance port, never an HTTP response or guardian/recipient/
+  * financial permission. All callback IO uses the admitted existing transaction. */
+ async withInquiryContact<T>(actor:Actor,input:{reference:string;expectedEpoch:number;intent:"read"|"write"},
+  work:(context:{tx:SqlSession;record:GroupApplicationRecord;sourceDigest:string;contact:AcademyContact;authorityEpoch:number})=>Promise<T>):Promise<T>{
+  const parsed=inquiryContactSchema.safeParse(input);if(!parsed.success)throw new AppError("INVALID_REQUEST");
+  const request=parsed.data,owner=Object.freeze({...actor});
+  let observed:{tx:SqlSession;initializationId:string;personId:string;sourceDigest:string;contactDigest:string}|undefined;
+  return this.authority.withAcademy(owner,{intent:request.intent,expectedEpoch:request.expectedEpoch},async(tx,state)=>{
+   // PostgreSQL forbids row locks in READ ONLY. READ keeps genuine database
+   // enforcement plus joined entry/terminal validation; WRITE holds these rows.
+   await this.rawOwner(tx,owner,request.intent==="write");
+   const source=await this.inquiryContact(tx,owner,state,request.reference,request.intent==="write");
+   observed={tx,initializationId:state.academy.operationId,personId:source.contact.personId,
+    sourceDigest:source.sourceDigest,contactDigest:privateDigest(source.contact,this.integrityKey)};
+   const callbackTx:SqlSession=Object.freeze({query:tx.query.bind(tx)});
+   return work(Object.freeze({tx:callbackTx,...source,authorityEpoch:state.epoch}));
+  },async tx=>{
+   if(!observed||observed.tx!==tx)throw new AppError("UNAVAILABLE");
+   const state=await readCutoverState(tx,owner.workspaceId,this.ring,false);
+   if(state.phase!=="academy_native"||!state.academy||state.epoch!==request.expectedEpoch||
+    state.academy.program!==ACADEMY_CRM_PROGRAM||state.academy.operationId!==observed.initializationId)throw new AppError("CONFLICT");
+   const current=await this.inquiryContact(tx,owner,{...state,academy:state.academy},request.reference,false);
+   if(current.sourceDigest!==observed.sourceDigest||current.contact.personId!==observed.personId||
+    privateDigest(current.contact,this.integrityKey)!==observed.contactDigest)throw new AppError("CONFLICT");
+   // This is the final DB operation, AFTER callback and Cutover counter IO.
+   await this.rawOwner(tx,owner,false);
+  });
  }
  async previewInquiry(actor:Actor,sourceApplicationId:string,expectedEpoch:number){
   if(!z.string().uuid().safeParse(sourceApplicationId).success)throw new AppError("INVALID_REQUEST");
