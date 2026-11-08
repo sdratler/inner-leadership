@@ -223,7 +223,8 @@
 .footerBrand{display:flex;align-items:center;gap:18px;text-decoration:none;max-inline-size:100%;min-inline-size:0}
 .footerBrand img{display:block;flex:none}
 .footerBrand span{font:700 17px/1.4 Georgia,serif;max-inline-size:23ch;min-inline-size:0}
-.page .whatsapp{position:fixed;right:max(18px,env(safe-area-inset-right));bottom:calc(max(18px,env(safe-area-inset-bottom)) + var(--contact-lift,0px));z-index:12;display:grid;place-items:center;inline-size:56px;block-size:56px;border-radius:50%;background:#176c42;color:#fff;box-shadow:0 3px 14px #04185830;border:2px solid #fff}
+.page .whatsapp{position:fixed;inset-inline-end:max(18px,env(safe-area-inset-right));bottom:calc(max(18px,env(safe-area-inset-bottom)) + var(--contact-lift,0px));z-index:12;display:grid;place-items:center;inline-size:56px;block-size:56px;border-radius:50%;background:#176c42;color:#fff;box-shadow:0 3px 14px #04185830;border:2px solid #fff}
+.page[dir=rtl] .whatsapp{inset-inline-end:max(18px,env(safe-area-inset-left))}
 .whatsapp svg{inline-size:34px;block-size:34px}
 .page .whatsapp:not([data-contact-ready=true]){visibility:hidden}
 .page .whatsapp[hidden]{display:none}

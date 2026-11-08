@@ -195,7 +195,7 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, reser
    const heroBox=hero.current?.getBoundingClientRect();
    const photoVisible=Boolean(heroBox&&heroBox.bottom>0&&heroBox.top<window.innerHeight);
    const photoReady=Boolean(image?.complete&&asset);
-   if(photoVisible&&!photoReady)return;
+   if(photoVisible&&!photoReady){invalidate();return;}
    const box=link.getBoundingClientRect(),baseTop=box.top+lift,gap=12;
    const obstacles:ContactObstacle[]=Array.from(page.current?.querySelectorAll<HTMLElement>('a,button,summary,input,select,textarea')??[])
     .filter(node=>node!==link&&!node.closest('dialog')&&!node.matches('[data-trip390-faq]>summary')&&node.getClientRects().length&&getComputedStyle(node).visibility!=='hidden')
@@ -239,7 +239,15 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, reser
     }
    }
    const headerFloor=(header.current?.getBoundingClientRect().bottom??0)+gap;
+   // Match the existing text-reflow layout, not an ordinary scroll position.
+   // Only enlarged text may need R08's higher same-node body restoration.
+   const textReflow=Boolean(page.current&&parseFloat(getComputedStyle(page.current).fontSize)>=26);
    let top=baseTop,floor=Math.max(headerFloor,baseTop-168),metText=false;
+   // Keep a still-clear local slot instead of snapping back down on each tick.
+   const priorTop=baseTop-lift;
+   if(lift>0&&lift<=224&&priorTop>=headerFloor&&!obstacles.some(rect=>rect.top<priorTop+box.height+rect.gap&&rect.bottom>priorTop-rect.gap)){
+    top=priorTop;floor=Math.min(floor,priorTop);
+   }
    for(let index=0;index<=obstacles.length;index++){
     const overlap=obstacles.filter(rect=>rect.top<top+box.height+rect.gap&&rect.bottom>top-rect.gap);
     if(!overlap.length)break;
@@ -249,7 +257,7 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, reser
     if(top>=floor)continue;
     // Exhaust the lower band first. Above it, use the closest clear body slot
     // only after the hero has scrolled behind the header and the menu is closed.
-    if(top<headerFloor||!metText||menuOpen||!hero.current||hero.current.getBoundingClientRect().bottom>headerFloor-gap)break;
+    if(top<headerFloor||!metText||!textReflow||menuOpen||!hero.current||hero.current.getBoundingClientRect().bottom>headerFloor-gap)break;
     floor=headerFloor;
     // A higher dock must also leave supporting photos and their captions clear.
     page.current?.querySelectorAll('main img,main figcaption').forEach(node=>{
@@ -267,13 +275,17 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, reser
   // Invalidate synchronously at geometry changes, before the queued measure.
   // Layout-effect cleanup also closes the gap before a reflow commit paints.
   const schedule=()=>{invalidate();if(!frame)frame=requestAnimationFrame(measure);};
+  // A scroll changes obstacle positions without changing the layout. Resolve
+  // it in this event, before paint, rather than hiding a still-safe dock until
+  // the next frame. Structural reflow still invalidates synchronously above.
+  const scroll=()=>{cancelAnimationFrame(frame);frame=0;measure();};
   const observer=typeof ResizeObserver==='undefined'?null:new ResizeObserver(schedule);
   if(page.current)observer?.observe(page.current);
   const image=hero.current?.querySelector('img');
   if(image){observer?.observe(image);image.addEventListener('load',schedule);}
-  window.addEventListener('scroll',schedule,{passive:true,capture:true});
+  window.addEventListener('scroll',scroll,{passive:true,capture:true});
   window.addEventListener('resize',schedule);document.addEventListener('toggle',schedule,true);schedule();
-  return()=>{invalidate();observer?.disconnect();image?.removeEventListener('load',schedule);cancelAnimationFrame(frame);window.removeEventListener('scroll',schedule,true);window.removeEventListener('resize',schedule);document.removeEventListener('toggle',schedule,true);link.style.removeProperty('--contact-lift');link.style.visibility='';};
+  return()=>{invalidate();observer?.disconnect();image?.removeEventListener('load',schedule);cancelAnimationFrame(frame);window.removeEventListener('scroll',scroll,true);window.removeEventListener('resize',schedule);document.removeEventListener('toggle',schedule,true);link.style.removeProperty('--contact-lift');link.style.visibility='';};
  },[locale,dialogOpen,menuOpen,heroReflow]);
  useEffect(()=>{
   const node=dialog.current;

@@ -34,13 +34,16 @@ export function heroActionReachability(s:ActionReachabilitySnapshot):string[]{
  return findings;
 }
 
-export type PhotoBlockedContactSnapshot={box:ActionRect;lift:number;visibility:string;display:string;inlineVisibility:string;ready:string|null;ariaHidden:string|null;tabIndex:number;hidden:boolean;position:string;modalOpen:boolean;photoReady:boolean;photoRegistered:boolean;protectedPhoto:ActionRect|null};
+export type PhotoBlockedContactSnapshot={box:ActionRect;lift:number;visibility:string;display:string;inlineVisibility:string;ready:string|null;ariaHidden:string|null;tabIndex:number;hidden:boolean;position:string;modalOpen:boolean;photoReady:boolean;photoRegistered:boolean;protectedPhoto:ActionRect|null;direction?:string};
 /** Only the observed enlarged-photo fallback; no ordinary/feasible-slot waiver. */
 export function admittedEnlargedPhotoBlock(action:PrimaryActionSnapshot,dock:PhotoBlockedContactSnapshot|null):boolean{
  if(!dock||!action.declaredEnlargedText||action.pageFontSize<34||primaryActionMode(action)!=='scroll'||!dock.photoReady||!dock.photoRegistered||!dock.protectedPhoto)return false;
  if(!validRect(dock.box)||dock.box.width<48||dock.box.height<48||!validRect(dock.protectedPhoto)||!containsRect(action.photo,dock.protectedPhoto))return false;
  if(dock.visibility!=='hidden'||dock.inlineVisibility!=='hidden'||dock.display==='none'||dock.ready!=='false'||dock.ariaHidden!=='true'||dock.tabIndex!==-1||dock.hidden||dock.modalOpen||dock.position!=='fixed'||!Number.isFinite(dock.lift)||Math.abs(dock.lift)>.01)return false;
- if(dock.box.left<0||dock.box.right>action.viewport.width||dock.box.top<0||dock.box.bottom>action.viewport.height||Math.abs(action.viewport.width-dock.box.right)>40)return false;
+ const direction=dock.direction??'ltr';
+ if(direction!=='ltr'&&direction!=='rtl')return false;
+ const inlineEndDistance=direction==='rtl'?dock.box.left:action.viewport.width-dock.box.right;
+ if(dock.box.left<0||dock.box.right>action.viewport.width||dock.box.top<0||dock.box.bottom>action.viewport.height||inlineEndDistance>40)return false;
  const gap=12,baseTop=dock.box.top+dock.lift,floor=Math.max(0,baseTop-224),photo=dock.protectedPhoto;
  // Photo alone must block EVERY position in the existing local interval.
  if(photo.left>=dock.box.right+gap||photo.right<=dock.box.left-gap)return false;
@@ -161,9 +164,10 @@ export async function inspectLanding(page:Page,options:{declaredShortCase?:strin
    const original=registeredOriginals.find(asset=>url.origin===location.origin&&url.pathname===asset.publicPath&&photo.naturalWidth===asset.width&&photo.naturalHeight===asset.height&&asset.sourceSha256===asset.sha256);
    const edges=original?{left:Math.max(0,ib.left,painted.left+original.protectedRect[0]!*scale),top:Math.max(0,ib.top,painted.top+original.protectedRect[1]!*scale),right:Math.min(innerWidth,ib.right,painted.left+original.protectedRect[2]!*scale),bottom:Math.min(innerHeight,ib.bottom,painted.top+original.protectedRect[3]!*scale)}:null;
    const protectedPhoto=edges&&edges.right>edges.left&&edges.bottom>edges.top?{...edges,width:edges.right-edges.left,height:edges.bottom-edges.top}:null;
-   contactSnapshot={box:rect(b),lift,visibility:style.visibility,display:style.display,inlineVisibility:wa.style.visibility,ready:wa.getAttribute('data-contact-ready'),ariaHidden:wa.getAttribute('aria-hidden'),tabIndex:wa.tabIndex,hidden:wa.hidden,position:style.position,modalOpen:document.querySelector('dialog')?.matches(':modal')??false,photoReady:photo.complete&&photo.naturalWidth>0,photoRegistered:Boolean(original),protectedPhoto};
+   contactSnapshot={box:rect(b),lift,visibility:style.visibility,display:style.display,inlineVisibility:wa.style.visibility,ready:wa.getAttribute('data-contact-ready'),ariaHidden:wa.getAttribute('aria-hidden'),tabIndex:wa.tabIndex,hidden:wa.hidden,position:style.position,modalOpen:document.querySelector('dialog')?.matches(':modal')??false,photoReady:photo.complete&&photo.naturalWidth>0,photoRegistered:Boolean(original),protectedPhoto,direction:style.direction};
    // Bounded local collision avoidance: three controls, four for protected photo.
-   if(getComputedStyle(wa).position!=='fixed'||b.width<48||Math.abs(width-b.right)>40||lift<0||lift>224||innerHeight-b.bottom>242||b.bottom>innerHeight)findings.push('whatsapp-placement');
+   const inlineEndDistance=style.direction==='rtl'?b.left:width-b.right;
+   if(style.position!=='fixed'||b.width<48||b.height<48||b.left<0||b.right>width||inlineEndDistance>40||lift<0||lift>224||innerHeight-b.bottom>242||b.bottom>innerHeight)findings.push('whatsapp-placement');
    if(style.visibility==='visible'&&style.display!=='none'&&b.left<subject.right&&b.right>subject.left&&b.top<subject.bottom&&b.bottom>subject.top)findings.push('whatsapp-over-subject');
    if(!wa.href.startsWith('https://wa.me/13054916674?'))findings.push('whatsapp-destination');
    for(const control of document.querySelectorAll('a,button,summary')){
@@ -224,7 +228,8 @@ export async function inspectFaqContact(page:Page){
   const findings:string[]=[],wa=document.querySelector<HTMLAnchorElement>('a[class*="whatsapp"]')!;
   if(getComputedStyle(wa).visibility!=='visible'||wa.getAttribute('aria-hidden')==='true')findings.push('faq-contact-hidden');
   const b=wa.getBoundingClientRect();
-  if(b.width<48||b.right>innerWidth||b.left<innerWidth-100||b.top<0||b.bottom>innerHeight)findings.push('faq-contact-placement');
+  const wrongCorner=getComputedStyle(wa).direction==='rtl'?b.right>100:b.left<innerWidth-100;
+  if(b.width<48||b.height<48||b.left<0||b.right>innerWidth||wrongCorner||b.top<0||b.bottom>innerHeight)findings.push('faq-contact-placement');
   for(const summary of document.querySelectorAll('[data-trip390-faq] summary')){
    const walker=document.createTreeWalker(summary,NodeFilter.SHOW_TEXT);
    for(let text=walker.nextNode();text;text=walker.nextNode()){
