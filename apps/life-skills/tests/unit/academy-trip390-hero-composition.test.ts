@@ -7,6 +7,7 @@ import ts from 'typescript';
 import {AcademyTrip390Page,desktopHeroBands,contactDockState} from '../../src/features/group-application/academy-trip390-page.tsx';
 import assets from '../../src/features/group-application/academy-hero-assets.json';
 import {academyR2Copy} from '../../src/features/group-application/academy-r2-copy.ts';
+import {primaryActionMode,heroActionReachability,type PrimaryActionSnapshot,type ActionReachabilitySnapshot} from '../e2e/group-interest/academy-trip390.visual-checks.ts';
 
 const css=postcss.parse(readFileSync(new URL('../../src/features/group-application/academy-trip390.module.css',import.meta.url),'utf8'));
 const ordinary=[[1280,720],[1366,768],[1440,900],[1496,794],[1496,766],[1920,1080]] as const;
@@ -78,6 +79,50 @@ describe('ordinary hero composition without the typed-attr/aspect support cliff'
    if(rule.selector.includes('[data-master-height]')&&rule.selector.endsWith(' h1'))rule.walkDecls('font-size',d=>{usesBandFont=d.value.includes('--upper-band')&&d.value.includes('36px');});
    if(rule.selector.includes('[data-master-height]')&&rule.selector.endsWith(' .heroAction'))rule.walkDecls('gap',d=>{gapWithinSource=d.value.startsWith('clamp(12px,')&&d.value.endsWith(',16px)');});
   });expect(frameFromPicture).toBe(true);expect(usesBandFont).toBe(true);expect(gapWithinSource).toBe(true);
+ });
+});
+
+describe('R02 source-qualified primary-action reachability',()=>{
+ const rect=(left:number,top:number,width:number,height:number)=>({left,top,width,height,right:left+width,bottom:top+height});
+ function flow(width=320,height=568):PrimaryActionSnapshot{
+  const nw=width>=768?2048:1143,nh=width>=768?1143:2048,photo=rect(0,200,width,width*nh/nw),action=rect(0,photo.bottom,width,156),cta=rect(20,action.top+72,width-40,56);
+  return {viewport:{width,height},hero:rect(0,74,width,action.bottom-74),photo:{...photo,naturalWidth:nw,naturalHeight:nh},action,cta,painted:true,initialPrimaryVisible:false,reflow:true,actionPosition:'static',declaredShortCase:`${width}x${height}`,declaredEnlargedText:false,pageFontSize:17};
+ }
+ it.each([[320,568],[375,667],[844,390]])('R02 accepts only the declared actual %ix%i natural-flow scroll case', (width,height)=>{
+  expect(primaryActionMode(flow(width,height))).toBe('scroll');expect(primaryActionMode({...flow(width,height),declaredShortCase:null})).toBe('unreachable');
+ });
+ it('R02 rejects ordinary offscreen and retained bad-before desktop flow even with a visible header action',()=>{
+  const ordinary={...flow(1366,768),declaredShortCase:null};expect(primaryActionMode(ordinary)).toBe('unreachable');
+  const before={...ordinary,initialPrimaryVisible:true,action:rect(0,230,1366,150),cta:rect(500,300,266,56)};
+  expect(primaryActionMode(before)).toBe('unreachable');
+  // An ordinary valid overlay still requires an initially visible action.
+  const overlay={...ordinary,actionPosition:'absolute'};expect(primaryActionMode(overlay)).toBe('unreachable');expect(primaryActionMode({...overlay,initialPrimaryVisible:true})).toBe('initial');
+ });
+ it('R02 denies mismatched/unadmitted viewport labels and a reflow flag without real below-image geometry',()=>{
+  const s=flow();expect(primaryActionMode({...s,declaredShortCase:'375x667'})).toBe('unreachable');expect(primaryActionMode(flow(321,568))).toBe('unreachable');
+  expect(primaryActionMode({...s,reflow:false})).toBe('unreachable');expect(primaryActionMode({...s,actionPosition:'absolute'})).toBe('unreachable');
+  const above=rect(0,s.photo.top-156,s.viewport.width,156);expect(primaryActionMode({...s,action:above,cta:rect(20,above.top+72,280,56)})).toBe('unreachable');
+  expect(primaryActionMode({...s,initialPrimaryVisible:true,action:above,cta:rect(20,above.top+72,280,56)})).toBe('unreachable');
+  for(const w of [1366,1440])expect(primaryActionMode({...flow(w,768),declaredShortCase:'320x568'})).toBe('unreachable');
+ });
+ it('R02 rejects distorted photo, hidden control and control clipped outside the flow wrapper',()=>{
+  const s=flow();expect(primaryActionMode({...s,photo:{...rect(0,200,320,100),naturalWidth:1143,naturalHeight:2048}})).toBe('unreachable');
+  expect(primaryActionMode({...s,painted:false})).toBe('unreachable');expect(primaryActionMode({...s,initialPrimaryVisible:true,painted:false})).toBe('unreachable');
+  expect(primaryActionMode({...s,cta:rect(20,s.cta.top,350,56)})).toBe('unreachable');expect(primaryActionMode({...s,cta:rect(20,s.action.bottom-20,280,56)})).toBe('unreachable');
+ });
+ it('R02 permits declared actual200percent text only with actual natural flow, never a declaration alone',()=>{
+  const s={...flow(390,844),declaredShortCase:null,declaredEnlargedText:true,pageFontSize:34};expect(primaryActionMode(s)).toBe('scroll');
+  expect(primaryActionMode({...s,declaredEnlargedText:false})).toBe('unreachable');expect(primaryActionMode({...s,pageFontSize:17})).toBe('unreachable');expect(primaryActionMode({...s,reflow:false})).toBe('unreachable');
+ });
+ const reachable=():ActionReachabilitySnapshot=>({viewport:{width:320,height:568},cta:rect(20,460,280,56),painted:true,headerBottom:74,pointsClear:true});
+ it('R02 accepts verified current hitbox only after the same action is wholly visible and point-clear',()=>expect(heroActionReachability(reachable())).toEqual([]));
+ it('R02 keeps an unrelated ordinary-size clear-action holdout valid without a short-case exemption',()=>{
+  const s={...flow(1440,900),declaredShortCase:null,actionPosition:'absolute',initialPrimaryVisible:true};expect(primaryActionMode(s)).toBe('initial');
+  expect(heroActionReachability({viewport:{width:430,height:932},cta:rect(60,800,310,64),painted:true,headerBottom:81,pointsClear:true})).toEqual([]);
+ });
+ it.each(['intercepted','header','bottom','hidden','hitbox'] as const)('R02 rejects %s after scroll instead of assuming that scroll or click implies reachability',mode=>{
+  const s=reachable();if(mode==='intercepted')s.pointsClear=false;if(mode==='header')s.cta=rect(20,70,280,56);if(mode==='bottom')s.cta=rect(20,530,280,56);if(mode==='hidden')s.painted=false;if(mode==='hitbox')s.cta=rect(20,460,47,56);
+  expect(heroActionReachability(s).length).toBeGreaterThan(0);
  });
 });
 

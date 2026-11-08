@@ -7,7 +7,7 @@ import {trip390ReservationNotice} from '../../../src/features/group-application/
 import {trip390StudentConduct} from '../../../src/features/group-application/academy-trip390-student-conduct.ts';
 import {trip390LearningAssets} from '../../../src/features/group-application/academy-trip390-learning-assets.ts';
 import {TRIP390_MEDIA_TYPE} from '../../../src/features/group-application/academy-trip390-transport.ts';
-import {inspectLanding,inspectDialog,inspectFaqContact,inspectBodyHeadings,inspectBodyContact} from './academy-trip390.visual-checks.ts';
+import {inspectLanding,inspectDialog,inspectFaqContact,inspectBodyHeadings,inspectBodyContact,inspectHeroActionReachability} from './academy-trip390.visual-checks.ts';
 import scenes from '../../../src/features/group-application/academy-scenes.json' with {type:'json'};
 
 import iconManifest from '../../../public/groups/academy/icons/r2/manifest.json' with {type:'json'};
@@ -166,6 +166,8 @@ test('landing matrix, native dialog interactions and independent holdout regress
  const sizes=[[320,568],[375,667],[390,844],[430,932],[768,1024],[1366,768],[1440,900],[844,390]] as const;
  for(const locale of ['en','he'] as const){
   for(const [width,height] of sizes){
+   const shortCase=width===320&&height===568||width===375&&height===667||width===844&&height===390;
+   const landingOptions=shortCase?{declaredShortCase:`${width}x${height}`} : {};
    await page.setViewportSize({width,height});
    await page.goto('/'+locale+'/florida');
    await expect(page.locator('#trip390-title')).toBeVisible();
@@ -214,11 +216,14 @@ test('landing matrix, native dialog interactions and independent holdout regress
    if(width===1440||width===390)await page.screenshot({path:info.outputPath(`${locale}-${width}x${height}-founder.png`)});
    await page.evaluate(async()=>{await document.fonts.ready;window.scrollTo(0,0);});
    await expect.poll(()=>page.locator('section[aria-labelledby="trip390-title"] picture img').evaluate(image=>(image as HTMLImageElement).complete&&(image as HTMLImageElement).naturalWidth>0)).toBe(true);
-   await expect.poll(async()=>(await inspectLanding(page)).findings).toEqual([]);
-   const landing=await inspectLanding(page);diagnostics.push({locale,width,height,landing});
+   await expect.poll(async()=>(await inspectLanding(page,landingOptions)).findings).toEqual([]);
+   const landing=await inspectLanding(page,landingOptions);diagnostics.push({locale,width,height,landing});
    await page.screenshot({path:info.outputPath(`${locale}-${width}x${height}-hero.png`)});
    expect(landing.findings,JSON.stringify(landing)).toEqual([]);
    if(width===1440||width===390)await page.screenshot({path:info.outputPath(`${locale}-${width}x${height}-full.png`),fullPage:true});
+   // Same action, positive reachability: admitted short reflow may require scroll.
+   await page.locator('[data-hero-action] a').scrollIntoViewIfNeeded();
+   await expect.poll(async()=>(await inspectHeroActionReachability(page)).findings).toEqual([]);
    await page.locator('[data-hero-action] a').click();
    const dialog=page.getByRole('dialog');await expect(dialog).toBeVisible();
    await expect.poll(async()=>(await inspectDialog(page)).findings).toEqual([]);
@@ -298,11 +303,18 @@ test('landing matrix, native dialog interactions and independent holdout regress
   await expect.poll(async()=>(await inspectBodyContact(page)).findings).toEqual([]);
   await page.screenshot({path:info.outputPath(`${locale}-200percent-communication-viewport.png`)});
   await page.evaluate(()=>window.scrollTo(0,0));
-  await expect.poll(async()=>(await inspectLanding(page)).findings).toEqual([]);
-  const enlarged=await inspectLanding(page);diagnostics.push({locale,textEmulation:'200% computed font sizes',enlarged});
+  await expect.poll(async()=>(await inspectLanding(page,{declaredEnlargedText:true})).findings).toEqual([]);
+  const enlarged=await inspectLanding(page,{declaredEnlargedText:true});diagnostics.push({locale,textEmulation:'200% computed font sizes',enlarged});
   expect(enlarged.findings,JSON.stringify(enlarged)).toEqual([]);
   await page.screenshot({path:info.outputPath(`${locale}-200percent-text-viewport.png`)});
   await page.screenshot({path:info.outputPath(`${locale}-200percent-text-emulation.png`),fullPage:true});
+  await page.locator('[data-hero-action] a').scrollIntoViewIfNeeded();
+  await expect.poll(async()=>(await inspectHeroActionReachability(page)).findings).toEqual([]);
+  await page.locator('[data-hero-action] a').click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect.poll(async()=>(await inspectDialog(page)).findings).toEqual([]);
+  await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).not.toBeVisible();
+  await expect(page.locator('[data-hero-action] a')).toBeFocused();
   await page.emulateMedia({reducedMotion:'no-preference'});
  }
  // Different holdout: long Hebrew answers, two siblings and server rejection.

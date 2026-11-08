@@ -2,6 +2,45 @@ import type {Page} from '@playwright/test';
 import {academyR2Copy as trip390Copy} from '../../../src/features/group-application/academy-r2-copy.ts';
 
 export type HeroContentSnapshot={locale:string|null;blocks:string[];allText:string;headingCount:number;titleCount:number;paragraphCount:number;actionCount:number;linkCount:number};
+type ActionRect={left:number;right:number;top:number;bottom:number;width:number;height:number};
+export type PrimaryActionSnapshot={viewport:{width:number;height:number};hero:ActionRect;photo:ActionRect&{naturalWidth:number;naturalHeight:number};action:ActionRect;cta:ActionRect;
+ painted:boolean;initialPrimaryVisible:boolean;reflow:boolean;actionPosition:string;declaredShortCase:string|null;declaredEnlargedText:boolean;pageFontSize:number};
+// This task's source-admitted matrix cases, not a universal viewport policy.
+const shortCases=new Set(['320x568','375x667','844x390']);
+const validRect=(r:ActionRect)=>Object.values(r).every(Number.isFinite)&&r.width>0&&r.height>0&&Math.abs(r.right-r.left-r.width)<1&&Math.abs(r.bottom-r.top-r.height)<1;
+const containsRect=(outer:ActionRect,inner:ActionRect)=>inner.left>=outer.left-1&&inner.right<=outer.right+1&&inner.top>=outer.top-1&&inner.bottom<=outer.bottom+1;
+/** Package03 permits a below-photo action only for actual short/enlarged flow.
+ * A reflow flag alone never excuses an ordinary missing or malformed action. */
+export function primaryActionMode(s:PrimaryActionSnapshot):'initial'|'scroll'|'unreachable'{
+ if(![s.hero,s.photo,s.action,s.cta].every(validRect)||!s.painted||s.cta.width<48||s.cta.height<48||!containsRect(s.hero,s.photo)||!containsRect(s.hero,s.action)||!containsRect(s.action,s.cta))return 'unreachable';
+ const short=s.declaredShortCase!==null&&shortCases.has(s.declaredShortCase)&&s.declaredShortCase===`${s.viewport.width}x${s.viewport.height}`;
+ const qualified=short||s.declaredEnlargedText&&s.pageFontSize>=34;
+ const proportional=s.photo.naturalWidth>0&&s.photo.naturalHeight>0&&Math.abs(s.photo.width/s.photo.height-s.photo.naturalWidth/s.photo.naturalHeight)<.005;
+ const admittedFlow=qualified&&s.reflow&&s.actionPosition==='static'&&proportional&&s.action.top>=s.photo.bottom-1;
+ if(s.actionPosition==='static'&&!admittedFlow)return 'unreachable';
+ if(s.initialPrimaryVisible)return 'initial';
+ return admittedFlow?'scroll':'unreachable';
+}
+export type ActionReachabilitySnapshot={viewport:{width:number;height:number};cta:ActionRect;painted:boolean;headerBottom:number;pointsClear:boolean};
+export function heroActionReachability(s:ActionReachabilitySnapshot):string[]{
+ const findings:string[]=[];
+ if(!validRect(s.cta)||s.cta.width<48||s.cta.height<48)findings.push('primary-action-hitbox');
+ if(!s.painted)findings.push('primary-action-hidden');
+ if(s.cta.left<0||s.cta.right>s.viewport.width||s.cta.top<Math.max(0,s.headerBottom)||s.cta.bottom>s.viewport.height)findings.push('primary-action-outside-clear-viewport');
+ if(!s.pointsClear)findings.push('primary-action-intercepted');
+ return findings;
+}
+
+/** Positive current hit testing after scrolling the SAME hero action. */
+export async function inspectHeroActionReachability(page:Page){
+ const snapshot=await page.evaluate(()=>{
+  const a=document.querySelector<HTMLAnchorElement>('[data-hero-action] a')!,b=a.getBoundingClientRect();
+  let painted=true;for(let n:HTMLElement|null=a;n;n=n.parentElement){const s=getComputedStyle(n);if(s.display==='none'||s.visibility==='hidden'||s.opacity==='0'||n.hidden||n.getAttribute('aria-hidden')==='true')painted=false;}
+  const inset=6,points=[[b.left+b.width/2,b.top+b.height/2],[b.left+inset,b.top+inset],[b.right-inset,b.top+inset],[b.left+inset,b.bottom-inset],[b.right-inset,b.bottom-inset]];
+  return {viewport:{width:innerWidth,height:innerHeight},cta:{left:b.left,right:b.right,top:b.top,bottom:b.bottom,width:b.width,height:b.height},painted,
+   headerBottom:document.querySelector('header')!.getBoundingClientRect().bottom,pointsClear:points.every(([x,y])=>{const hit=document.elementFromPoint(x!,y!);return hit!==null&&a.contains(hit);})};
+ });return {...snapshot,findings:heroActionReachability(snapshot)};
+}
 
 /** Match the approved locale's complete hero, not an obsolete keyword blacklist. */
 export function matchesCurrentHeroContent(observed:HeroContentSnapshot,copy:typeof trip390Copy=trip390Copy){
@@ -15,8 +54,8 @@ export function matchesCurrentHeroContent(observed:HeroContentSnapshot,copy:type
 }
 
 /** Scoped measurable checks, not a visual score or substitute for image review. */
-export async function inspectLanding(page:Page){
- const observed=await page.evaluate(expectedFaqIds=>{
+export async function inspectLanding(page:Page,options:{declaredShortCase?:string;declaredEnlargedText?:boolean}={}){
+ const observed=await page.evaluate(({expectedFaqIds,declaredShortCase,declaredEnlargedText})=>{
   const findings:string[]=[];
   const box=(node:Element)=>node.getBoundingClientRect();
   const heading=document.querySelector('#trip390-title')!;
@@ -43,7 +82,12 @@ export async function inspectLanding(page:Page){
   if(innerHeight>600&&hero.getAttribute('data-reflow')!=='true'&&Math.abs(hb.bottom-innerHeight)>3)findings.push('hero-first-screen-height');
   if(getComputedStyle(document.querySelector('header')!).position!=='sticky')findings.push('header-not-sticky');
   const primary=[...document.querySelectorAll<HTMLAnchorElement>('[data-hero-action] a,header a[href="#interest"]')];
-  if(!primary.some(node=>{const b=box(node),s=getComputedStyle(node);return s.display!=='none'&&s.visibility!=='hidden'&&b.width>=48&&b.height>=48&&b.top>=0&&b.bottom<=innerHeight&&b.left>=0&&b.right<=innerWidth;}))findings.push('initial-primary-action-unreachable');
+  const initialPrimaryVisible=primary.some(node=>{const b=box(node),s=getComputedStyle(node);return s.display!=='none'&&s.visibility!=='hidden'&&b.width>=48&&b.height>=48&&b.top>=0&&b.bottom<=innerHeight&&b.left>=0&&b.right<=innerWidth;});
+  const rect=(b:DOMRect)=>({left:b.left,right:b.right,top:b.top,bottom:b.bottom,width:b.width,height:b.height});
+  const action=hero.querySelector<HTMLElement>('[data-hero-action]')!,cta=action.querySelector<HTMLAnchorElement>('a')!;
+  let actionPainted=true;for(let n:HTMLElement|null=cta;n;n=n.parentElement){const s=getComputedStyle(n);if(s.display==='none'||s.visibility==='hidden'||s.opacity==='0'||n.hidden||n.getAttribute('aria-hidden')==='true')actionPainted=false;}
+  const primaryAction:PrimaryActionSnapshot={viewport:{width:innerWidth,height:innerHeight},hero:rect(hb),photo:{...rect(ib),naturalWidth:photo.naturalWidth,naturalHeight:photo.naturalHeight},action:rect(box(action)),cta:rect(box(cta)),
+   painted:actionPainted,initialPrimaryVisible,reflow:hero.getAttribute('data-reflow')==='true',actionPosition:getComputedStyle(action).position,declaredShortCase,declaredEnlargedText,pageFontSize:parseFloat(getComputedStyle(hero.closest('div[lang]')!).fontSize)};
   if(primary.some(node=>/[↗→]/.test(node.textContent??'')))findings.push('ornamental-primary-arrow');
   if(document.body.textContent?.includes('Review candidate ·'))findings.push('internal-review-banner');
   // These focal rectangles come from inspecting the exact protected originals
@@ -84,10 +128,12 @@ export async function inspectLanding(page:Page){
     if(c.left<b.right&&c.right>b.left&&c.top<b.bottom&&c.bottom>b.top)findings.push('whatsapp-obscures-control');
    }
   }
-  return {findings,heroContent,viewport:{width:innerWidth,height:innerHeight},headerHeight:header.height,hero:{left:hb.left,width:hb.width,height:hb.height,bottom:hb.bottom},image:{src:photo.currentSrc,fit,subject},faqCount:faq.querySelectorAll('[data-trip390-faq]').length};
- },trip390Copy.en.faqs.map(item=>item.id).filter(id=>id!=='cancellation'&&id!=='conduct'));
+  return {findings,heroContent,primaryAction,viewport:{width:innerWidth,height:innerHeight},headerHeight:header.height,hero:{left:hb.left,width:hb.width,height:hb.height,bottom:hb.bottom},image:{src:photo.currentSrc,fit,subject},faqCount:faq.querySelectorAll('[data-trip390-faq]').length};
+ },{expectedFaqIds:trip390Copy.en.faqs.map(item=>item.id).filter(id=>id!=='cancellation'&&id!=='conduct'),declaredShortCase:options.declaredShortCase??null,declaredEnlargedText:options.declaredEnlargedText===true});
+ const actionMode=primaryActionMode(observed.primaryAction);
+ if(actionMode==='unreachable')observed.findings.push('initial-primary-action-unreachable');
  if(!matchesCurrentHeroContent(observed.heroContent))observed.findings.push('hero-competing-details');
- return observed;
+ return {...observed,actionMode};
 }
 
 export async function inspectDialog(page:Page){
