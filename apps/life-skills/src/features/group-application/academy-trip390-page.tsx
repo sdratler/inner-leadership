@@ -1,6 +1,6 @@
 /* eslint-disable @next/next/no-img-element -- consume protected original asset bytes */
 'use client';
-import React, {useEffect, useRef, useState} from 'react';
+import React, {useEffect, useLayoutEffect, useRef, useState} from 'react';
 import {trip390CitySuggestions, trip390CommandSchema, TRIP390_INTEREST_VERSION, TRIP390_NOTICE_VERSION, TRIP390_DRIVING_VERSION, TRIP390_OFFER, type Trip390Command} from './academy-trip390-contract.ts';
 import site from './academy-site.module.css';
 import styles from './academy-trip390.module.css';
@@ -50,6 +50,14 @@ export function desktopHeroBands(width:number,viewportFrame:number,headingHeight
  const upperBand=photoOffset+protectedTop*scale,lowerBand=height-photoOffset-protectedBottom*scale;
  return {height,photoHeight,photoOffset,upperBand,lowerBand,overlay:headingHeight+16<=upperBand&&actionHeight+8<=lowerBand};
 }
+
+/** A fixed dock is progressive enhancement: pending geometry is never a safe
+ * placement. In particular, an unloaded visible hero cannot clear its people. */
+export function contactDockState(photoVisible:boolean,photoReady:boolean,placement:'pending'|'blocked'|'clear') {
+ const ready=placement==='clear'&&(!photoVisible||photoReady);
+ return {ready,tabIndex:ready?0:-1,ariaHidden:!ready};
+}
+const initialContactDock=contactDockState(false,false,'pending');
 
 function registeredHero(image:HTMLImageElement) {
  if(!image.naturalWidth||!image.currentSrc)return null;
@@ -174,13 +182,25 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, reser
   return()=>{window.removeEventListener('popstate',sync);window.removeEventListener('hashchange',sync);};
  },[]);
 
- useEffect(()=>{
+ useLayoutEffect(()=>{
   const link=contact.current;
   if(!link)return;
   let frame=0,lift=0;
+  const readiness=(state:ReturnType<typeof contactDockState>)=>{
+   link.dataset.contactReady=String(state.ready);
+   link.tabIndex=state.tabIndex;
+   if(state.ariaHidden)link.setAttribute('aria-hidden','true');else link.removeAttribute('aria-hidden');
+  };
+  const invalidate=()=>readiness(initialContactDock);
+  invalidate();
   const measure=()=>{
    frame=0;
    if(dialog.current?.open)return; // Native modal makes all background controls inert.
+   const image=hero.current?.querySelector('img'),asset=image&&registeredHero(image);
+   const heroBox=hero.current?.getBoundingClientRect();
+   const photoVisible=Boolean(heroBox&&heroBox.bottom>0&&heroBox.top<window.innerHeight);
+   const photoReady=Boolean(image?.complete&&asset);
+   if(photoVisible&&!photoReady)return;
    const box=link.getBoundingClientRect(),baseTop=box.top+lift,gap=12;
    const obstacles:ContactObstacle[]=Array.from(page.current?.querySelectorAll<HTMLElement>('a,button,summary,input,select,textarea')??[])
     .filter(node=>node!==link&&!node.closest('dialog')&&!node.matches('[data-trip390-faq]>summary')&&node.getClientRects().length&&getComputedStyle(node).visibility!=='hidden')
@@ -211,8 +231,6 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, reser
    page.current?.querySelectorAll<SVGSVGElement>('[data-jlfa-values] article svg').forEach(icon=>{
     addContentRect(icon.getBoundingClientRect());
    });
-   const image=hero.current?.querySelector('img');
-   const asset=image&&registeredHero(image);
    if(image&&asset){
     // The source rectangle is defined in original pixels.
     const {original,region}=asset;
@@ -249,18 +267,19 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, reser
    lift=blocked?0:baseTop-top;
    link.style.setProperty('--contact-lift',`${lift}px`);
    link.style.visibility=blocked?'hidden':'';
-   link.tabIndex=blocked?-1:0;
-   if(blocked)link.setAttribute('aria-hidden','true');else link.removeAttribute('aria-hidden');
+   readiness(contactDockState(photoVisible,photoReady,blocked?'blocked':'clear'));
   };
-  const schedule=()=>{if(!frame)frame=requestAnimationFrame(measure);};
+  // Invalidate synchronously at geometry changes, before the queued measure.
+  // Layout-effect cleanup also closes the gap before a reflow commit paints.
+  const schedule=()=>{invalidate();if(!frame)frame=requestAnimationFrame(measure);};
   const observer=typeof ResizeObserver==='undefined'?null:new ResizeObserver(schedule);
   if(page.current)observer?.observe(page.current);
   const image=hero.current?.querySelector('img');
   if(image){observer?.observe(image);image.addEventListener('load',schedule);}
   window.addEventListener('scroll',schedule,{passive:true,capture:true});
   window.addEventListener('resize',schedule);document.addEventListener('toggle',schedule,true);schedule();
-  return()=>{observer?.disconnect();image?.removeEventListener('load',schedule);cancelAnimationFrame(frame);window.removeEventListener('scroll',schedule,true);window.removeEventListener('resize',schedule);document.removeEventListener('toggle',schedule,true);link.style.removeProperty('--contact-lift');link.style.visibility='';link.removeAttribute('aria-hidden');link.tabIndex=0;};
- },[locale,dialogOpen,menuOpen]);
+  return()=>{invalidate();observer?.disconnect();image?.removeEventListener('load',schedule);cancelAnimationFrame(frame);window.removeEventListener('scroll',schedule,true);window.removeEventListener('resize',schedule);document.removeEventListener('toggle',schedule,true);link.style.removeProperty('--contact-lift');link.style.visibility='';};
+ },[locale,dialogOpen,menuOpen,heroReflow]);
  useEffect(()=>{
   const node=dialog.current;
   if(!node)return;
@@ -521,6 +540,6 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, reser
    </div></dialog>
   </main>
   <footer className={styles.footer}><a href="#main" className={styles.footerBrand}><img src="/groups/brand/jlfa-logo-locked-v1.png" width="64" height="64" alt=""/><span>{copy.brand}</span></a><p className={styles.affiliation}>{copy.footer.affiliation}</p><nav className={styles.footerLinks} aria-label={t('Contact and privacy','יצירת קשר ופרטיות')}><a href={ACADEMY_CONTACT.telephone}>{copy.footer.contact}</a><a href={'https://wa.me/13054916674?text='+encodeURIComponent(copy.whatsapp_inquiry)} rel="noopener noreferrer" referrerPolicy="no-referrer">{copy.footer.whatsapp}</a><a href="#interest" onClick={openPrivacy}>{copy.footer.privacy}</a></nav></footer>
-  <a className={styles.whatsapp} ref={contact} hidden={dialogOpen} tabIndex={dialogOpen?-1:0} aria-hidden={dialogOpen||undefined} href={'https://wa.me/13054916674?text='+encodeURIComponent(copy.whatsapp_inquiry)} aria-label={t('Contact us on WhatsApp','דברו איתנו בוואטסאפ')} rel="noopener noreferrer" referrerPolicy="no-referrer"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M26 15a11 11 0 0 1-16.5 9.5L4 26l1.6-5.3A11 11 0 1 1 26 15Z"/><path d="m10.4 9.4 2.1-.2 1.5 3-1.4 1.5c1 2 2.5 3.4 4.6 4.3l1.5-1.4 3 1.5-.3 2c-.2 1.4-2.3 1.6-3.5 1.1-4.9-1.8-8.4-5.4-9-9.1-.2-1.3.2-2.4 1.5-2.7Z"/></svg></a>
+  <a className={styles.whatsapp} ref={contact} data-contact-ready={initialContactDock.ready} hidden={dialogOpen} tabIndex={initialContactDock.tabIndex} aria-hidden={initialContactDock.ariaHidden} href={'https://wa.me/13054916674?text='+encodeURIComponent(copy.whatsapp_inquiry)} aria-label={t('Contact us on WhatsApp','דברו איתנו בוואטסאפ')} rel="noopener noreferrer" referrerPolicy="no-referrer"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M26 15a11 11 0 0 1-16.5 9.5L4 26l1.6-5.3A11 11 0 1 1 26 15Z"/><path d="m10.4 9.4 2.1-.2 1.5 3-1.4 1.5c1 2 2.5 3.4 4.6 4.3l1.5-1.4 3 1.5-.3 2c-.2 1.4-2.3 1.6-3.5 1.1-4.9-1.8-8.4-5.4-9-9.1-.2-1.3.2-2.4 1.5-2.7Z"/></svg></a>
  </div>;
 }

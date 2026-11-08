@@ -220,6 +220,7 @@
 .footerBrand span{font:700 17px/1.4 Georgia,serif;max-inline-size:23ch;min-inline-size:0}
 .page .whatsapp{position:fixed;right:max(18px,env(safe-area-inset-right));bottom:calc(max(18px,env(safe-area-inset-bottom)) + var(--contact-lift,0px));z-index:12;display:grid;place-items:center;inline-size:56px;block-size:56px;border-radius:50%;background:#176c42;color:#fff;box-shadow:0 3px 14px #04185830;border:2px solid #fff}
 .whatsapp svg{inline-size:34px;block-size:34px}
+.page .whatsapp:not([data-contact-ready=true]){visibility:hidden}
 .page .whatsapp[hidden]{display:none}
 @media(max-width:1099px){.headerInner{gap:12px}.desktopNav{gap:14px}.desktopNav a{font-size:14px}.page .headerAction{display:none}.languages{margin-inline-start:auto}.packageInner{gap:36px}.faqLayout{gap:32px}}
 @media(max-width:999px){.desktopNav{display:none}.menuButton{display:flex}.headerInner{max-inline-size:none}.skills{grid-template-columns:repeat(2,minmax(0,1fr))}}
