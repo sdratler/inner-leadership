@@ -34,7 +34,7 @@ import {
  type LedgerReceiptV2,
 } from './contracts-v2.ts';
 import {currentLedgerFrameV3Schema,currentLedgerSourceV3Schema,type CurrentLedgerFrameV3,type CurrentLedgerSourceV3} from '../../lib/fishing-billing-current-contract-v3.ts';
-import {projectBillingCurrentLedgerV3,type BillingCurrentCardLedgerV3,type BillingCurrentCardLedgerAccessV3,type BillingCurrentOwnerAuthorityV3} from '../../lib/fishing-billing-current-ledger-v3.ts';
+import {projectBillingCurrentLedgerV3,type BillingCurrentCardLedgerV3,type BillingCurrentCardLedgerAccessV3,type BillingCurrentOwnerAuthorityV3,type CurrentReminderReservationV3} from '../../lib/fishing-billing-current-ledger-v3.ts';
 import {decodeBillingCurrentQuoteV3,readHistoricalFinancialOriginalV3,type CurrentBillingQuoteRowV3} from '../../lib/fishing-billing-current-readback-v3.ts';
 import {verifyStoredGuestFinancialEvidence} from '../../lib/fishing-billing-guest-evidence-readback.ts';
 
@@ -790,7 +790,21 @@ export class FishingBillingStore implements BillingCurrentCardLedgerAccessV3{
    [c.workspaceId,intent.id,next.state,seal(JSON.stringify(next),aad('reminder',c.workspaceId,intent.id),this.ring),intent.quoteId,row.state,row.ciphertext,row.policyCiphertext,row.intentKey,row.audienceKey,row.scheduledAt]);
   requireBilling(changed,'CONFLICT');
  }
- private async currentReminderOwnerContextV3<T>(actor:Actor,target:{quoteId:string}|{intentId:string},action:'reminders'|'dispatch',work:(c:BillingLedgerContext,state:CurrentLedgerState,guard:()=>Promise<AccountFacts>)=>Promise<T>){
+ private currentReminderReservationV3(raw:CurrentReminderReservationV3):CurrentReminderReservationV3{
+  const frame=currentLedgerFrameV3Schema.parse(raw.frame),intent=reminderIntentSchema.parse(raw.intent),policy=reminderPolicySchema.parse(raw.policy),dispatchId=billingId.parse(raw.dispatchId),q=frame.source.quote;
+  requireBilling(q.workspaceId===this.workspaceId&&intent.state==='queued'&&intent.dispatchId===null&&intent.providerId===null&&intent.quoteId===q.id&&intent.familyId===q.familyId&&policy.id===intent.policyId&&policy.revision===intent.policyRevision,'UNAVAILABLE');
+  requireBilling(q.state==='accepted'&&frame.payableBasis&&frame.balance.reminders.some(i=>i.id===intent.id&&i.state==='unknown'),'CONFLICT');
+  return Object.freeze({frame,intent,policy,dispatchId});
+ }
+ private validateCurrentReminderTerminalV3(reservations:readonly CurrentReminderReservationV3[],raw:unknown){
+  const parsed=z.array(serviceDispatchPermissionSchema).min(1).max(50).safeParse(raw);requireBilling(parsed.success&&parsed.data.length===reservations.length,'UNAVAILABLE');
+  const now=this.currentNow().toISOString();
+  for(let n=0;n<reservations.length;n++){
+   const reservation=reservations[n]!,permission=parsed.data![n]!;
+   requireBilling(checkReminderDispatch(reservation.intent,reservation.frame.balance,permission,now).eligible,'CONFLICT');
+  }
+ }
+ private async currentReminderOwnerContextV3<T>(actor:Actor,target:{quoteId:string}|{intentId:string},action:'reminders'|'dispatch',work:(c:BillingLedgerContext,state:CurrentLedgerState,guard:()=>Promise<AccountFacts>,collect:(reservation:CurrentReminderReservationV3)=>void)=>Promise<T>){
   requireBilling(this.currentOwnerAuthority,'UNAVAILABLE');const identity=Object.freeze({...actor});requireBilling(identity.workspaceId===this.workspaceId,'FORBIDDEN');
   return this.db.transaction(async tx=>{
    await lockWorkspace(tx,this.workspaceId);const c=Object.freeze({tx,workspaceId:this.workspaceId,now:this.currentNow()});
@@ -799,15 +813,33 @@ export class FishingBillingStore implements BillingCurrentCardLedgerAccessV3{
    if('intentId' in target&&!row)throw new AppError('NOT_FOUND');
    const record=await this.currentQuoteRecord(c,'quoteId' in target?target.quoteId:this.decodeIntent(c,row!).quoteId),s=scope(record.source.quote);
    const guard=()=>this.currentReminderOwnerGuardV3(c,identity,action,s);await guard();const state=await this.currentLedgerState(c,record);await guard();
-   const result=await work(c,state,guard);await this.currentReminderStableV3(c,state,guard);return result;
+   const reservations:CurrentReminderReservationV3[]=[];
+   const result=await work(c,state,guard,reservation=>{reservations.push(reservation);}),live=await this.currentReminderStableV3(c,state,guard);
+   if(reservations.length){
+    requireBilling(reservations.length<=50&&this.currentOwnerAuthority!.terminalReservationPermissions,'UNAVAILABLE');
+    const actual=reservations.map(r=>this.currentReminderReservationV3({...r,frame:live.frame}));
+    const permissions=await this.currentOwnerAuthority!.terminalReservationPermissions!(this.currentView({...c,now:this.currentNow()}),identity,Object.freeze(actual.map(r=>this.currentReminderReservationV3(r))));
+    // No awaited Native work may follow this joint current decision.
+    this.validateCurrentReminderTerminalV3(actual,permissions);
+   }
+   return result;
   });
  }
- private async currentReminderServiceContextV3<T>(operation:'scan'|'plan'|'outcome',work:(c:BillingLedgerContext,configuration:BillingCurrentReminderServiceConfigurationV3,globalGuard:()=>Promise<void>)=>Promise<T>){
+ private async currentReminderServiceContextV3<T>(operation:'scan'|'plan'|'outcome',work:(c:BillingLedgerContext,configuration:BillingCurrentReminderServiceConfigurationV3,globalGuard:()=>Promise<void>,collect:(reservation:CurrentReminderReservationV3)=>void)=>Promise<T>){
   const configuration=this.currentReminderService;requireBilling(configuration,'UNAVAILABLE');
   return this.db.transaction(async tx=>{
    await lockWorkspace(tx,this.workspaceId);const c=Object.freeze({tx,workspaceId:this.workspaceId,now:this.currentNow()});
    const guard=()=>this.currentReminderServiceGuardV3(c,configuration!,operation,null,null);await guard();
-   const result=await work(c,configuration!,guard);await guard();return result;
+   const reservations:CurrentReminderReservationV3[]=[];
+   const result=await work(c,configuration!,guard,reservation=>{reservations.push(reservation);});await guard();
+   if(reservations.length){
+    requireBilling(reservations.length<=50&&configuration!.authority.terminalReservationPermissions,'UNAVAILABLE');
+    const actual=reservations.map(r=>this.currentReminderReservationV3(r));
+    const permissions=await configuration!.authority.terminalReservationPermissions!(this.currentView({...c,now:this.currentNow()}),configuration!.binding,Object.freeze(actual.map(r=>this.currentReminderReservationV3(r))));
+    // One batch call, then synchronous validation/return only; no final guard.
+    this.validateCurrentReminderTerminalV3(actual,permissions);
+   }
+   return result;
   });
  }
  private currentOwnerReminderPermissionV3(c:BillingLedgerContext,guard:()=>Promise<AccountFacts>):CurrentReminderPermissionV3{
@@ -865,7 +897,7 @@ export class FishingBillingStore implements BillingCurrentCardLedgerAccessV3{
  private async reserveCurrentReminderRowV3(c:BillingLedgerContext,state:CurrentLedgerState,id:string,dispatchId:string,guard:()=>Promise<unknown>,permission:CurrentReminderPermissionV3,reserve:(payload:Parameters<BillingOutboxReservation['reserve']>[1])=>Promise<void>){
   let entries=await this.currentReminderEntriesV3(c,state);const entry=entries.find(e=>e.intent.id===id);if(!entry)throw new AppError('NOT_FOUND');
   const intent=entry.intent,audience={quoteId:intent.quoteId,familyId:intent.familyId,guardianId:intent.guardianId,channel:intent.channel};
-  if(entries.some(e=>e.intent.state==='unknown'&&e.intent.guardianId===intent.guardianId))return {result:{intentId:id,state:'blocked_unknown' as const,reason:'unresolved_dispatch'},check:async()=>{await this.currentReminderStableV3(c,state,guard);}};
+  if(entries.some(e=>e.intent.state==='unknown'&&e.intent.guardianId===intent.guardianId))return {result:{intentId:id,state:'blocked_unknown' as const,reason:'unresolved_dispatch'},terminal:null,check:async()=>{await this.currentReminderStableV3(c,state,guard);return null;}};
   const allowed=await permission(state.frame,entry.policy,audience);await this.currentReminderStableV3(c,state,guard);
   entries=await this.currentReminderEntriesV3(c,state);requireBilling(canonical(entries.find(e=>e.intent.id===id))===canonical(entry),'CONFLICT');
   requireBilling(!entries.some(e=>e.intent.state==='unknown'&&e.intent.guardianId===intent.guardianId),'CONFLICT');
@@ -873,7 +905,7 @@ export class FishingBillingStore implements BillingCurrentCardLedgerAccessV3{
   if(!eligibility.eligible){
    const deferred=['not_due','already_reserved','send_window_closed'].includes(eligibility.reason);
    if(!deferred&&intent.state==='queued')await this.saveCurrentReminderV3(c,entry,reminderIntentSchema.parse({...intent,state:'suppressed',reason:eligibility.reason}));
-   return {result:{intentId:id,state:deferred?'deferred' as const:'suppressed' as const,reason:eligibility.reason},check:async()=>{await this.currentReminderStableV3(c,state,guard);}};
+   return {result:{intentId:id,state:deferred?'deferred' as const:'suppressed' as const,reason:eligibility.reason},terminal:null,check:async()=>{await this.currentReminderStableV3(c,state,guard);return null;}};
   }
   const reserved=reminderIntentSchema.parse({...intent,state:'unknown',dispatchId,reason:'dispatch_reserved'});
   const amount={currency:'USD' as const,quoteId:intent.quoteId,familyId:intent.familyId,revision:state.frame.balance.revision,remainingMinor:eligibility.remainingMinor,lines:eligibility.lines};
@@ -881,38 +913,40 @@ export class FishingBillingStore implements BillingCurrentCardLedgerAccessV3{
   await guard();await this.saveCurrentReminderV3(c,entry,reserved);
   await reserve({intent:reminderIntentSchema.parse(reserved),amount:JSON.parse(JSON.stringify(amount)) as typeof amount});
   const check=async()=>{
-   await this.currentReminderStableV3(c,state,guard);const currentPermission=await permission(state.frame,entry.policy,audience);await this.currentReminderStableV3(c,state,guard);
+   await this.currentReminderStableV3(c,state,guard);const currentPermission=await permission(state.frame,entry.policy,audience),live=await this.currentReminderStableV3(c,state,guard);
    const current=await this.currentReminderEntriesV3(c,state),stored=current.find(e=>e.intent.id===id);
    requireBilling(stored&&canonical(stored.intent)===canonical(reserved)&&stored.row.policyCiphertext===entry.row.policyCiphertext,'CONFLICT');
    requireBilling(!current.some(e=>e.intent.id!==id&&e.intent.guardianId===intent.guardianId&&e.intent.state==='unknown'),'CONFLICT');
    requireBilling(checkReminderDispatch(intent,state.frame.balance,currentPermission,this.currentNow().toISOString()).eligible,'CONFLICT');
+   return this.currentReminderReservationV3({frame:live.frame,intent,policy:entry.policy,dispatchId});
   };
-  await check();return {result:{intentId:id,state:'reserved' as const,dispatchId,remainingMinor:eligibility.remainingMinor},check};
+  const terminal=await check();return {result:{intentId:id,state:'reserved' as const,dispatchId,remainingMinor:eligibility.remainingMinor},terminal,check};
  }
  async reserveCurrentReminderV3(actor:Actor,id:string,dispatchId:string){
-  billingId.parse(id);billingId.parse(dispatchId);requireBilling(this.outbox,'UNAVAILABLE');
-  return this.currentReminderOwnerContextV3(actor,{intentId:id},'dispatch',async(c,state,guard)=>{
+  billingId.parse(id);billingId.parse(dispatchId);requireBilling(this.outbox&&this.currentOwnerAuthority?.terminalReservationPermissions,'UNAVAILABLE');
+  return this.currentReminderOwnerContextV3(actor,{intentId:id},'dispatch',async(c,state,guard,collect)=>{
    const reservation=await this.reserveCurrentReminderRowV3(c,state,id,dispatchId,guard,this.currentOwnerReminderPermissionV3(c,guard),async payload=>{
     const current=await guard();await this.outbox!.reserve(Object.freeze({...this.currentView(c),actor:Object.freeze({...current})}),payload);
    });
+   if(reservation.terminal)collect(reservation.terminal);
    return reservation.result;
   });
  }
  /** Bounded bridge only: no worker, transport, retry or historical import. */
  async reserveCurrentReminderServiceBatchV3(raw:unknown):Promise<ReminderBatchResult>{
-  const command=reminderBatchCommandSchema.parse(raw);requireBilling(this.outbox?.reserveService,'UNAVAILABLE');
-  return this.currentReminderServiceContextV3('scan',async(c,configuration,globalGuard)=>{
+  const command=reminderBatchCommandSchema.parse(raw);requireBilling(this.outbox?.reserveService&&this.currentReminderService?.authority.terminalReservationPermissions,'UNAVAILABLE');
+  return this.currentReminderServiceContextV3('scan',async(c,configuration,globalGuard,collect)=>{
    const rows=await c.tx.query<IntentRow>(iSelect+` AS due WHERE workspace_id=$1 AND state='queued' AND scheduled_at<=$2
     AND NOT EXISTS(SELECT 1 FROM ls_fishing_billing.reminders uncertain WHERE uncertain.workspace_id=due.workspace_id AND uncertain.quote_id=due.quote_id AND uncertain.audience_key=due.audience_key AND uncertain.state='unknown')
     ORDER BY scheduled_at,id LIMIT $3 FOR UPDATE OF due SKIP LOCKED`,[c.workspaceId,this.currentNow(),command.limit+1]);
-   const results:ReminderBatchResult['results']=[],checks:(()=>Promise<void>)[]=[];
+   const results:ReminderBatchResult['results']=[],checks:(()=>Promise<CurrentReminderReservationV3|null>)[]=[];
    for(const row of rows.slice(0,command.limit)){
     const intent=this.decodeIntent(c,row),record=await this.currentQuoteRecord(c,intent.quoteId),s=scope(record.source.quote);
     const guard=()=>this.currentReminderServiceGuardV3(c,configuration,'reserve',s,intent);await guard();const state=await this.currentLedgerState(c,record);await guard();
     const reservation=await this.reserveCurrentReminderRowV3(c,state,intent.id,randomUUID(),guard,this.currentServiceReminderPermissionV3(c,configuration,guard),payload=>this.outbox!.reserveService!(this.currentView(c),configuration.binding,payload));
     results.push(reservation.result);checks.push(reservation.check);
    }
-   await globalGuard();for(const check of checks)await check();return {version:REMINDER_SERVICE_VERSION,scanned:results.length,moreDue:rows.length>command.limit,results};
+   await globalGuard();for(const check of checks){const terminal=await check();if(terminal)collect(terminal);}return {version:REMINDER_SERVICE_VERSION,scanned:results.length,moreDue:rows.length>command.limit,results};
   });
  }
  private async currentReminderOutcomeV3(c:BillingLedgerContext,state:CurrentLedgerState,lookup:z.infer<typeof reminderOutcomeLookupSchema>,binding:BillingCurrentReminderServiceConfigurationV3['binding'],guard:()=>Promise<unknown>){
