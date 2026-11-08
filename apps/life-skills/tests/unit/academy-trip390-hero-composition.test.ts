@@ -7,7 +7,7 @@ import ts from 'typescript';
 import {AcademyTrip390Page,desktopHeroBands,contactDockState} from '../../src/features/group-application/academy-trip390-page.tsx';
 import assets from '../../src/features/group-application/academy-hero-assets.json';
 import {academyR2Copy} from '../../src/features/group-application/academy-r2-copy.ts';
-import {primaryActionMode,heroActionReachability,type PrimaryActionSnapshot,type ActionReachabilitySnapshot} from '../e2e/group-interest/academy-trip390.visual-checks.ts';
+import {primaryActionMode,heroActionReachability,admittedEnlargedPhotoBlock,contactRestorationFindings,type PrimaryActionSnapshot,type ActionReachabilitySnapshot,type PhotoBlockedContactSnapshot,type ContactRestorationSnapshot} from '../e2e/group-interest/academy-trip390.visual-checks.ts';
 
 const css=postcss.parse(readFileSync(new URL('../../src/features/group-application/academy-trip390.module.css',import.meta.url),'utf8'));
 const ordinary=[[1280,720],[1366,768],[1440,900],[1496,794],[1496,766],[1920,1080]] as const;
@@ -170,5 +170,58 @@ describe('HERO-SHORT-CONTACT-R01 readiness before initial/reflow paint',()=>{
   const schedule:ts.VariableDeclaration[]=[];const find=(n:ts.Node)=>{if(ts.isVariableDeclaration(n)&&n.name.getText(source)==='schedule')schedule.push(n);ts.forEachChild(n,find);};find(hook.arguments[0]!);
   const arrow=schedule[0]!.initializer!;expect(ts.isArrowFunction(arrow)).toBe(true);
   const body=ts.isArrowFunction(arrow)&&ts.isBlock(arrow.body)?arrow.body:null;expect(body?.statements[0]?.getText(source)).toBe('invalidate();');expect(body?.getText(source)).toContain('requestAnimationFrame(measure)');
+ });
+});
+
+describe('R08 source-qualified enlarged photo contact and actual-scroll restoration',()=>{
+ const rect=(left:number,top:number,width:number,height:number)=>({left,top,width,height,right:left+width,bottom:top+height});
+ function blocked(){
+  const width=390,height=844,scale=width/assets.textFree.mobile.width,photo={...rect(0,426.640625,width,width*assets.textFree.mobile.height/assets.textFree.mobile.width),naturalWidth:1143,naturalHeight:2048};
+  const action=rect(0,photo.bottom,width,351.171875),cta=rect(20,action.top+196.390625,350,130.78125);
+  const primary:PrimaryActionSnapshot={viewport:{width,height},hero:rect(0,77.1875,width,action.bottom-77.1875),photo,action,cta,painted:true,initialPrimaryVisible:false,reflow:true,actionPosition:'static',declaredShortCase:null,declaredEnlargedText:true,pageFontSize:34};
+  const top=photo.top+assets.current.en.mobile.protectedRect[1]!*scale,bottom=Math.min(height,photo.top+assets.current.en.mobile.protectedRect[3]!*scale);
+  const dock:PhotoBlockedContactSnapshot={box:rect(316,770,56,56),lift:0,visibility:'hidden',display:'grid',inlineVisibility:'hidden',ready:'false',ariaHidden:'true',tabIndex:-1,hidden:false,position:'fixed',modalOpen:false,photoReady:true,photoRegistered:true,protectedPhoto:rect(0,top,width,bottom-top)};
+  return {primary,dock};
+ }
+ function restored():ContactRestorationSnapshot{return {box:rect(316,502.03,56,56),viewport:{width:390,height:844},headerBottom:77.1875,heroBottom:-1000,scrollY:2532,lift:267.97,painted:true,ready:'true',ariaHidden:null,tabIndex:0,hidden:false,position:'fixed',sameNode:true,destinationValid:true,pointsClear:true};}
+ it('R08 admits the measured source-rectangle no-slot case without enlarging the224 budget',()=>{
+  const {primary,dock}=blocked();expect(dock.box.top-(dock.protectedPhoto!.top-dock.box.height-12)).toBeCloseTo(233.932);
+  expect(admittedEnlargedPhotoBlock(primary,dock)).toBe(true);
+ });
+ it('R08 rejects ordinary, declaration-only and forged-flow hidden states',()=>{
+  const {primary,dock}=blocked();
+  for(const patch of [{declaredEnlargedText:false},{pageFontSize:17},{reflow:false},{actionPosition:'absolute'}])expect(admittedEnlargedPhotoBlock({...primary,...patch},dock)).toBe(false);
+ });
+ it('R08 rejects missing, unloaded, unregistered and distorted-photo states',()=>{
+  const {primary,dock}=blocked();expect(admittedEnlargedPhotoBlock(primary,null)).toBe(false);
+  expect(admittedEnlargedPhotoBlock(primary,{...dock,photoReady:false})).toBe(false);expect(admittedEnlargedPhotoBlock(primary,{...dock,photoRegistered:false})).toBe(false);
+  expect(admittedEnlargedPhotoBlock({...primary,photo:{...primary.photo,naturalWidth:1000}},dock)).toBe(false);
+ });
+ it('R08 rejects a feasible above/below/lateral slot, including the old narrower focal rectangle',()=>{
+  const {primary,dock}=blocked();
+  for(const photo of [rect(0,636.27272,390,844-636.27272),rect(0,450,390,200),rect(0,604,10,240)])expect(admittedEnlargedPhotoBlock(primary,{...dock,protectedPhoto:photo})).toBe(false);
+ });
+ it('R08 requires explicit blocked inertness rather than stale ready or painted overlap',()=>{
+  const {primary,dock}=blocked();const changes:Partial<PhotoBlockedContactSnapshot>[]=[{visibility:'visible'},{inlineVisibility:''},{ready:'true'},{ariaHidden:null},{tabIndex:0},{hidden:true},{modalOpen:true},{position:'absolute'},{display:'none'},{lift:12}];
+  for(const patch of changes)expect(admittedEnlargedPhotoBlock(primary,{...dock,...patch})).toBe(false);
+ });
+ it('R08 rejects malformed, clipped and undersized hidden contact geometry',()=>{
+  const {primary,dock}=blocked();
+  for(const box of [rect(316,770,40,56),rect(-4,770,56,56),rect(316,820,56,56),{...dock.box,top:NaN}])expect(admittedEnlargedPhotoBlock(primary,{...dock,box})).toBe(false);
+  expect(admittedEnlargedPhotoBlock(primary,{...dock,protectedPhoto:null})).toBe(false);
+ });
+ it('R08 permits a proven restored body dock above224 only after the hero is behind the header',()=>{
+  expect(contactRestorationFindings(restored())).toEqual([]);
+  expect(contactRestorationFindings({...restored(),heroBottom:100})).toContain('restored-contact-photo-not-behind-header');
+  expect(contactRestorationFindings({...restored(),scrollY:0})).toContain('restored-contact-photo-not-behind-header');
+ });
+ it('R08 rejects a replacement, still-hidden/inert, wrong-destination or intercepted restored control',()=>{
+  expect(contactRestorationFindings({...restored(),sameNode:false})).toContain('restored-contact-replaced');
+  for(const patch of [{painted:false},{ready:'false'},{ariaHidden:'true'},{tabIndex:-1},{hidden:true}])expect(contactRestorationFindings({...restored(),...patch})).toContain('restored-contact-hidden-or-inert');
+  expect(contactRestorationFindings({...restored(),destinationValid:false})).toContain('restored-contact-destination');
+  expect(contactRestorationFindings({...restored(),pointsClear:false})).toContain('restored-contact-intercepted');
+ });
+ it('R08 rejects restored controls under the header, outside the viewport or without a valid hitbox',()=>{
+  for(const box of [rect(316,40,56,56),rect(316,820,56,56),rect(316,500,40,56)])expect(contactRestorationFindings({...restored(),box})).toContain('restored-contact-placement');
  });
 });

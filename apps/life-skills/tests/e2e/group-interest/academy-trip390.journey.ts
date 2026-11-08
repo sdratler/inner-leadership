@@ -7,7 +7,7 @@ import {trip390ReservationNotice} from '../../../src/features/group-application/
 import {trip390StudentConduct} from '../../../src/features/group-application/academy-trip390-student-conduct.ts';
 import {trip390LearningAssets} from '../../../src/features/group-application/academy-trip390-learning-assets.ts';
 import {TRIP390_MEDIA_TYPE} from '../../../src/features/group-application/academy-trip390-transport.ts';
-import {inspectLanding,inspectDialog,inspectFaqContact,inspectBodyHeadings,inspectBodyContact,inspectHeroActionReachability} from './academy-trip390.visual-checks.ts';
+import {inspectLanding,inspectDialog,inspectFaqContact,inspectBodyHeadings,inspectBodyContact,inspectHeroActionReachability,inspectContactRestoration} from './academy-trip390.visual-checks.ts';
 import scenes from '../../../src/features/group-application/academy-scenes.json' with {type:'json'};
 
 import iconManifest from '../../../public/groups/academy/icons/r2/manifest.json' with {type:'json'};
@@ -317,6 +317,7 @@ test('landing matrix, native dialog interactions and independent holdout regress
   await page.evaluate(()=>window.scrollTo(0,0));
   await requireLanding({declaredEnlargedText:true},`${locale}-200percent-landing`);
   const enlarged=await inspectLanding(page,{declaredEnlargedText:true});diagnostics.push({locale,textEmulation:'200% computed font sizes',enlarged});
+  const blockedContact=enlarged.contactMode==='blocked'?await page.locator('a[class*="whatsapp"]').elementHandle():null;
   expect(enlarged.findings,JSON.stringify(enlarged)).toEqual([]);
   await page.screenshot({path:info.outputPath(`${locale}-200percent-text-viewport.png`)});
   await page.screenshot({path:info.outputPath(`${locale}-200percent-text-emulation.png`),fullPage:true});
@@ -327,6 +328,14 @@ test('landing matrix, native dialog interactions and independent holdout regress
   await expect.poll(async()=>(await inspectDialog(page)).findings).toEqual([]);
   await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).not.toBeVisible();
   await expect(page.locator('[data-hero-action] a')).toBeFocused();
+  if(enlarged.contactMode==='blocked'){
+   expect(blockedContact).not.toBeNull();
+   // Actual scroll, SAME element, and the existing strict public body position.
+   await page.locator('#values h2').scrollIntoViewIfNeeded();
+   await expect.poll(async()=>(await inspectBodyContact(page)).findings).toEqual([]);
+   await expect.poll(async()=>(await inspectContactRestoration(page,blockedContact!)).findings).toEqual([]);
+   await blockedContact!.dispose();
+  }
   await page.emulateMedia({reducedMotion:'no-preference'});
  }
  // Different holdout: long Hebrew answers, two siblings and server rejection.
