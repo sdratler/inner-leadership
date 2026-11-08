@@ -195,7 +195,7 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, reser
    const heroBox=hero.current?.getBoundingClientRect();
    const photoVisible=Boolean(heroBox&&heroBox.bottom>0&&heroBox.top<window.innerHeight);
    const photoReady=Boolean(image?.complete&&asset);
-   if(photoVisible&&!photoReady)return;
+   if(photoVisible&&!photoReady){invalidate();return;}
    const box=link.getBoundingClientRect(),baseTop=box.top+lift,gap=12;
    const obstacles:ContactObstacle[]=Array.from(page.current?.querySelectorAll<HTMLElement>('a,button,summary,input,select,textarea')??[])
     .filter(node=>node!==link&&!node.closest('dialog')&&!node.matches('[data-trip390-faq]>summary')&&node.getClientRects().length&&getComputedStyle(node).visibility!=='hidden')
@@ -267,13 +267,17 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, reser
   // Invalidate synchronously at geometry changes, before the queued measure.
   // Layout-effect cleanup also closes the gap before a reflow commit paints.
   const schedule=()=>{invalidate();if(!frame)frame=requestAnimationFrame(measure);};
+  // A scroll changes obstacle positions without changing the layout. Resolve
+  // it in this event, before paint, rather than hiding a still-safe dock until
+  // the next frame. Structural reflow still invalidates synchronously above.
+  const scroll=()=>{cancelAnimationFrame(frame);frame=0;measure();};
   const observer=typeof ResizeObserver==='undefined'?null:new ResizeObserver(schedule);
   if(page.current)observer?.observe(page.current);
   const image=hero.current?.querySelector('img');
   if(image){observer?.observe(image);image.addEventListener('load',schedule);}
-  window.addEventListener('scroll',schedule,{passive:true,capture:true});
+  window.addEventListener('scroll',scroll,{passive:true,capture:true});
   window.addEventListener('resize',schedule);document.addEventListener('toggle',schedule,true);schedule();
-  return()=>{invalidate();observer?.disconnect();image?.removeEventListener('load',schedule);cancelAnimationFrame(frame);window.removeEventListener('scroll',schedule,true);window.removeEventListener('resize',schedule);document.removeEventListener('toggle',schedule,true);link.style.removeProperty('--contact-lift');link.style.visibility='';};
+  return()=>{invalidate();observer?.disconnect();image?.removeEventListener('load',schedule);cancelAnimationFrame(frame);window.removeEventListener('scroll',scroll,true);window.removeEventListener('resize',schedule);document.removeEventListener('toggle',schedule,true);link.style.removeProperty('--contact-lift');link.style.visibility='';};
  },[locale,dialogOpen,menuOpen,heroReflow]);
  useEffect(()=>{
   const node=dialog.current;

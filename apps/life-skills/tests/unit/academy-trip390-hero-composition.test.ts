@@ -173,6 +173,53 @@ describe('HERO-SHORT-CONTACT-R01 readiness before initial/reflow paint',()=>{
  });
 });
 
+describe('CONTACT-SCROLL-R01 actual layout-hook event lifecycle',()=>{
+ // Execute the actual hook with deterministic geometry/RAF primitives. This
+ // observes readiness/event ordering, not browser paint or scroll smoothness.
+ function mounted(oldScroll=false){
+  const source=ts.createSourceFile('page.tsx',readFileSync(new URL('../../src/features/group-application/academy-trip390-page.tsx',import.meta.url),'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
+  let callback='';const visit=(node:ts.Node)=>{if(ts.isCallExpression(node)&&ts.isIdentifier(node.expression)&&node.expression.text==='useLayoutEffect'&&node.arguments[0]?.getText(source).includes('const link=contact.current'))callback=node.arguments[0].getText(source);ts.forEachChild(node,visit);};visit(source);
+  // Controlled bad-before: bind the current actual structural scheduler to
+  // scroll, exactly as c3b did. It must fail the clear-scroll readiness rule.
+  if(oldScroll)callback=callback.replace("window.addEventListener('scroll',scroll,","window.addEventListener('scroll',schedule,");
+  const frames=new Map<number,()=>void>(),windowEvents=new Map<string,()=>void>(),documentEvents=new Map<string,()=>void>(),transitions:string[]=[];
+  let serial=0,lift=0,visibleHero=false,blocked=false,queries=0;
+  const rect=(top:number,bottom:number)=>({left:1100,right:1156,top,bottom,width:56,height:bottom-top});
+  const link={dataset:new Proxy({contactReady:'false'},{set:(target,key,value)=>{if(key==='contactReady')transitions.push(String(value));return Reflect.set(target,key,value);}}),tabIndex:-1,ariaHidden:'true' as string|null,
+   style:{visibility:'',setProperty:(_key:string,value:string)=>{lift=parseFloat(value);},removeProperty:()=>{lift=0;}},getBoundingClientRect:()=>rect(700-lift,756-lift),
+   setAttribute:(_key:string,value:string)=>{link.ariaHidden=value;},removeAttribute:()=>{link.ariaHidden=null;}};
+  const obstacle={closest:()=>null,matches:()=>false,getClientRects:()=>[rect(400,800)],getBoundingClientRect:()=>rect(400,800)};
+  const image={complete:false};
+  const dependencies={contact:{current:link},hero:{current:{querySelector:()=>visibleHero?image:null,getBoundingClientRect:()=>({top:visibleHero?0:-500,bottom:visibleHero?800:-100})}},
+   page:{current:{querySelectorAll:(selector:string)=>{queries++;return blocked&&selector==='a,button,summary,input,select,textarea'?[obstacle]:[];}}},header:{current:{getBoundingClientRect:()=>({bottom:80})}},dialog:{current:{open:false}},menuOpen:false,
+   registeredHero:()=>null,contactDockState,initialContactDock:contactDockState(false,false,'pending'),ResizeObserver:undefined,
+   requestAnimationFrame:(fn:()=>void)=>{frames.set(++serial,fn);return serial;},cancelAnimationFrame:(id:number)=>{frames.delete(id);},getComputedStyle:()=>({visibility:'visible'}),
+   window:{innerWidth:1280,innerHeight:800,addEventListener:(event:string,fn:()=>void)=>{windowEvents.set(event,fn);},removeEventListener:(event:string,fn:()=>void)=>{if(windowEvents.get(event)===fn)windowEvents.delete(event);}},
+   document:{addEventListener:(event:string,fn:()=>void)=>{documentEvents.set(event,fn);},removeEventListener:(event:string,fn:()=>void)=>{if(documentEvents.get(event)===fn)documentEvents.delete(event);}}};
+  const emitted=ts.transpileModule(`return (${callback});`,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
+  const cleanup=(new Function(...Object.keys(dependencies),emitted)(...Object.values(dependencies)) as ()=>()=>void)();
+  return {link,frames,transitions,windowEvents,documentEvents,cleanup,setHero:(value:boolean)=>{visibleHero=value;},setBlocked:(value:boolean)=>{blocked=value;},queries:()=>queries,
+   flush:()=>{const pending=[...frames.values()];frames.clear();pending.forEach(fn=>fn());},scroll:()=>windowEvents.get('scroll')!(),resize:()=>windowEvents.get('resize')!(),toggle:()=>documentEvents.get('toggle')!()};
+ }
+ it('rejects c3b pending-frame reset and preserves clear readiness through repeated current scroll events',()=>{
+  const before=mounted(true);before.flush();before.scroll();expect(before.link.dataset.contactReady).toBe('false');expect(before.link.tabIndex).toBe(-1);expect(before.frames.size).toBe(1);before.cleanup();
+  const current=mounted();expect(current.link.dataset.contactReady).toBe('false');expect(current.link.ariaHidden).toBe('true');current.flush();current.transitions.length=0;
+  const queryStart=current.queries();for(let i=0;i<20;i++)current.scroll();
+  expect(current.transitions).not.toContain('false');expect(current.link.dataset.contactReady).toBe('true');expect(current.link.tabIndex).toBe(0);expect(current.link.ariaHidden).toBeNull();expect(current.frames.size).toBe(0);
+  // One existing collision pass per native event, no queued duplicate pass.
+  // This bounded mock query count is not a browser-duration/performance claim.
+  expect(current.queries()-queryStart).toBe(60);current.cleanup();expect(current.windowEvents.size).toBe(0);expect(current.documentEvents.size).toBe(0);
+ });
+ it('retains structural pre-paint invalidation, unready-photo and collision hiding, then restores the same dock',()=>{
+  const current=mounted(),sameLink=current.link;current.flush();current.resize();expect(current.link.dataset.contactReady).toBe('false');expect(current.frames.size).toBe(1);
+  current.scroll();expect(current.link.dataset.contactReady).toBe('true');expect(current.frames.size).toBe(0);
+  current.toggle();expect(current.link.dataset.contactReady).toBe('false');current.flush();expect(current.link.dataset.contactReady).toBe('true');
+  current.setHero(true);current.scroll();expect(current.link.dataset.contactReady).toBe('false');expect(current.link.tabIndex).toBe(-1);
+  current.setHero(false);current.setBlocked(true);current.scroll();expect(current.link.dataset.contactReady).toBe('false');expect(current.link.style.visibility).toBe('hidden');
+  current.setBlocked(false);current.scroll();expect(current.link).toBe(sameLink);expect(current.link.dataset.contactReady).toBe('true');expect(current.link.style.visibility).toBe('');current.cleanup();
+ });
+});
+
 describe('R08 source-qualified enlarged photo contact and actual-scroll restoration',()=>{
  const rect=(left:number,top:number,width:number,height:number)=>({left,top,width,height,right:left+width,bottom:top+height});
  function blocked(){
