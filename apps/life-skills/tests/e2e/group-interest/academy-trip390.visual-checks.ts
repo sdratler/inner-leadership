@@ -1,6 +1,6 @@
 import type {Page,ElementHandle} from '@playwright/test';
 import {academyR2Copy as trip390Copy} from '../../../src/features/group-application/academy-r2-copy.ts';
-import heroAssets from '../../../src/features/group-application/academy-hero-assets.json';
+import heroAssets from '../../../src/features/group-application/academy-hero-assets.json' with {type:'json'};
 
 const registeredOriginals=(['desktop','mobile'] as const).map(role=>({...heroAssets.textFree[role],sourceSha256:heroAssets.current.en[role].sourceSha256,protectedRect:heroAssets.current.en[role].protectedRect}));
 
