@@ -111,18 +111,36 @@ it('the unchanged generic HTTP dispatcher selects only its existing inquiry purp
  expect(method).toContain('application_id=$2 AND purpose=$3');expect(method).toContain('[this.workspace,reference,INQUIRY_EMAIL_PURPOSE]');expect(method).not.toContain('academy_founder_');
 });
 
-it.each([{dedicated:'true',generic:'false'},{dedicated:'false',generic:'true'}])('Trip route queue $dedicated is independent of generic queue $generic and legacy callbacks',async({dedicated,generic})=>{
+it.each([{dedicated:'true',generic:'false',owner:'true'},{dedicated:'false',generic:'true',owner:'true'},{dedicated:'true',generic:'false',owner:'false'},{dedicated:'false',generic:'true',owner:'false'}])('Trip route queue $dedicated and owner flag $owner are independent of generic queue $generic and legacy callbacks',async({dedicated,generic,owner})=>{
  const {TRIP390_NOTICE_VERSION}=await import('../../src/features/group-application/academy-trip390-contract.ts');
  vi.stubEnv('LS_ACADEMY_TRIP390_RESERVATION_ENABLED','true');vi.stubEnv('LS_ACADEMY_TRIP390_RESERVATION_NOTICE_VERSION',TRIP390_NOTICE_VERSION);
  vi.stubEnv('LS_ACADEMY_TRIP390_ACK_QUEUE_ENABLED',dedicated);vi.stubEnv('LS_INQUIRY_EMAIL_QUEUE_ENABLED',generic);
- vi.stubEnv('LS_ACADEMY_OWNER_NOTIFICATION_ENABLED','true');
+ vi.stubEnv('LS_ACADEMY_OWNER_NOTIFICATION_ENABLED',owner);
+ const ownerMail={transport:{syntheticOwner:true},from:policy.sender,to:'sdratler@gmail.com'};m.ownerTransport.mockReturnValue(ownerMail);
  m.http.mockImplementation(async(_request:Request,load:(trip:boolean)=>Promise<{trip390ReservationAdmitted:boolean;afterCommit:(reference:string)=>Promise<unknown>}>)=>{
   const deps=await load(true);expect(deps.trip390ReservationAdmitted).toBe(true);await deps.afterCommit('55555555-5555-4555-8555-555555555555');return new Response('synthetic');
  });
  const route=await import('../../src/app/api/public/group-applications/route.ts');await route.POST(new Request(origin+'/api/public/group-applications',{method:'POST'}));
- expect(m.publicConstruct).toHaveBeenCalledTimes(1);expect(m.publicConstruct.mock.calls[0]?.[5]).toBe(dedicated==='true');expect(m.publicConstruct.mock.calls[0]).toHaveLength(6);
+ expect(m.publicConstruct).toHaveBeenCalledTimes(1);expect(m.publicConstruct.mock.calls[0]?.[5]).toBe(dedicated==='true');expect(m.publicConstruct.mock.calls[0]).toHaveLength(9);
+ expect(m.publicConstruct.mock.calls[0]?.slice(6)).toEqual([undefined,'sunday_fishing_academy',owner==='true']);
  expect(m.tripDispatch).toHaveBeenCalledTimes(1);expect(m.tripDispatch).toHaveBeenCalledWith('55555555-5555-4555-8555-555555555555',expect.objectContaining({workspaceId:workspace,origin,digestKey:Buffer.alloc(32,1).toString('hex')}),process.env);
- expect(m.construct).not.toHaveBeenCalled();expect(m.signupCallback).not.toHaveBeenCalled();expect(m.legacyCallback).not.toHaveBeenCalled();expect(m.transport).not.toHaveBeenCalled();expect(m.ownerTransport).not.toHaveBeenCalled();expect(m.ownerDispatch).not.toHaveBeenCalled();
+ expect(m.construct).not.toHaveBeenCalled();expect(m.signupCallback).not.toHaveBeenCalled();expect(m.legacyCallback).not.toHaveBeenCalled();expect(m.transport).not.toHaveBeenCalled();
+ expect(m.ownerTransport).toHaveBeenCalledTimes(owner==='true'?1:0);expect(m.ownerDispatch).toHaveBeenCalledTimes(owner==='true'?1:0);
+ if(owner==='true')expect(m.ownerDispatch).toHaveBeenCalledWith('55555555-5555-4555-8555-555555555555',ownerMail.transport,ownerMail.from,ownerMail.to,origin);
+});
+
+it.each(['owner','parent'] as const)('Trip callback isolates a %s transport failure from the other notification',async(failing)=>{
+ vi.stubEnv('LS_ACADEMY_OWNER_NOTIFICATION_ENABLED','true');
+ const ownerMail={transport:{syntheticOwner:true},from:policy.sender,to:'sdratler@gmail.com'};m.ownerTransport.mockReturnValue(ownerMail);
+ if(failing==='owner'){m.ownerDispatch.mockRejectedValueOnce(new Error('SYNTHETIC_OWNER_SEND_UNCERTAIN'));m.tripDispatch.mockResolvedValueOnce('sent');}
+ else{m.ownerDispatch.mockResolvedValueOnce('sent');m.tripDispatch.mockRejectedValueOnce(new Error('SYNTHETIC_PARENT_SEND_UNCERTAIN'));}
+ m.http.mockImplementation(async(_request:Request,load:(trip:boolean)=>Promise<{afterCommit:(reference:string)=>Promise<unknown>}>)=>{
+  const deps=await load(true);expect(await deps.afterCommit('55555555-5555-4555-8555-555555555555')).toBe('sent');return new Response('synthetic');
+ });
+ const route=await import('../../src/app/api/public/group-applications/route.ts');const result=route.POST(new Request(origin+'/api/public/group-applications',{method:'POST'}));
+ if(failing==='parent')await expect(result).rejects.toThrow('SYNTHETIC_PARENT_SEND_UNCERTAIN');else expect((await result).status).toBe(200);
+ expect(m.tripDispatch).toHaveBeenCalledTimes(1);expect(m.ownerDispatch).toHaveBeenCalledTimes(1);
+ expect(m.construct).not.toHaveBeenCalled();expect(m.signupCallback).not.toHaveBeenCalled();expect(m.legacyCallback).not.toHaveBeenCalled();expect(m.transport).not.toHaveBeenCalled();
 });
 
 function controlledPolicy(){return {...policy,expiresAt:'2026-10-25T13:00:00.000Z',allowedTemplateIds:['R00','R03'],r00Exception:{version:'JLFA-OWNER-PAYMENT-CLOCK-CORRECTION-20261027-01',approvalReceiptSha256:'caeab55524e61c98273b01c9884f15b707e502bc6e145360ebf4575ba55bde3a'},population:{mode:'controlled_test',reference:'55555555-5555-4555-8555-555555555555',generation:2,revision:4,admittedAt:'2026-10-25T12:00:00.000Z',recipientSha256:'9'.repeat(64),learnerIds:['66666666-6666-4666-8666-666666666666','77777777-7777-4777-8777-777777777777']}};}
