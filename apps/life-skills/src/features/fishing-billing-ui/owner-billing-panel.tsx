@@ -4,9 +4,11 @@ import type {FormEvent} from 'react';
 import {Button,Input,Textarea} from '../../ui/workspace/controls.tsx';
 import {ledgerReceiptV2Schema} from '../fishing-billing/contracts-v2.ts';
 import {BillingWorkflow,type BillingWorkflowState} from './workflow.ts';
-import {commandFor,prepareStateCommand,moneyVersion,isLegacyData,isGuestData,decodeData,floridaDate,inputUsd,money,parseUsd,receivedDate,sameScope,dataScope,validateSubject,preparationTicket,editedPreparation,samePreparation,unallocatedAmount,type BillingReceipt,type PreparationTicket,type MoneyCommand,type StateCommand,type StateAction,type BillingData,type LegacyBillingData,type BillingSubject,type BillingView,type MoneyKind} from './owner-model.ts';
+import {commandFor,prepareStateCommand,moneyVersion,isLegacyData,isGuestData,decodeData,floridaDate,inputUsd,money,parseUsd,receivedDate,sameScope,dataScope,validateSubject,preparationTicket,editedPreparation,samePreparation,unallocatedAmount,type BillingReceipt,type PreparationTicket,type MoneyCommand,type StateCommand,type StateAction,type BillingData,type BillingSubject,type BillingView,type MoneyKind} from './owner-model.ts';
 import styles from './panel.module.css';
 import {cardCommand,cardUnresolved,type CardCommand,type CardContext} from './card-model.ts';
+import {guestCardCommand,guestCardUnresolved,type GuestCardContext} from './owner-card-model-v3.ts';
+const ownerCardUnresolved=(card:CardContext|GuestCardContext)=>'version' in card?guestCardUnresolved(card):cardUnresolved(card);
 
 type MoneyModal={mode:'money';ticket:PreparationTicket;kind:MoneyKind;lineIds:string[];receipt:BillingReceipt|null;amount:string;allocations:Record<string,string>;date:string;reason:string;error:string;review:MoneyCommand|null;preparing:boolean};
 type StateModal={mode:'state';ticket:PreparationTicket;action:StateAction;command:StateCommand};
@@ -40,7 +42,7 @@ export function OwnerBillingPanel({locale,view,subject,workflow,observedAt,cashA
   data=workflow.currentFor(decodeData(view.state==='ready'?view.data:view.current));
   if(!validateSubject(subject,data)){data=null;invalid=true;}
  }}catch{invalid=true;}
- const active=data,scopeMatches=active&&('scope' in flow)?sameScope(dataScope(active),flow.scope):false;
+ const active=data,scopeMatches=active&&('scope' in flow? sameScope(dataScope(active),flow.scope):flow.guestCard? sameScope(dataScope(active),flow.guestCard.scope):false);
  const contextKey=active?`${active.quote.workspaceId}|${active.quote.familyId}|${active.quote.id}|${active.balance.revision}`:'unavailable';
  const preparationContext=useMemo(()=>({key:contextKey}),[contextKey]);
  const uncertain=workflow.unresolved();
@@ -72,22 +74,23 @@ export function OwnerBillingPanel({locale,view,subject,workflow,observedAt,cashA
   setModal({mode:'state',ticket:preparationTicket(dataScope(active),active.balance.revision,preparationContext),action,command});
  };
  const startCard=()=>{
-  if(!active||!isLegacyData(active)||!cardAllowed||!workflow.canPrepareCard(active))return;
+  if(!active||!cardAllowed||!workflow.canPrepareCard(active))return;
   if(flow.phase!=='idle'&&!workflow.clear())return;
   setModal({mode:'card_prepare',ticket:preparationTicket(dataScope(active),active.balance.revision,preparationContext),amounts:Object.fromEntries(active.balance.lines.filter(l=>l.remainingMinor>0).map(l=>[l.lineId,inputUsd(l.remainingMinor)])),review:null,error:''});
  };
  const startCheckout=()=>{
-  if(!active||!isLegacyData(active)||!cardAllowed||!workflow.canCreateCheckout(active)||!flow.card)return;
+  if(!active||!cardAllowed||!workflow.canCreateCheckout(active)||!workflow.cardFor(active))return;
   if(flow.phase!=='idle'&&!workflow.clear())return;
-  setModal({mode:'card_checkout',ticket:preparationTicket(dataScope(active),active.balance.revision,preparationContext),attemptId:flow.card.attemptId});
+  setModal({mode:'card_checkout',ticket:preparationTicket(dataScope(active),active.balance.revision,preparationContext),attemptId:workflow.cardFor(active)!.attemptId});
  };
  const editCard=(lineId:string,value:string)=>setModal(m=>m?.mode==='card_prepare'?{...m,amounts:{...m.amounts,[lineId]:value},ticket:editedPreparation(m.ticket),review:null,error:''}:m);
  const reviewCard=()=>{
-  if(modal?.mode!=='card_prepare'||!active||!isLegacyData(active)||!cardAllowed||!workflow.ports||!workflow.canPrepareCard(active)||modal.ticket.context!==preparationContext)return;
+  if(modal?.mode!=='card_prepare'||!active||!cardAllowed||!workflow.ports||!workflow.canPrepareCard(active)||modal.ticket.context!==preparationContext)return;
   const ticket=modal.ticket;
   try{
    const selection=Object.entries(modal.amounts).map(([lineId,value])=>{const amountMinor=zero(value)?0:parseUsd(value);if(amountMinor===null)throw Error('INVALID_AMOUNT');return {lineId,amountMinor};}).filter(a=>a.amountMinor>0);
-   const command=cardCommand({operationId:workflow.ports.nextOperationId(),quoteId:active.quote.id,expectedVersion:active.balance.revision,selection},active);
+   const raw={operationId:workflow.ports.nextOperationId(),quoteId:active.quote.id,expectedVersion:active.balance.revision,selection};
+   const command=isGuestData(active)?guestCardCommand(raw,active):cardCommand(raw,active);
    setModal(m=>m?.mode==='card_prepare'&&samePreparation(m.ticket,ticket)?{...m,review:command,error:''}:m);
   }catch{setModal(m=>m?.mode==='card_prepare'&&samePreparation(m.ticket,ticket)?{...m,error:t('Check the selected amounts against the current outstanding lines. Nothing was submitted.','יש לבדוק את הסכומים שנבחרו מול יתרות השורות העדכניות. דבר לא נשלח.')}:m);}
  };
@@ -114,6 +117,7 @@ export function OwnerBillingPanel({locale,view,subject,workflow,observedAt,cashA
   <header className={styles.heading}><div><p className={styles.eyebrow}>{t('Fishing Academy','אקדמיית הדיג')}</p><h1 id={`${id}-title`} tabIndex={-1}>{t('Family billing','תשלומי המשפחה')}</h1>{active&&<p className={styles.family}><bdi>{subject.label}</bdi></p>}</div><span className={styles.test}>{t('Test environment · no live collection','סביבת בדיקה · ללא גבייה בפועל')}</span></header>
   <WorkflowNotice flow={flow} workflow={workflow} locale={locale} showDetails={Boolean(scopeMatches)}/>
   {flow.card&&cardUnresolved(flow.card)&&(!active||!sameScope(flow.card.scope,dataScope(active)))&&<State title={t('Earlier card operation needs verification','פעולת כרטיס קודמת דורשת אימות')} body={t('Return to its original family context. New billing commands remain unavailable until the original attempt is resolved.','יש לחזור למשפחה המקורית. פעולות חיוב חדשות אינן זמינות עד לבירור הניסיון המקורי.')}/>}
+  {flow.guestCard&&guestCardUnresolved(flow.guestCard)&&(!active||!isGuestData(active)||!sameScope(flow.guestCard.scope,dataScope(active)))&&<State title={t('Earlier card operation needs verification','פעולת כרטיס קודמת דורשת אימות')} body={t('Return to its original family context. New billing commands remain unavailable until the original attempt is resolved.','יש לחזור למשפחה המקורית. פעולות חיוב חדשות אינן זמינות עד לבירור הניסיון המקורי.')}/>}
   {view.state==='conflict'&&flow.phase==='idle'&&<State title={t('Balance changed · review again','היתרה השתנתה · נדרשת בדיקה נוספת')} body={t('Review the refreshed amounts before making a new entry.','יש לבדוק את הסכומים המרועננים לפני רישום חדש.')}/>}
   {invalid?<State title={t('Billing data unavailable','נתוני התשלום אינם זמינים')} body={t('A complete authorized family snapshot is required. Amounts are not shown.','נדרשת תמונת מצב מלאה ומאושרת של המשפחה. הסכומים אינם מוצגים.')}/>:
    !active?<State title={view.state==='loading'?t('Loading billing details…','טוען את פרטי התשלום…'):view.state==='forbidden'?t('Access unavailable','אין גישה'):view.state==='unknown'?t('Operation status unresolved','מצב הפעולה טרם הובהר'):t('Billing unavailable','התשלומים אינם זמינים')}
@@ -140,7 +144,7 @@ export function OwnerBillingPanel({locale,view,subject,workflow,observedAt,cashA
      <div className={styles.lines}>{active.balance.lines.map(line=><article className={styles.line} key={line.lineId}><div><h3><bdi>{childName(line.childId)}</bdi></h3><p><time dateTime={line.period.startsAt}>{dateText(line.period.startsAt,locale)}</time> – <time dateTime={line.period.endsAt}>{dateText(line.period.endsAt,locale)}</time></p><small>{t('Service period · Florida time','תקופת שירות · שעון פלורידה')}</small></div><dl><div><dt>{t('Due','חיוב')}</dt><dd className={styles.money}>{hiddenAmounts?'—':money(line.dueMinor,locale)}</dd></div><div><dt>{t('Settled','שולם והוקצה')}</dt><dd className={styles.money}>{hiddenAmounts?'—':money(line.paidMinor,locale)}</dd></div><div><dt>{t('Remaining','יתרה')}</dt><dd className={styles.money}>{hiddenAmounts?'—':money(line.remainingMinor,locale)}</dd></div></dl><div><p className={styles.due}>{line.dueAt?t('Due: ','לתשלום עד: ')+dateText(line.dueAt,locale):t('Payment date not approved','מועד תשלום לא אושר')}</p><Button variant="secondary" disabled={!canCash||line.remainingMinor===0} onClick={()=>start('cash',[line.lineId])}>{t('Record cash for this child','רישום מזומן לילד זה')}</Button></div></article>)}</div>
      {!workflow.ports&&<p className={styles.help}>{t('Payment actions are unavailable until the authenticated integration is connected.','פעולות התשלום אינן זמינות עד לחיבור הממשק המורשה.')}</p>}
     </section>
-    {isLegacyData(active)?<CardControls locale={locale} data={active} workflow={workflow} allowed={cardAllowed} onPrepare={startCard} onCheckout={startCheckout}/>:<section className={styles.card}><h2>{t('Card payment unavailable','תשלום בכרטיס אינו זמין')}</h2><p>{t('Card payment is unavailable for this offer.','תשלום בכרטיס אינו זמין עבור הצעה זו.')}</p></section>}
+    {isLegacyData(active)||workflow.hasCardClient(active)?<CardControls locale={locale} data={active} workflow={workflow} allowed={cardAllowed} onPrepare={startCard} onCheckout={startCheckout}/>:<section className={styles.card}><h2>{t('Card payment unavailable','תשלום בכרטיס אינו זמין')}</h2><p>{t('Card payment is unavailable for this offer.','תשלום בכרטיס אינו זמין עבור הצעה זו.')}</p></section>}
     <div className={styles.lower}>
      <section className={styles.card}><h2>{t('Card & reminder status','מצב כרטיס ותזכורות')}</h2><p>{view.state==='ready'&&view.cardState==='failed'?t('Card attempt failed · no payment confirmed.','ניסיון התשלום בכרטיס נכשל · לא אושר תשלום.'):active.balance.pendingAttemptIds.length||view.state==='ready'&&view.cardState==='pending'?t('Card payment pending · balance is not marked paid.','תשלום בכרטיס ממתין · היתרה אינה מסומנת כשולמה.'):t('No card outcome is inferred.','אין הסקה על תוצאת תשלום בכרטיס.')}</p>
       {active.balance.reminders.length?<ul className={styles.statusList}>{active.balance.reminders.map(r=><li key={r.id}><span>{t(...reminder[r.state]!)}</span><small><bdi>{r.id}</bdi></small></li>)}</ul>:<p className={styles.help}>{t('No reminder records in this snapshot. This does not prove delivery is configured.','אין רשומות תזכורת בתמונת מצב זו. אין בכך הוכחה שהמסירה מוגדרת.')}</p>}
@@ -151,19 +155,19 @@ export function OwnerBillingPanel({locale,view,subject,workflow,observedAt,cashA
    </>}
   {visibleModal&&currentData&&visibleModal.mode==='money'&&<BillingDialog locale={locale} modal={visibleModal} update={update} edit={edit} close={()=>setModal(null)} review={review} flow={flow} workflow={workflow} data={currentData} childName={childName}/>}
   {visibleModal&&currentData&&visibleModal.mode==='state'&&<StateDialog locale={locale} modal={visibleModal} close={()=>setModal(null)} flow={flow} workflow={workflow} data={currentData} allowed={canState} familyLabel={subject.label}/>}
-  {visibleModal&&currentData&&isLegacyData(currentData)&&(visibleModal.mode==='card_prepare'||visibleModal.mode==='card_checkout')&&<CardDialog locale={locale} modal={visibleModal} close={()=>setModal(null)} data={currentData} workflow={workflow} allowed={cardAllowed} familyLabel={subject.label} childName={childName} edit={editCard} review={reviewCard} back={()=>setModal(m=>m?.mode==='card_prepare'?{...m,review:null}:m)}/>}
+  {visibleModal&&currentData&&(visibleModal.mode==='card_prepare'||visibleModal.mode==='card_checkout')&&<CardDialog locale={locale} modal={visibleModal} close={()=>setModal(null)} data={currentData} workflow={workflow} allowed={cardAllowed} familyLabel={subject.label} childName={childName} edit={editCard} review={reviewCard} back={()=>setModal(m=>m?.mode==='card_prepare'?{...m,review:null}:m)}/>}
  </section>;
 }
 function State({title,body}:{title:string;body:string}){return <div className={styles.notice} role="status"><h2>{title}</h2><p>{body}</p></div>;}
 const stateTitles:Record<StateAction,readonly[string,string]>={pause:['Pause payment follow-up','השהיית מעקב התשלום'],resume:['Resume payment follow-up','חידוש מעקב התשלום'],cancel:['Cancel this offer','ביטול הצעה זו']};
 const cardTitles:Record<string,readonly[string,string]>={prepared:['Card attempt prepared','ניסיון הכרטיס הוכן'],unknown:['Card attempt outcome unknown','תוצאת ניסיון הכרטיס אינה ידועה'],open:['TEST Checkout open · no payment confirmed','TEST Checkout פתוח · לא אושר תשלום'],pending:['Card payment pending · no payment confirmed','תשלום הכרטיס ממתין · לא אושר תשלום'],paid:['Card attempt settled · check the family balance','ניסיון הכרטיס הוסדר · יש לבדוק את יתרת המשפחה'],failed:['Card attempt failed','ניסיון הכרטיס נכשל'],expired:['Card attempt expired','תוקף ניסיון הכרטיס פג'],stale:['Card attempt needs current review','ניסיון הכרטיס דורש בדיקה עדכנית'],review_required:['Card attempt requires review','ניסיון הכרטיס דורש בדיקה']};
-function CardReadback({locale,data,workflow,allowed,card}:{locale:'en'|'he';data:LegacyBillingData;workflow:BillingWorkflow;allowed:boolean;card:CardContext}){
+function CardReadback({locale,data,workflow,allowed,card}:{locale:'en'|'he';data:BillingData;workflow:BillingWorkflow;allowed:boolean;card:CardContext|GuestCardContext}){
  const t=(en:string,he:string)=>locale==='he'?he:en;
  const title=card.phase==='preparing'?t('Saving card preparation…','שמירת הכנת ניסיון הכרטיס…'):card.phase==='dispatching'?t('Creating TEST Checkout…','יצירת TEST Checkout…'):card.phase==='reading'?t('Checking the original card reference…','בדיקת מזהה הכרטיס המקורי…'):card.phase==='unknown'?t('Card operation unresolved','פעולת הכרטיס טרם הובהרה'):card.phase==='conflict'?t('Card request conflict · review current amounts','התנגשות בבקשת הכרטיס · יש לבדוק סכומים עדכניים'):card.phase==='rejected'?t('Card request not accepted','בקשת הכרטיס לא התקבלה'):t(...cardTitles[card.projection?.attempt.state??'review_required']!);
  const href=allowed?workflow.checkoutUrl(data):null;
  const canRead=allowed&&workflow.canReadCard(data);
  return <div role="status" className={styles.notice}>
-  <h3>{title}</h3><p>{cardUnresolved(card)?t('Check this same operation or attempt. Do not prepare a replacement, record cash or change the offer while its outcome is unresolved.','יש לבדוק את אותה הפעולה או את אותו הניסיון. אין להכין ניסיון חלופי, לרשום מזומן או לשנות את ההצעה כל עוד התוצאה לא הובהרה.'):t('A preparation or Checkout link does not mark the family paid. Use the current recorded balance.','הכנה או קישור Checkout אינם מסמנים את המשפחה כמי ששילמה. יש להסתמך על היתרה הרשומה העדכנית.')}</p>
+  <h3>{title}</h3><p>{ownerCardUnresolved(card)?t('Check this same operation or attempt. Do not prepare a replacement, record cash or change the offer while its outcome is unresolved.','יש לבדוק את אותה הפעולה או את אותו הניסיון. אין להכין ניסיון חלופי, לרשום מזומן או לשנות את ההצעה כל עוד התוצאה לא הובהרה.'):t('A preparation or Checkout link does not mark the family paid. Use the current recorded balance.','הכנה או קישור Checkout אינם מסמנים את המשפחה כמי ששילמה. יש להסתמך על היתרה הרשומה העדכנית.')}</p>
   {card.projection&&<p>{t('Saved attempt amount','סכום הניסיון שנשמר')}: <bdi className={styles.money}>{money(card.projection.attempt.preparation.result.amountMinor,locale)}</bdi></p>}
   <small>{t('Original operation / attempt','הפעולה / הניסיון המקוריים')}: <bdi>{card.operationId}</bdi></small>
   <div className={styles.actions}><Button variant="secondary" disabled={!canRead} onClick={()=>void workflow.readCard(data)}>{card.lookup==='operation'?t('Check original preparation','בדיקת ההכנה המקורית'):t('Check original attempt','בדיקת הניסיון המקורי')}</Button>
@@ -173,20 +177,20 @@ function CardReadback({locale,data,workflow,allowed,card}:{locale:'en'|'he';data
  </div>;
 }
 /** Read-only rendering: all card effects are deliberate injected callbacks. */
-export function CardControls({locale,data,workflow,allowed,onPrepare,onCheckout}:{locale:'en'|'he';data:LegacyBillingData;workflow:BillingWorkflow;allowed:boolean;onPrepare:()=>void;onCheckout:()=>void}){
- const t=(en:string,he:string)=>locale==='he'?he:en,card=workflow.getSnapshot().card;
+export function CardControls({locale,data,workflow,allowed,onPrepare,onCheckout}:{locale:'en'|'he';data:BillingData;workflow:BillingWorkflow;allowed:boolean;onPrepare:()=>void;onCheckout:()=>void}){
+ const t=(en:string,he:string)=>locale==='he'?he:en,card=workflow.cardFor(data);
  const scoped=card&&sameScope(card.scope,dataScope(data));
  const pending=data.balance.pendingAttemptIds.filter(id=>!scoped||card.attemptId!==id);
  return <section className={styles.card}><h2>{t('TEST card collection','גביית כרטיס בסביבת TEST')}</h2><p>{t('Preparing a card attempt and creating Checkout are separate owner actions. No family terms or waivers are accepted here.','הכנת ניסיון כרטיס ויצירת Checkout הן פעולות נפרדות של בעל החשבון. אין כאן אישור תנאים או כתבי ויתור בשם המשפחה.')}</p>
   <div className={styles.actions}><Button variant="secondary" disabled={!allowed||!workflow.canPrepareCard(data)} onClick={()=>{if(allowed&&workflow.canPrepareCard(data))onPrepare();}}>{t('Prepare TEST card attempt','הכנת ניסיון כרטיס TEST')}</Button><Button variant="secondary" disabled={!allowed||!workflow.canCreateCheckout(data)} onClick={()=>{if(allowed&&workflow.canCreateCheckout(data))onCheckout();}}>{t('Create TEST Checkout','יצירת TEST Checkout')}</Button></div>
-  {(!allowed||!workflow.cardClient)&&<p className={styles.help}>{t('Card actions remain unavailable until explicitly enabled with the authorized injected client.','פעולות הכרטיס אינן זמינות עד להפעלה מפורשת ולחיבור הלקוח המורשה.')}</p>}
+  {(!allowed||!workflow.hasCardClient(data))&&<p className={styles.help}>{t('Card actions remain unavailable until explicitly enabled with the authorized injected client.','פעולות הכרטיס אינן זמינות עד להפעלה מפורשת ולחיבור הלקוח המורשה.')}</p>}
   {scoped&&<CardReadback locale={locale} data={data} workflow={workflow} allowed={allowed} card={card}/>}
   {pending.length>0&&<div><p>{t('Check an existing pending attempt before preparing another.','יש לבדוק ניסיון ממתין קיים לפני הכנת ניסיון נוסף.')}</p>{pending.map(id=><p key={id}><bdi>{id}</bdi> <Button variant="secondary" disabled={!allowed||!workflow.canReadCard(data,id)} onClick={()=>{if(allowed&&workflow.canReadCard(data,id))void workflow.readCard(data,id);}}>{t('Check existing attempt','בדיקת ניסיון קיים')}</Button></p>)}</div>}
  </section>;
 }
-function CardDialog({locale,modal,close,data,workflow,allowed,familyLabel,childName,edit,review,back}:{locale:'en'|'he';modal:CardPrepareModal|CardCheckoutModal;close:()=>void;data:LegacyBillingData;workflow:BillingWorkflow;allowed:boolean;familyLabel:string;childName:(id:string)=>string;edit:(lineId:string,value:string)=>void;review:()=>void;back:()=>void}){
+function CardDialog({locale,modal,close,data,workflow,allowed,familyLabel,childName,edit,review,back}:{locale:'en'|'he';modal:CardPrepareModal|CardCheckoutModal;close:()=>void;data:BillingData;workflow:BillingWorkflow;allowed:boolean;familyLabel:string;childName:(id:string)=>string;edit:(lineId:string,value:string)=>void;review:()=>void;back:()=>void}){
  const ref=useOwnerDialog(),id=useId(),t=(en:string,he:string)=>locale==='he'?he:en;
- const card=workflow.getSnapshot().card,preparing=modal.mode==='card_prepare';
+ const card=workflow.cardFor(data),preparing=modal.mode==='card_prepare';
  const matching=card&&(preparing?modal.review?.operationId===card.operationId:modal.attemptId===card.attemptId);
  const started=Boolean(matching&&(preparing||card.checkoutInvoked));
  const fresh=sameScope(modal.ticket.scope,dataScope(data))&&modal.ticket.revision===data.balance.revision;
