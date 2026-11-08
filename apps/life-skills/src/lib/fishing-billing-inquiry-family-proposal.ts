@@ -17,6 +17,9 @@ const mapping=z.object({applicationChildId:uuid,nativeChildId:uuid}).strict();
 const selection=z.object({reference:uuid,familyId:uuid,children:z.array(mapping).min(1).max(10)}).strict()
  .refine(v=>new Set(v.children.map(c=>c.applicationChildId.toLowerCase())).size===v.children.length&&new Set(v.children.map(c=>c.nativeChildId.toLowerCase())).size===v.children.length,'DUPLICATE_CHILD_MAPPING');
 const epoch=z.number().int().min(0).max(Number.MAX_SAFE_INTEGER-1);
+const currentDataId=uuid.refine(value=>value===value.toLowerCase(),'CANONICAL_UUID_REQUIRED');
+const currentFamilyDataInputSchema=z.object({proposalId:currentDataId,reference:currentDataId,expectedEpoch:epoch,lock:z.enum(['shared','snapshot'])}).strict();
+export type FishingCurrentFamilyDataInput=z.infer<typeof currentFamilyDataInputSchema>;
 export const fishingFamilyProposalCommandSchema=z.object({operationId:uuid,expectedEpoch:epoch,
  selection,expectedSourceDigest:digest,expectedNativeDigest:digest}).strict();
 export type FishingFamilyProposalCommand=z.infer<typeof fishingFamilyProposalCommandSchema>;
@@ -30,6 +33,16 @@ const recordSchema=z.object({version:z.literal(FISHING_INQUIRY_FAMILY_PROPOSAL_V
  financialAcceptance:z.literal(false),outboundEligible:z.literal(false),
 }).strict();
 export type FishingInquiryFamilyProposal=z.infer<typeof recordSchema>;
+function proposalAcknowledgment(fields:Trip390CurrentInterest):FishingInquiryFamilyProposal['acknowledgment']{
+ const a=fields.acknowledgment;
+ const document=({version,language,textDigest}:{version:string;language:'en'|'he';textDigest:string})=>({version,language,textDigest});
+ return {version:a.version,language:a.language,reservationNotice:document(a.reservationNotice),studentConduct:document(a.studentConduct),whatsapp:a.whatsapp};
+}
+type Frozen<T>=T extends object?{readonly[K in keyof T]:Frozen<T[K]>}:T;
+function freezeData<T>(value:T):Frozen<T>{
+ if(value!==null&&typeof value==='object'){for(const child of Object.values(value))freezeData(child);Object.freeze(value);}
+ return value as Frozen<T>;
+}
 export type FishingInquiryFamilyProposalRow=Readonly<{id:string;reference:string;familyId:string;guardianId:string;operationId:string;recordedBy:string;
  sourceDigest:string;nativeDigest:string;requestDigest:string;ciphertext:string;createdAt:Date}>;
 type Row=FishingInquiryFamilyProposalRow;
@@ -111,6 +124,32 @@ export class FishingBillingInquiryFamilyProposals{
  private decode(row:Row):FishingInquiryFamilyProposal{
   return decodeFishingInquiryFamilyProposalRecord(row,{workspaceId:this.workspace,keyring:this.ring,integrityKey:this.integrityKey});
  }
+ /** Actual current family DATA only, in the already authorized caller's TX.
+  * A known proposal must still match current source/admitted contact/native
+  * records. This is not caller authentication or independent guardian,
+  * recipient, financial, source-release, policy or target admission.
+  * Shared data locks use the existing nonblocking contact fence first; the
+  * caller owns its real owner/service frame, clock, isolation and terminal
+  * checks. Snapshot data never establishes stable action permission. */
+ async readCurrentDataInTransaction(tx:SqlSession,input:FishingCurrentFamilyDataInput){
+  const parsed=currentFamilyDataInputSchema.safeParse(input);
+  if(!parsed.success||!tx||typeof tx.query!=='function')throw new AppError('INVALID_REQUEST');
+  const c=parsed.data,workspace=this.workspace,ring=this.ring,key=this.integrityKey;
+  const pinned:SqlSession=Object.freeze({query:tx.query.bind(tx)});
+  const inquiry=await this.crm.readInquiryContactDataInTransaction(pinned,{workspaceId:workspace,reference:c.reference,expectedEpoch:c.expectedEpoch,lock:c.lock});
+  const current=trip390CurrentInterestSchema.safeParse(inquiry.record.fields);
+  if(!current.success)throw new AppError('NOT_FOUND');const fields=current.data;
+  const row=await one<Row>(pinned,select+' WHERE workspace_id=$1 AND id=$2'+(c.lock==='shared'?' FOR SHARE':''),[workspace,c.proposalId]);
+  if(!row)throw new AppError('NOT_FOUND');
+  const proposal=decodeFishingInquiryFamilyProposalRecord(row,{workspaceId:workspace,keyring:ring,integrityKey:key});
+  if(proposal.command.selection.reference!==c.reference||proposal.guardianPersonId!==inquiry.contact.personId||
+   proposal.command.expectedSourceDigest!==inquiry.sourceDigest||proposal.sourceVersion!==fields.version||proposal.offerVersion!==fields.offerVersion||
+   proposal.messageLanguage!==fields.messageLanguage||JSON.stringify(proposal.acknowledgment)!==JSON.stringify(proposalAcknowledgment(fields)))fail('CONFLICT');
+  const nativeDigest=await readFishingInquiryNativeFingerprint(pinned,{workspaceId:workspace,selection:proposal.command.selection,
+   guardianPersonId:inquiry.contact.personId,currentFields:trip390CurrentInterestSchema.parse(fields),lock:c.lock},key);
+  if(nativeDigest!==proposal.command.expectedNativeDigest)fail('CONFLICT');
+  return freezeData({classification:'current_family_data_only_not_authority' as const,consistency:c.lock,proposal,inquiry,nativeDigest});
+ }
  async preview(actor:Actor,input:{expectedEpoch:number;selection:Selection}){
   const owner=this.owner(actor),c=z.object({expectedEpoch:epoch,selection}).strict().parse(input);
   return this.crm.withInquiryContact(owner,{reference:c.selection.reference,expectedEpoch:c.expectedEpoch,intent:'read'},async context=>{
@@ -133,12 +172,10 @@ export class FishingBillingInquiryFamilyProposals{
     return {record,replayed:true};
    }
    if(await one(context.tx,'SELECT id FROM ls_fishing_billing.inquiry_family_proposals WHERE workspace_id=$1 AND application_id=$2',[this.workspace,command.selection.reference]))fail('CONFLICT');
-   const {acknowledgment:a}=fields;
-   const document=({version,language,textDigest}:{version:string;language:'en'|'he';textDigest:string})=>({version,language,textDigest});
    const record=recordSchema.parse({version:FISHING_INQUIRY_FAMILY_PROPOSAL_VERSION,id:randomUUID(),workspaceId:this.workspace,
     command,recordedBy:owner.id,recordedAt:this.clock.now().toISOString(),guardianPersonId:context.contact.personId,
     messageLanguage:fields.messageLanguage,sourceVersion:fields.version,offerVersion:fields.offerVersion,
-    acknowledgment:{version:a.version,language:a.language,reservationNotice:document(a.reservationNotice),studentConduct:document(a.studentConduct),whatsapp:a.whatsapp},
+    acknowledgment:proposalAcknowledgment(fields),
     state:'proposed',guardianVerified:false,recipientVerified:false,financialAcceptance:false,outboundEligible:false});
    await context.tx.query('INSERT INTO ls_fishing_billing.inquiry_family_proposals(workspace_id,id,application_id,family_id,guardian_person_id,operation_id,recorded_by,source_digest,native_digest,request_digest,payload_ciphertext,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)',
     [this.workspace,record.id,command.selection.reference,command.selection.familyId,record.guardianPersonId,command.operationId,owner.id,

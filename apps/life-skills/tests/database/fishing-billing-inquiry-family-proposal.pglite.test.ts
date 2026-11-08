@@ -8,13 +8,14 @@ import {asId} from '../../src/lib/ids.ts';
 import {seal,tokenDigest} from '../../src/features/identity/crypto.ts';
 import type {Actor} from '../../src/features/identity/types.ts';
 import type {IdentityStore,SqlSession} from '../../src/features/identity/store.ts';
+import {lockWorkspace} from '../../src/features/identity/data.ts';
 import {IdentitySessions} from '../../src/features/identity/session-adapter.ts';
 import {ContactCutoverStore} from '../../src/features/contact-ops/server/cutover-store.ts';
 import {AcademyCrmStore} from '../../src/features/contact-ops/server/academy-crm-store.ts';
 import {PublicGroupApplicationStore} from '../../src/features/group-application/store.ts';
 import {groupApplicationRequestDigest} from '../../src/features/group-application/group-application-record.ts';
 import {TRIP390_V1_INTEREST_VERSION,TRIP390_V1_NOTICE_VERSION,TRIP390_V1_OFFER,type Trip390V1Interest} from '../../src/features/group-application/academy-trip390-v1.ts';
-import {decodeFishingInquiryFamilyProposalRecord,readFishingInquiryNativeFingerprint,FishingBillingInquiryFamilyProposals,type FishingFamilyProposalCommand,type FishingInquiryFamilyProposalRow,type FishingInquiryNativeFingerprintInput} from '../../src/lib/fishing-billing-inquiry-family-proposal.ts';
+import {decodeFishingInquiryFamilyProposalRecord,readFishingInquiryNativeFingerprint,FishingBillingInquiryFamilyProposals,type FishingFamilyProposalCommand,type FishingInquiryFamilyProposalRow,type FishingInquiryNativeFingerprintInput,type FishingCurrentFamilyDataInput} from '../../src/lib/fishing-billing-inquiry-family-proposal.ts';
 vi.mock('server-only',()=>({}));
 
 // New no-URL memory DB, real committed DDL/stores/crypto and synthetic data.
@@ -95,6 +96,81 @@ async function storedProposal(f:Awaited<ReturnType<typeof fixture>>){
 function nativeInput(f:Awaited<ReturnType<typeof fixture>>,lock:'shared'|'snapshot'='snapshot'):FishingInquiryNativeFingerprintInput{
  return {workspaceId:f.workspace,selection:f.selection,guardianPersonId:f.guardianId,currentFields:f.fields,lock};
 }
+function familyDataInput(f:Awaited<ReturnType<typeof fixture>>,proposalId:string,lock:'shared'|'snapshot'='snapshot'):FishingCurrentFamilyDataInput{
+ return {proposalId,reference:f.saved.item.id,expectedEpoch:1,lock};
+}
+it('current family bridge joins actual inquiry, admitted contact, proposal and native data in one supplied TX without new authority',async()=>{
+ const f=await fixture(),saved=await f.store().propose(f.owner,await f.prepare()),source=await f.source(),row=await storedProposal(f),counts=await f.counts(),state=await f.cutover.read(f.owner);
+ let opened=0;const observed:IdentityStore={transaction:work=>{opened++;return db.transaction(work);}};
+ const current=await db.transaction(async tx=>{await lockWorkspace(tx,f.workspace);return f.store(observed).readCurrentDataInTransaction(tx,familyDataInput(f,saved.record.id,'shared'));});
+ expect(opened).toBe(0);expect(current).toMatchObject({classification:'current_family_data_only_not_authority',consistency:'shared',proposal:saved.record,
+  nativeDigest:saved.record.command.expectedNativeDigest,inquiry:{classification:'current_scope_data_only_not_authority',authorityEpoch:1,
+   sourceDigest:saved.record.command.expectedSourceDigest,contact:{personId:f.guardianId,outboundEligible:false},record:{fields:{messageLanguage:'he',acknowledgment:{language:'en',whatsapp:false}}}}});
+ expect(Object.isFrozen(current)).toBe(true);expect(Object.isFrozen(current.proposal.command.selection.children)).toBe(true);expect(Object.isFrozen(current.inquiry.record.fields)).toBe(true);
+ expect(Reflect.set(current.proposal,'guardianVerified',true)).toBe(false);expect(current.proposal).toMatchObject({guardianVerified:false,recipientVerified:false,financialAcceptance:false,outboundEligible:false});
+ expect(await f.source()).toEqual(source);expect(await storedProposal(f)).toEqual(row);expect(await f.counts()).toEqual(counts);expect(await f.cutover.read(f.owner)).toEqual(state);
+});
+it.each(['proposalId','reference'] as const)('current family bridge refuses an actual other-workspace %s selector',async field=>{
+ const f=await fixture(),saved=await f.store().propose(f.owner,await f.prepare()),other=await fixture(),otherSaved=await other.store().propose(other.owner,await other.prepare());
+ const input=familyDataInput(f,saved.record.id);input[field]=field==='proposalId'?otherSaved.record.id:other.saved.item.id;
+ await expect(db.transaction(tx=>f.store().readCurrentDataInTransaction(tx,input))).rejects.toThrow('NOT_FOUND');
+});
+it('current family bridge refuses old proposal bytes when actual native ciphertext changes',async()=>{
+ const f=await fixture(),saved=await f.store().propose(f.owner,await f.prepare()),original=await storedProposal(f),source=await f.source(),child=f.selection.children[0]!.nativeChildId;
+ await engine.query('UPDATE ls_identity.people SET profile_ciphertext=$3 WHERE workspace_id=$1 AND id=$2',[f.workspace,child,seal('SYNTHETIC changed native child',`person:${f.workspace}:${child}`,ring)]);
+ await expect(db.transaction(tx=>f.store().readCurrentDataInTransaction(tx,familyDataInput(f,saved.record.id)))).rejects.toThrow('CONFLICT');
+ expect(await storedProposal(f)).toEqual(original);expect(await f.source()).toEqual(source);
+});
+it('current family bridge authenticates the current source instead of trusting an intact proposal',async()=>{
+ const f=await fixture(),saved=await f.store().propose(f.owner,await f.prepare());let nativeQueries=0;
+ await expect(db.transaction(real=>f.store().readCurrentDataInTransaction({query:async<T extends object>(sql:string,values:readonly unknown[]=[])=>{
+  const rows=await real.query<T>(sql,values);if(sql.startsWith('SELECT f.id'))nativeQueries++;
+  return sql.includes('request_digest AS "requestDigest"')&&sql.includes('FROM ls_service_interest.public_applications')?rows.map(r=>({...r,requestDigest:'f'.repeat(64)})):rows;
+ }},familyDataInput(f,saved.record.id)))).rejects.toThrow('UNAVAILABLE');
+ expect(nativeQueries).toBe(0);
+});
+it.each(['parent_language','consent'] as const)('current family bridge rejects an authentic proposal whose %s metadata disagrees with the actual source',async change=>{
+ const f=await fixture(),saved=await f.store().propose(f.owner,await f.prepare()),row=await storedProposal(f),payload=structuredClone(saved.record);
+ if(change==='parent_language')payload.messageLanguage='en';else payload.acknowledgment.whatsapp=true;
+ const ciphertext=seal(JSON.stringify(payload),`ls_fishing_billing/inquiry_family_proposal/v1/${f.workspace}/${row.id}`,ring);
+ // This is a valid fixture-key envelope and original command HMAC. The new
+ // current-source comparison must reject it, rather than a malformed fixture.
+ expect(decodeFishingInquiryFamilyProposalRecord({...row,ciphertext},{workspaceId:f.workspace,keyring:ring,integrityKey:key})).toEqual(payload);
+ await expect(db.transaction(real=>f.store().readCurrentDataInTransaction({query:async<T extends object>(sql:string,values:readonly unknown[]=[])=>{
+  const rows=await real.query<T>(sql,values);return sql.includes('payload_ciphertext AS ciphertext')&&sql.includes('FROM ls_fishing_billing.inquiry_family_proposals')?rows.map(r=>({...r,ciphertext})):rows;
+ }},familyDataInput(f,saved.record.id)))).rejects.toThrow('CONFLICT');
+ expect(await storedProposal(f)).toEqual(row);
+});
+it('current family bridge pins selectors and bound TX through the actual current-source awaits',async()=>{
+ const f=await fixture(),saved=await f.store().propose(f.owner,await f.prepare()),input=familyDataInput(f,saved.record.id,'shared');let changed=false;
+ const current=await db.transaction(async real=>{
+  await lockWorkspace(real,f.workspace);
+  const mutable:SqlSession={query:async<T extends object>(sql:string,values:readonly unknown[]=[])=>{
+   const rows=await real.query<T>(sql,values);
+   if(sql.includes('pg_try_advisory_xact_lock')){
+    changed=true;input.proposalId=randomUUID();input.reference=randomUUID();input.expectedEpoch=999;input.lock='snapshot';
+    mutable.query=async()=>{throw new Error('CHANGED_TX_MUST_NOT_BE_USED');};
+   }
+   return rows;
+  }};
+  return f.store().readCurrentDataInTransaction(mutable,input);
+ });
+ expect(changed).toBe(true);expect(current.proposal).toEqual(saved.record);expect(current.consistency).toBe('shared');expect(current.inquiry.consistency).toBe('shared');
+});
+it('current family bridge supports genuine READ ONLY snapshots and does not turn shared locking into a read-only bypass',async()=>{
+ const f=await fixture(),saved=await f.store().propose(f.owner,await f.prepare()),counts=await f.counts();
+ const current=await db.transaction(async tx=>{await tx.query('SET TRANSACTION READ ONLY');return f.store().readCurrentDataInTransaction(tx,familyDataInput(f,saved.record.id));});
+ expect(current.proposal).toEqual(saved.record);expect(current.consistency).toBe('snapshot');
+ await expect(db.transaction(async tx=>{await tx.query('SET TRANSACTION READ ONLY');return f.store().readCurrentDataInTransaction(tx,familyDataInput(f,saved.record.id,'shared'));})).rejects.toMatchObject({code:'25006'});
+ expect(await f.counts()).toEqual(counts);
+});
+it('current family bridge data remains separate from current owner session authority',async()=>{
+ const f=await fixture(),saved=await f.store().propose(f.owner,await f.prepare());
+ await engine.query('UPDATE ls_identity.sessions SET revoked_at=$2 WHERE token_digest=$1',[f.owner.sessionDigest,now]);
+ const current=await db.transaction(tx=>f.store().readCurrentDataInTransaction(tx,familyDataInput(f,saved.record.id)));
+ expect(current.classification).toBe('current_family_data_only_not_authority');expect(current.proposal).toMatchObject({guardianVerified:false,recipientVerified:false,financialAcceptance:false,outboundEligible:false});
+ await expect(f.store().read(f.owner,{reference:f.saved.item.id,expectedEpoch:1})).rejects.toThrow('UNAUTHENTICATED');
+});
 it('native data fingerprint reads actual current rows and detects drift without upgrading the original proposal',async()=>{
  const f=await fixture(),command=await f.prepare(),saved=await f.store().propose(f.owner,command),original=await storedProposal(f),source=await f.source(),counts=await f.counts();
  const first=await db.transaction(tx=>readFishingInquiryNativeFingerprint(tx,nativeInput(f),key));
@@ -224,6 +300,7 @@ it('does not convert a readable historical offer into a current monthly family p
  const p=await f.crm.previewInquiry(f.owner,reference,1);await f.crm.execute(f.owner,{action:'from_inquiry',operationId:randomUUID(),expectedEpoch:1,sourceApplicationId:reference,sourceDigest:p.sourceDigest,fields:{stage:'SYNTHETIC historical inquiry',notes:'',nextAction:null,followUpDate:null}});
  const before=(await engine.query('SELECT * FROM ls_service_interest.public_applications WHERE workspace_id=$1 AND id=$2',[f.workspace,reference])).rows;
  await expect(f.store().preview(f.owner,{expectedEpoch:1,selection:{...f.selection,reference}})).rejects.toThrow('NOT_FOUND');
+ await expect(db.transaction(tx=>f.store().readCurrentDataInTransaction(tx,{proposalId:randomUUID(),reference,expectedEpoch:1,lock:'snapshot'}))).rejects.toThrow('NOT_FOUND');
  expect(await f.count()).toBe(0);expect((await engine.query('SELECT * FROM ls_service_interest.public_applications WHERE workspace_id=$1 AND id=$2',[f.workspace,reference])).rows).toEqual(before);
 });
 it.each(['partial','duplicate','case_alias','unrelated'] as const)('rejects %s child mappings without guessing from public names',async change=>{
