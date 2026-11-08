@@ -116,7 +116,8 @@ export class ContactCutoverStore {
  /** The fresh Academy adapter is separate from generic native authority. Its
   * caller must enforce immutable contact admission before every data access. */
  async withAcademy<T>(a:Actor,input:{intent:"read"|"write";expectedEpoch:number},
-  work:(tx:SqlSession,state:CutoverState&{academy:NonNullable<CutoverState["academy"]>})=>Promise<T>):Promise<T>{
+  work:(tx:SqlSession,state:CutoverState&{academy:NonNullable<CutoverState["academy"]>})=>Promise<T>,
+  terminal?:(tx:SqlSession)=>Promise<void>):Promise<T>{
   if(!safeEpoch.safeParse(input.expectedEpoch).success||!["read","write"].includes(input.intent))throw new AppError("INVALID_REQUEST");
   return this.db.transaction(async tx=>{
    if(input.intent==="read")await tx.query("SET TRANSACTION READ ONLY");
@@ -128,6 +129,9 @@ export class ContactCutoverStore {
     if(current.nativeWritesSinceSwitch>=Number.MAX_SAFE_INTEGER-1)throw new AppError("UNAVAILABLE");
     await this.save(tx,a,{...current,nativeWritesSinceSwitch:current.nativeWritesSinceSwitch+1});
    }
+   // Internal composition may revalidate current source/identity after ALL
+   // callback and counter IO. Rejection rolls back both; old callers omit it.
+   if(terminal)await terminal(tx);
    return result;
   });
  }
