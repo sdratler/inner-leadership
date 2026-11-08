@@ -211,6 +211,20 @@ it('recorded actor attribution never substitutes for current session access',asy
  await expect(new FishingBillingInquiryFamilyProposals(db,f.workspace,ring,key,clock).read(f.owner,{reference:f.family.reference,expectedEpoch:1})).rejects.toThrow('UNAUTHENTICATED');
 });
 
+it('rejects a recipient locale that disagrees with the actual authenticated proposal',async()=>{
+ const f=await fixture(),r=record(f,'email_recipient');if(r.purpose!=='email_recipient')throw Error('SYNTHETIC_PURPOSE');
+ expect(f.proposal.messageLanguage).toBe('he');r.body.locale='en';await seed(f,r);
+ await expect(f.run(input([r]))).rejects.toThrow('UNAVAILABLE');
+ await expect(f.run(input([r]),true)).rejects.toThrow('UNAVAILABLE');
+});
+
+it('future recorded metadata is not current even when releasedAt is already past, while original data remains readable',async()=>{
+ const f=await fixture(),r=record(f,'financial_terms_release');r.recordedAt=new Date(at.getTime()+3600000).toISOString();
+ r.releasedAt=new Date(at.getTime()-3600000).toISOString();await seed(f,r);
+ expect(await f.run(input([r]))).toEqual([null]);
+ expect(await f.run(input([r]),true)).toEqual([{classification:'historical_data_only',consistency:'snapshot',record:r,revocation:null}]);
+});
+
 it.each(['payload_digest','source_reference_sha256','release_evidence_sha256','purpose','recorded_by','created_at'] as const)(
  'detects corrupt indexed %s before an expectation mismatch can hide it',async column=>{
   const f=await fixture(),r=record(f,'financial_terms_release');
