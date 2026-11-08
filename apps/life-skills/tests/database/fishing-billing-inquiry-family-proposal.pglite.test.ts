@@ -10,12 +10,15 @@ import type {Actor} from '../../src/features/identity/types.ts';
 import type {IdentityStore,SqlSession} from '../../src/features/identity/store.ts';
 import {lockWorkspace} from '../../src/features/identity/data.ts';
 import {IdentitySessions} from '../../src/features/identity/session-adapter.ts';
+import {PostgresIdentityRateStore} from '../../src/features/identity/rate-store.ts';
+import {SESSION_COOKIE} from '../../src/lib/security/session.ts';
 import {ContactCutoverStore} from '../../src/features/contact-ops/server/cutover-store.ts';
 import {AcademyCrmStore} from '../../src/features/contact-ops/server/academy-crm-store.ts';
 import {PublicGroupApplicationStore} from '../../src/features/group-application/store.ts';
 import {groupApplicationRequestDigest} from '../../src/features/group-application/group-application-record.ts';
 import {TRIP390_V1_INTEREST_VERSION,TRIP390_V1_NOTICE_VERSION,TRIP390_V1_OFFER,type Trip390V1Interest} from '../../src/features/group-application/academy-trip390-v1.ts';
-import {decodeFishingInquiryFamilyProposalRecord,readFishingInquiryNativeFingerprint,FishingBillingInquiryFamilyProposals,type FishingFamilyProposalCommand,type FishingInquiryFamilyProposalRow,type FishingInquiryNativeFingerprintInput,type FishingCurrentFamilyDataInput} from '../../src/lib/fishing-billing-inquiry-family-proposal.ts';
+import {decodeFishingInquiryFamilyProposalRecord,readFishingInquiryNativeFingerprint,FishingBillingInquiryFamilyProposals,fishingInquiryFamilyProposalSchema,fishingInquiryFamilyProposalPreviewSchema,type FishingFamilyProposalCommand,type FishingInquiryFamilyProposalRow,type FishingInquiryNativeFingerprintInput,type FishingCurrentFamilyDataInput} from '../../src/lib/fishing-billing-inquiry-family-proposal.ts';
+import {fishingInquiryFamilyProposalOwnerHttp,FISHING_INQUIRY_FAMILY_PROPOSAL_OWNER_PATH} from '../../src/lib/fishing-billing-inquiry-family-proposal-owner-http.ts';
 vi.mock('server-only',()=>({}));
 
 // New no-URL memory DB, real committed DDL/stores/crypto and synthetic data.
@@ -99,6 +102,98 @@ function nativeInput(f:Awaited<ReturnType<typeof fixture>>,lock:'shared'|'snapsh
 function familyDataInput(f:Awaited<ReturnType<typeof fixture>>,proposalId:string,lock:'shared'|'snapshot'='snapshot'):FishingCurrentFamilyDataInput{
  return {proposalId,reference:f.saved.item.id,expectedEpoch:1,lock};
 }
+const ownerHttpOrigin='https://synthetic.example.invalid';
+async function ownerHttpHarness(f:Awaited<ReturnType<typeof fixture>>,actor=f.owner,sessionStore=db,store=f.store()){
+ const token=randomBytes(32).toString('base64url');
+ await engine.query('INSERT INTO ls_identity.sessions(token_digest,workspace_id,account_id,created_at,expires_at) VALUES($1,$2,$3,$4,$5)',[tokenDigest(token),f.workspace,actor.id,now,new Date('2036-01-01T00:00:00Z')]);
+ const sessions=new IdentitySessions(sessionStore,{enabled:true,workspaceId:f.workspace,origin:ownerHttpOrigin,keyring:ring,csrfKey:Buffer.alloc(32,8),lookupKey:Buffer.alloc(32,9),rateLimitKey:key,sessionSeconds:3600},clock);
+ const limits=new PostgresIdentityRateStore(db);
+ const call=(body:unknown,options:{method?:string;query?:string;path?:string;headers?:Record<string,string>;bodyText?:string}={})=>{
+  const host=new URL(ownerHttpOrigin).host;
+  const method=options.method??'POST',headers={host,'x-forwarded-host':host,'x-forwarded-proto':'https',cookie:`${SESSION_COOKIE}=${token}`,origin:ownerHttpOrigin,'sec-fetch-site':'same-origin','x-csrf-token':sessions.csrf(token),'content-type':'application/json',...options.headers};
+  const request=new Request(ownerHttpOrigin+(options.path??FISHING_INQUIRY_FAMILY_PROPOSAL_OWNER_PATH)+(options.query??''),{method,headers,
+   ...(['GET','HEAD'].includes(method)?{}:{body:options.bodyText??JSON.stringify(body)})});
+  return fishingInquiryFamilyProposalOwnerHttp(request,async()=>({origin:ownerHttpOrigin,sessions,limits,rateLimitKey:key,store}));
+ };
+ return {token,sessions,call};
+}
+async function ownerHttpCommand(f:Awaited<ReturnType<typeof fixture>>,http:Awaited<ReturnType<typeof ownerHttpHarness>>){
+ const response=await http.call({action:'preview',expectedEpoch:1,selection:f.selection});expect(response.status).toBe(200);
+ const body=await response.json();expect(body.ok).toBe(true);expect(body.data.kind).toBe('preview');
+ const p=fishingInquiryFamilyProposalPreviewSchema.parse(body.data.preview);
+ expect(p).toMatchObject({selection:f.selection,guardianPersonId:f.guardianId,messageLanguage:'he',state:'proposed',guardianVerified:false,recipientVerified:false,financialAcceptance:false,outboundEligible:false});
+ return {operationId:randomUUID(),expectedEpoch:1,selection:p.selection,expectedSourceDigest:p.sourceDigest,expectedNativeDigest:p.nativeDigest} satisfies FishingFamilyProposalCommand;
+}
+it('owner proposal HTTP saves after real-session preview and reloads through a new real session without changing source or authority',async()=>{
+ const f=await fixture(),http=await ownerHttpHarness(f),source=await f.source(),counts=await f.counts();
+ const missing=await http.call(null,{method:'GET',query:`?reference=${f.saved.item.id}&expectedEpoch=1`});expect(missing.status).toBe(404);
+ const command=await ownerHttpCommand(f,http),response=await http.call({action:'propose',command});expect(response.status).toBe(200);
+ const saved=await response.json(),record=fishingInquiryFamilyProposalSchema.parse(saved.data.record);
+ expect(saved).toMatchObject({ok:true,data:{kind:'proposed',replayed:false}});expect(record.command).toEqual(command);expect(record.recordedBy).toBe(f.owner.id);
+ const reloaded=await ownerHttpHarness(f),get=await reloaded.call(null,{method:'GET',query:`?reference=${f.saved.item.id}&expectedEpoch=1`});expect(get.status).toBe(200);
+ expect((await get.json()).data).toMatchObject({kind:'proposal',record});
+ expect(record.command.selection.children).toHaveLength(2);expect(record).toMatchObject({messageLanguage:'he',acknowledgment:{language:'en',whatsapp:false},guardianVerified:false,recipientVerified:false,financialAcceptance:false,outboundEligible:false});
+ for(const r of [response,get]){expect(r.headers.get('Cache-Control')).toBe('private, no-store');expect(r.headers.get('Vary')).toBe('Cookie');expect(r.headers.get('Referrer-Policy')).toBe('no-referrer');expect(r.headers.get('Content-Security-Policy')).toContain("default-src 'none'");}
+ expect(await f.source()).toEqual(source);expect(await f.counts()).toEqual(counts);expect(await f.count()).toBe(1);
+});
+it('owner proposal HTTP exact retries retain the original proposal and conflicting retries do not duplicate or change the counter',async()=>{
+ const f=await fixture(),http=await ownerHttpHarness(f),command=await ownerHttpCommand(f,http);
+ const first=await http.call({action:'propose',command});expect(first.status).toBe(200);const saved=await first.json(),row=await storedProposal(f),state=await f.cutover.read(f.owner);
+ const replay=await http.call({action:'propose',command});expect(replay.status).toBe(200);expect((await replay.json()).data).toMatchObject({replayed:true,record:saved.data.record});
+ // The proposal replay preserves its row; the existing write-intent wrapper
+ // still advances its native counter. Conflicts must roll back their own TX.
+ const replayState=await f.cutover.read(f.owner);expect(replayState.nativeWritesSinceSwitch).toBe(state.nativeWritesSinceSwitch+1);
+ const conflict=await http.call({action:'propose',command:{...command,operationId:randomUUID()}});expect(conflict.status).toBe(409);
+ expect(await storedProposal(f)).toEqual(row);expect(await f.count()).toBe(1);expect(await f.cutover.read(f.owner)).toEqual(replayState);
+});
+it.each(['missing','malformed','duplicate'] as const)('owner proposal HTTP rejects %s session cookies without a proposal',async kind=>{
+ const f=await fixture(),http=await ownerHttpHarness(f),state=await f.cutover.read(f.owner);
+ const cookie=kind==='missing'?'':kind==='malformed'?`${SESSION_COOKIE}=invalid`:`${SESSION_COOKIE}=${http.token}; ${SESSION_COOKIE}=${http.token}`;
+ const response=await http.call({action:'preview',expectedEpoch:1,selection:f.selection},{headers:{cookie}});
+ expect(response.status).toBe(401);expect(await f.count()).toBe(0);expect(await f.cutover.read(f.owner)).toEqual(state);
+});
+it('owner proposal HTTP rejects an actual parent session without assuming guardian authority',async()=>{
+ const f=await fixture(),http=await ownerHttpHarness(f,f.parent),response=await http.call({action:'preview',expectedEpoch:1,selection:f.selection});
+ expect(response.status).toBe(403);expect(await f.count()).toBe(0);expect(JSON.stringify(await response.json())).not.toContain(f.fields.email);
+});
+it('owner proposal HTTP store denies a real session revoked after actual actor loading',async()=>{
+ const f=await fixture(),command=await f.prepare(),state=await f.cutover.read(f.owner);let digest='',revoked=false;
+ const sessionStore:IdentityStore={transaction:work=>db.transaction(real=>work({query:async<T extends object>(sql:string,values:readonly unknown[]=[])=>{
+  const rows=await real.query<T>(sql,values);
+  if(!revoked&&sql.includes('FROM ls_identity.accounts a')&&digest){revoked=true;await real.query('UPDATE ls_identity.sessions SET revoked_at=$2 WHERE token_digest=$1',[digest,now]);}
+  return rows;
+ }}))};
+ const http=await ownerHttpHarness(f,f.owner,sessionStore);digest=tokenDigest(http.token);
+ const response=await http.call({action:'propose',command});expect(revoked).toBe(true);expect(response.status).toBe(401);expect(await f.count()).toBe(0);expect(await f.cutover.read(f.owner)).toEqual(state);
+});
+it.each(['foreign_origin','bad_csrf','cross_site'] as const)('owner proposal HTTP blocks %s mutation requests',async bad=>{
+ const f=await fixture(),http=await ownerHttpHarness(f),command=await f.prepare(),state=await f.cutover.read(f.owner);
+ const headers:Record<string,string>=bad==='foreign_origin'?{origin:'https://other.example.invalid'}:bad==='bad_csrf'?{'x-csrf-token':Buffer.alloc(32,4).toString('base64url')}:{'sec-fetch-site':'cross-site'};
+ const response=await http.call({action:'propose',command},{headers});expect(response.status).toBe(403);expect(await f.count()).toBe(0);expect(await f.cutover.read(f.owner)).toEqual(state);
+});
+it.each(['body_actor','actor_free_action','post_query','duplicate_get','wrong_path','wrong_media','oversized'] as const)('owner proposal HTTP rejects %s without a business write',async bad=>{
+ const f=await fixture(),http=await ownerHttpHarness(f),state=await f.cutover.read(f.owner),body={action:'preview',expectedEpoch:1,selection:f.selection};
+ const response=bad==='body_actor'?await http.call({...body,actor:f.owner}):bad==='actor_free_action'?await http.call({action:'readCurrentDataInTransaction',proposalId:randomUUID()}):
+  bad==='post_query'?await http.call(body,{query:'?unused=1'}):bad==='duplicate_get'?await http.call(null,{method:'GET',query:`?reference=${f.saved.item.id}&reference=${f.saved.item.id}&expectedEpoch=1`}):
+  bad==='wrong_path'?await http.call(body,{path:'/api/private/other-proposals'}):bad==='wrong_media'?await http.call(body,{headers:{'content-type':'text/plain'}}):await http.call(body,{bodyText:JSON.stringify({padding:'x'.repeat(20000)})});
+ expect(response.status).toBe(bad==='wrong_path'?404:bad==='wrong_media'?415:bad==='oversized'?413:400);expect(await f.count()).toBe(0);expect(await f.cutover.read(f.owner)).toEqual(state);
+});
+it('owner proposal HTTP fails closed for an actual different-workspace store',async()=>{
+ const f=await fixture(),other=await fixture(),http=await ownerHttpHarness(f,f.owner,db,other.store()),response=await http.call({action:'preview',expectedEpoch:1,selection:f.selection});
+ expect(response.status).toBe(403);expect(await f.count()).toBe(0);expect(await other.count()).toBe(0);
+});
+it.each(['missing_protocol','spoofed_host','multiple_hosts'] as const)('owner proposal HTTP rejects untrusted forwarded %s headers',async bad=>{
+ const f=await fixture(),http=await ownerHttpHarness(f),state=await f.cutover.read(f.owner);
+ const headers:Record<string,string>=bad==='missing_protocol'?{'x-forwarded-proto':''}:bad==='spoofed_host'?{'x-forwarded-host':'other.example.invalid'}:{'x-forwarded-host':'synthetic.example.invalid, other.example.invalid'};
+ const response=await http.call({action:'preview',expectedEpoch:1,selection:f.selection},{headers});
+ expect(response.status).toBe(503);expect((await response.json()).error.code).toBe('UNAVAILABLE');expect(await f.count()).toBe(0);expect(await f.cutover.read(f.owner)).toEqual(state);
+});
+it('owner proposal HTTP enforces its actual atomic SQL rate counter before further source access',async()=>{
+ const f=await fixture(),http=await ownerHttpHarness(f),body={action:'preview',expectedEpoch:1,selection:f.selection},state=await f.cutover.read(f.owner);
+ for(let i=0;i<20;i++)expect((await http.call(body)).status).toBe(200);
+ const denied=await http.call(body);expect(denied.status).toBe(429);expect(await f.count()).toBe(0);expect(await f.cutover.read(f.owner)).toEqual(state);
+ const rows=(await engine.query<{count:number}>('SELECT count FROM ls_identity.rate_counters')).rows;expect(rows.some(r=>r.count===21)).toBe(true);
+});
 it('current family bridge joins actual inquiry, admitted contact, proposal and native data in one supplied TX without new authority',async()=>{
  const f=await fixture(),saved=await f.store().propose(f.owner,await f.prepare()),source=await f.source(),row=await storedProposal(f),counts=await f.counts(),state=await f.cutover.read(f.owner);
  let opened=0;const observed:IdentityStore={transaction:work=>{opened++;return db.transaction(work);}};

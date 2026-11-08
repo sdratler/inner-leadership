@@ -33,6 +33,10 @@ const recordSchema=z.object({version:z.literal(FISHING_INQUIRY_FAMILY_PROPOSAL_V
  financialAcceptance:z.literal(false),outboundEligible:z.literal(false),
 }).strict();
 export type FishingInquiryFamilyProposal=z.infer<typeof recordSchema>;
+export const fishingInquiryFamilyProposalSchema=recordSchema;
+export const fishingInquiryFamilyProposalPreviewSchema=recordSchema.pick({version:true,guardianPersonId:true,messageLanguage:true,state:true,
+ guardianVerified:true,recipientVerified:true,financialAcceptance:true,outboundEligible:true})
+ .extend({selection,sourceDigest:digest,nativeDigest:digest}).strict();
 function proposalAcknowledgment(fields:Trip390CurrentInterest):FishingInquiryFamilyProposal['acknowledgment']{
  const a=fields.acknowledgment;
  const document=({version,language,textDigest}:{version:string;language:'en'|'he';textDigest:string})=>({version,language,textDigest});
