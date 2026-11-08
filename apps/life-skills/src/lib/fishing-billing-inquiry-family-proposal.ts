@@ -49,7 +49,10 @@ export class FishingBillingInquiryFamilyProposals{
   private readonly integrityKey:string,private readonly clock:IdentityClock=systemClock){
   this.crm=new AcademyCrmStore(db,ring,integrityKey,clock);
  }
- private owner(actor:Actor){if(actor.workspaceId!==this.workspace)throw new AppError('FORBIDDEN');}
+ private owner(actor:Actor):Readonly<Actor>{
+  const owner=Object.freeze({...actor});
+  if(owner.workspaceId!==this.workspace)throw new AppError('FORBIDDEN');return owner;
+ }
  private hash(domain:string,value:unknown){return privateDigest({domain,workspace:this.workspace,value},this.integrityKey);}
  private request(actorId:string,command:FishingFamilyProposalCommand){return this.hash('fishing-inquiry-family-proposal-command/v1',{actorId,command});}
  private fields(record:GroupApplicationRecord):Trip390CurrentInterest{
@@ -83,8 +86,8 @@ export class FishingBillingInquiryFamilyProposals{
   }catch{fail();}
  }
  async preview(actor:Actor,input:{expectedEpoch:number;selection:Selection}){
-  this.owner(actor);const c=z.object({expectedEpoch:epoch,selection}).strict().parse(input);
-  return this.crm.withInquiryContact(actor,{reference:c.selection.reference,expectedEpoch:c.expectedEpoch,intent:'read'},async context=>{
+  const owner=this.owner(actor),c=z.object({expectedEpoch:epoch,selection}).strict().parse(input);
+  return this.crm.withInquiryContact(owner,{reference:c.selection.reference,expectedEpoch:c.expectedEpoch,intent:'read'},async context=>{
    const fields=this.fields(context.record),nativeDigest=await this.native(context.tx,c.selection,context.contact.personId,fields,false);
    return {version:FISHING_INQUIRY_FAMILY_PROPOSAL_VERSION,selection:c.selection,sourceDigest:context.sourceDigest,nativeDigest,
     guardianPersonId:context.contact.personId,messageLanguage:fields.messageLanguage,state:'proposed' as const,
@@ -92,8 +95,8 @@ export class FishingBillingInquiryFamilyProposals{
   });
  }
  async propose(actor:Actor,input:FishingFamilyProposalCommand){
-  this.owner(actor);const command=fishingFamilyProposalCommandSchema.parse(input),requestDigest=this.request(actor.id,command);
-  return this.crm.withInquiryContact(actor,{reference:command.selection.reference,expectedEpoch:command.expectedEpoch,intent:'write'},async context=>{
+  const owner=this.owner(actor),command=fishingFamilyProposalCommandSchema.parse(input),requestDigest=this.request(owner.id,command);
+  return this.crm.withInquiryContact(owner,{reference:command.selection.reference,expectedEpoch:command.expectedEpoch,intent:'write'},async context=>{
    await lockWorkspace(context.tx,this.workspace);
    const fields=this.fields(context.record),nativeDigest=await this.native(context.tx,command.selection,context.contact.personId,fields,true);
    if(context.sourceDigest!==command.expectedSourceDigest||nativeDigest!==command.expectedNativeDigest)fail('CONFLICT');
@@ -107,19 +110,19 @@ export class FishingBillingInquiryFamilyProposals{
    const {acknowledgment:a}=fields;
    const document=({version,language,textDigest}:{version:string;language:'en'|'he';textDigest:string})=>({version,language,textDigest});
    const record=recordSchema.parse({version:FISHING_INQUIRY_FAMILY_PROPOSAL_VERSION,id:randomUUID(),workspaceId:this.workspace,
-    command,recordedBy:actor.id,recordedAt:this.clock.now().toISOString(),guardianPersonId:context.contact.personId,
+    command,recordedBy:owner.id,recordedAt:this.clock.now().toISOString(),guardianPersonId:context.contact.personId,
     messageLanguage:fields.messageLanguage,sourceVersion:fields.version,offerVersion:fields.offerVersion,
     acknowledgment:{version:a.version,language:a.language,reservationNotice:document(a.reservationNotice),studentConduct:document(a.studentConduct),whatsapp:a.whatsapp},
     state:'proposed',guardianVerified:false,recipientVerified:false,financialAcceptance:false,outboundEligible:false});
    await context.tx.query('INSERT INTO ls_fishing_billing.inquiry_family_proposals(workspace_id,id,application_id,family_id,guardian_person_id,operation_id,recorded_by,source_digest,native_digest,request_digest,payload_ciphertext,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)',
-    [this.workspace,record.id,command.selection.reference,command.selection.familyId,record.guardianPersonId,command.operationId,actor.id,
+    [this.workspace,record.id,command.selection.reference,command.selection.familyId,record.guardianPersonId,command.operationId,owner.id,
      command.expectedSourceDigest,command.expectedNativeDigest,requestDigest,seal(JSON.stringify(record),aad(this.workspace,record.id),this.ring),record.recordedAt]);
    return {record,replayed:false};
   });
  }
  async read(actor:Actor,input:{reference:string;expectedEpoch:number}){
-  this.owner(actor);const c=z.object({reference:uuid,expectedEpoch:epoch}).strict().parse(input);
-  return this.crm.withInquiryContact(actor,{...c,intent:'read'},async context=>{
+  const owner=this.owner(actor),c=z.object({reference:uuid,expectedEpoch:epoch}).strict().parse(input);
+  return this.crm.withInquiryContact(owner,{...c,intent:'read'},async context=>{
    const row=await one<Row>(context.tx,select+' WHERE workspace_id=$1 AND application_id=$2',[this.workspace,c.reference]);
    if(!row)throw new AppError('NOT_FOUND');const record=this.decode(row),fields=this.fields(context.record);
    const nativeDigest=await this.native(context.tx,record.command.selection,context.contact.personId,fields,false);
