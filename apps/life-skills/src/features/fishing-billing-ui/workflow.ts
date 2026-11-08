@@ -1,5 +1,8 @@
-import type {BillingCommand,BillingData,BillingUiPorts,CommandKind,Scope,BillingOperationReceipt} from './model.ts';
-import {commandFor,confirmedReceipt,dataScope,scopedData} from './model.ts';
+import type {BillingCommand,BillingData,BillingUiPorts,CommandKind,Scope,BillingOperationReceipt,LegacyBillingData} from './owner-model.ts';
+import {commandFor,confirmedReceipt,dataScope,scopedData,isGuestPorts,isLegacyData,moneyVersion,verifyCurrentLineage} from './owner-model.ts';
+import type {BillingUiPorts as LegacyPorts} from './model.ts';
+import type {GuestOwnerSnapshotV3} from '../../lib/fishing-billing-guest-contract-v3.ts';
+import {BILLING_DTO_V2} from '../fishing-billing/contracts-v2.ts';
 import {cardCommand,cardProjection,cardUnresolved,canStartCard,canDispatchCard,currentCheckoutUrl,type CardClient,type CardContext,type CardProjection} from './card-model.ts';
 
 type Operation={scope:Scope;kind:CommandKind;command:BillingCommand};
@@ -26,17 +29,22 @@ export class BillingWorkflow{
  private setCard(card:CardContext){this.state={...this.state,card};for(const f of this.listeners)f();}
  private finishCard(){this.busy=false;this.state={...this.state};for(const f of this.listeners)f();}
  unresolved(){return ['submitting','unknown','checking','refreshing','refresh_required'].includes(this.state.phase)||cardUnresolved(this.state.card);}
- currentFor(base:BillingData){return this.latest&&this.latest.quote.id===base.quote.id&&this.latest.quote.familyId===base.quote.familyId&&this.latest.quote.workspaceId===base.quote.workspaceId&&this.latest.balance.revision>=base.balance.revision?this.latest:base;}
+ currentFor(base:LegacyBillingData):LegacyBillingData;
+ currentFor(base:GuestOwnerSnapshotV3):GuestOwnerSnapshotV3;
+ currentFor(base:BillingData):BillingData;
+ currentFor(base:BillingData){return this.latest&&this.latest.quote.version===base.quote.version&&this.latest.quote.id===base.quote.id&&this.latest.quote.familyId===base.quote.familyId&&this.latest.quote.workspaceId===base.quote.workspaceId&&this.latest.balance.revision>=base.balance.revision?this.latest:base;}
  clear(){if(this.busy||this.unresolved())return false;this.set(idle);return true;}
  async submit(kind:CommandKind,raw:unknown,data:BillingData){
   if(this.busy||this.unresolved()||!this.ports||(kind==='state'&&!this.ports.setState))return false;
+  if(isGuestPorts(this.ports)===isLegacyData(data))return false;
   const command=commandFor(kind,raw),scope=dataScope(data),operation={scope,kind,command};
+  if(command.version!==moneyVersion(data))return false;
   if(command.quoteId!==scope.quoteId)throw Error('BILLING_SCOPE_MISMATCH');
   if(command.expectedVersion!==data.balance.revision){this.set({...operation,phase:'conflict',data});return false;}
   if(this.state.card)this.setCard({...this.state.card,fresh:false});
   this.busy=true;this.set({...operation,phase:'submitting'});
   try{
-   const result=await (kind==='cash'?this.ports.recordCashDate(command as Parameters<BillingUiPorts['recordCashDate']>[0]):kind==='reversal'?this.ports.reverseCash(command as Parameters<BillingUiPorts['reverseCash']>[0]):this.ports.setState!(command as Parameters<NonNullable<BillingUiPorts['setState']>>[0]));
+   const result=isGuestPorts(this.ports)?await (kind==='cash'?this.ports.recordCashDate(command):kind==='reversal'?this.ports.reverseCash(command):this.ports.setState(command)):await this.legacyMutation(kind,command,this.ports);
    if(result.kind==='confirmed')await this.accept(operation,result.receipt,result.current);
    else if(result.kind==='conflict'){
     const current=scopedData(result.current,scope);
@@ -48,6 +56,10 @@ export class BillingWorkflow{
   }catch{this.set({...operation,phase:'unknown'});}finally{this.busy=false;}
   return true;
  }
+ private legacyMutation(kind:CommandKind,command:BillingCommand,ports:LegacyPorts){
+  if(command.version!==BILLING_DTO_V2)throw Error('ACCOUNT_COMMAND_VERSION_MISMATCH');
+  return kind==='cash'?ports.recordCashDate(command as Parameters<LegacyPorts['recordCashDate']>[0]):kind==='reversal'?ports.reverseCash(command as Parameters<LegacyPorts['reverseCash']>[0]):ports.setState!(command as Parameters<NonNullable<LegacyPorts['setState']>>[0]);
+ }
  private async accept(operation:Operation,raw:unknown,current:BillingData){
   const receipt=confirmedReceipt(raw,operation.scope,operation.command,operation.kind);
   this.set({...operation,phase:'refreshing',receipt});
@@ -56,6 +68,7 @@ export class BillingWorkflow{
  private async refreshConfirmed(operation:Operation,receipt:BillingOperationReceipt,current?:BillingData){
   try{
    const data=scopedData(current??await this.ports!.readBalance(operation.scope.quoteId),operation.scope);
+   verifyCurrentLineage(receipt,data);
    if(data.balance.revision<receipt.entityVersion||data.balance.revision<this.currentFor(data).balance.revision)throw Error('STALE_BALANCE');
    this.latest=data;
    this.set({...operation,phase:'confirmed',receipt,data});
@@ -76,9 +89,9 @@ export class BillingWorkflow{
   this.busy=true;this.set({...s,phase:'refreshing'});
   try{await this.refreshConfirmed(s,s.receipt);}finally{this.busy=false;}return true;
  }
- canPrepareCard(data:BillingData){return Boolean(this.cardClient&&this.ports&&!this.busy&&!this.unresolved()&&canStartCard(this.state.card,this.currentFor(data)));}
- canCreateCheckout(data:BillingData){return Boolean(this.cardClient&&!this.busy&&!this.unresolved()&&canDispatchCard(this.state.card,this.currentFor(data)));}
- checkoutUrl(data:BillingData){return this.busy||this.unresolved()?null:currentCheckoutUrl(this.state.card,this.currentFor(data));}
+ canPrepareCard(data:BillingData){return isLegacyData(data)&&Boolean(this.cardClient&&this.ports&&!isGuestPorts(this.ports)&&!this.busy&&!this.unresolved()&&canStartCard(this.state.card,this.currentFor(data)));}
+ canCreateCheckout(data:BillingData){return isLegacyData(data)&&Boolean(this.cardClient&&(!this.ports||!isGuestPorts(this.ports))&&!this.busy&&!this.unresolved()&&canDispatchCard(this.state.card,this.currentFor(data)));}
+ checkoutUrl(data:BillingData){return !isLegacyData(data)||this.ports&&isGuestPorts(this.ports)||this.busy||this.unresolved()?null:currentCheckoutUrl(this.state.card,this.currentFor(data));}
  private adoptCard(context:CardContext,raw:CardProjection){
   const projection=cardProjection(raw,context),data=scopedData(projection.current,context.scope);
   if(data.balance.revision<this.currentFor(data).balance.revision)throw Error('STALE_CARD_CURRENT');
@@ -87,7 +100,7 @@ export class BillingWorkflow{
   this.setCard({...context,command:context.command??a.command,phase:'ready',lookup:'attempt',projection,fresh:true,checkoutInvoked:context.checkoutInvoked||a.dispatchId!==null||a.sessionId!==null||a.state!=='prepared'});
  }
  async prepareCard(raw:unknown,input:BillingData){
-  if(!this.canPrepareCard(input)||!this.cardClient)return false;
+  if(!isLegacyData(input)||!this.canPrepareCard(input)||!this.cardClient)return false;
   const data=this.currentFor(input);let command;
   try{command=cardCommand(raw,data);}catch{return false;}
   const context:CardContext={scope:dataScope(data),operationId:command.operationId,attemptId:command.operationId,command,phase:'preparing',lookup:'operation',checkoutInvoked:false,fresh:false};
@@ -105,7 +118,7 @@ export class BillingWorkflow{
  }
  async createCardCheckout(attemptId:string,input:BillingData){
   const context=this.state.card;
-  if(!context||context.attemptId!==attemptId||!this.canCreateCheckout(input)||!this.cardClient)return false;
+  if(!isLegacyData(input)||!context||context.attemptId!==attemptId||!this.canCreateCheckout(input)||!this.cardClient)return false;
   const reserved={...context,phase:'dispatching' as const,lookup:'attempt' as const,checkoutInvoked:true,fresh:false};
   this.busy=true;this.set(idle);this.setCard(reserved);
   try{
@@ -120,7 +133,7 @@ export class BillingWorkflow{
   return true;
  }
  canReadCard(input:BillingData,existingAttemptId?:string):boolean{
-  if(this.busy||!this.cardClient||['submitting','unknown','checking','refreshing','refresh_required'].includes(this.state.phase))return false;
+  if(!isLegacyData(input)||this.ports&&isGuestPorts(this.ports)||this.busy||!this.cardClient||['submitting','unknown','checking','refreshing','refresh_required'].includes(this.state.phase))return false;
   const context=this.state.card;
   if(existingAttemptId){
    if(this.unresolved()||!input.balance.pendingAttemptIds.includes(existingAttemptId))return false;
@@ -130,7 +143,7 @@ export class BillingWorkflow{
   return Boolean(context&&context.scope.quoteId===input.quote.id&&context.scope.familyId===input.quote.familyId&&context.scope.workspaceId===input.quote.workspaceId);
  }
  async readCard(input:BillingData,existingAttemptId?:string){
-  if(!this.canReadCard(input,existingAttemptId)||!this.cardClient)return false;
+  if(!isLegacyData(input)||!this.canReadCard(input,existingAttemptId)||!this.cardClient)return false;
   let context=this.state.card;
   if(existingAttemptId&&(!context||context.attemptId!==existingAttemptId))context={scope:dataScope(input),operationId:existingAttemptId,attemptId:existingAttemptId,command:null,phase:'reading',lookup:'attempt',checkoutInvoked:false,fresh:false};
   if(!context)return false;
