@@ -66,11 +66,16 @@
  .hero:not([data-desktop-bands=overlay]) .heroAction{position:static;order:1;padding:8px 20px 16px}
 }
 
-/* Registered ratios arrive as numeric SSR custom properties, not typed attr().
+/* External-CSS projection of the registered 2048x1143 master / 300..900 band.
+   Source tests join these values to the existing image registry. No inline
+   style attribute is needed under the site's nonce-based security policy.
    Foreground fits the real sky/lower bands at ordinary wide desktop ratios.
    Only an insufficient legible band can extend the first-screen frame. */
 @media(min-width:1024px) and (min-height:601px) and (orientation:landscape){
  .hero[data-master-height]{
+  --master-height:0.55810546875;
+  --master-top:0.146484375;
+  --master-bottom:0.439453125;
   --initial-desktop-overlay:1;
   --hero-frame:max(calc(100svh - var(--header-height)),calc(100cqw * var(--master-height) - 200cqw * var(--master-top) + 260px),calc(200cqw * var(--master-bottom) - 100cqw * var(--master-height) + 208px));
   --photo-top:min(0px,calc((var(--hero-frame) - 100cqw * var(--master-height)) / 2));

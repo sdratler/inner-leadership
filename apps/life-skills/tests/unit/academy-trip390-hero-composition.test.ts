@@ -64,7 +64,8 @@ describe('ordinary hero composition without the typed-attr/aspect support cliff'
  it.each(['en','he'] as const)('ships registered numeric geometry and one unchanged %s action before effects',initialLocale=>{
   const html=renderToStaticMarkup(createElement(AcademyTrip390Page,{initialLocale}));
   const tag=html.match(/<section[^>]*data-master-height[^>]*>/)![0];
-  expect(tag).toContain(`--master-height:${assets.textFree.desktop.height/assets.textFree.desktop.width}`);expect(tag).toContain(`--master-top:${300/2048}`);expect(tag).toContain(`--master-bottom:${900/2048}`);
+  expect(tag).toContain(`data-master-height="${assets.textFree.desktop.height/assets.textFree.desktop.width}"`);expect(tag).toContain(`data-master-top="${300/2048}"`);expect(tag).toContain(`data-master-bottom="${900/2048}"`);
+  expect(tag).not.toContain('style=');
   expect(tag).not.toContain('data-reflow="true"');
   const hero=html.slice(html.indexOf(tag),html.indexOf('</section>',html.indexOf(tag)));
   expect(hero.match(/data-jlfa-hero-action/g)).toHaveLength(1);expect(hero.match(/data-jlfa-reserve/g)).toHaveLength(1);
@@ -79,6 +80,19 @@ describe('ordinary hero composition without the typed-attr/aspect support cliff'
    if(rule.selector.includes('[data-master-height]')&&rule.selector.endsWith(' h1'))rule.walkDecls('font-size',d=>{usesBandFont=d.value.includes('--upper-band')&&d.value.includes('36px');});
    if(rule.selector.includes('[data-master-height]')&&rule.selector.endsWith(' .heroAction'))rule.walkDecls('gap',d=>{gapWithinSource=d.value.startsWith('clamp(12px,')&&d.value.endsWith(',16px)');});
   });expect(frameFromPicture).toBe(true);expect(usesBandFont).toBe(true);expect(gapWithinSource).toBe(true);
+ });
+});
+
+describe('R07 CSP-compatible registered geometry',()=>{
+ it('R07 supplies the exact registry projection in external CSS before hydration',()=>{
+  const values:Record<string,number>={};
+  css.walkRules(rule=>{
+   if(rule.selector!=='.hero[data-master-height]'||!matchesConditions(rule,1366,768))return;
+   rule.walkDecls(/^--master-(height|top|bottom)$/,d=>{values[d.prop]=Number(d.value);});
+  });
+  const master=assets.textFree.desktop,region=assets.current.en.desktop;
+  expect(region.sourceSha256).toBe(master.sha256);
+  expect(values).toEqual({'--master-height':master.height/master.width,'--master-top':region.protectedRect[1]!/master.width,'--master-bottom':region.protectedRect[3]!/master.width});
  });
 });
 

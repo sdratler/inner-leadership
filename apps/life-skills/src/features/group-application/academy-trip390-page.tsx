@@ -22,8 +22,8 @@ type ChildDraft = {id:string; name:string; age:string; experience:string};
 type ContactObstacle = Pick<DOMRect,'left'|'right'|'top'|'bottom'> & {gap:number; kind:'control'|'photo'|'text'};
 const navigation = ['learn', 'values', 'about', 'faq'] as const;
 
-// Render registered original geometry with the HTML, so the first desktop
-// frame and its hydrated counterpart use the same protected photo bands.
+// Registered geometry keys select the external-CSS projection before hydration.
+// Inline style attributes cannot carry these values under the site's CSP.
 const desktopMaster = heroAssets.textFree.desktop;
 const desktopRegion = heroAssets.current.en.desktop;
 const [, protectedTop, , protectedBottom] = desktopRegion.protectedRect;
@@ -32,11 +32,6 @@ const desktopGeometry = desktopRegion.sourceSha256 === desktopMaster.sha256
  'data-master-height': desktopMaster.height / desktopMaster.width,
  'data-master-top': protectedTop / desktopMaster.width,
  'data-master-bottom': protectedBottom / desktopMaster.width,
- style: {
-  '--master-height': desktopMaster.height / desktopMaster.width,
-  '--master-top': protectedTop / desktopMaster.width,
-  '--master-bottom': protectedBottom / desktopMaster.width,
- } as React.CSSProperties,
 } : {};
 
 /** Same registered bands as the initial CSS. A wider frame keeps the original
