@@ -6,13 +6,16 @@ import {asId} from '../../../src/lib/ids.ts';
 import type {Actor} from '../../../src/features/identity/types.ts';
 import type {IdentityStore,SqlSession} from '../../../src/features/identity/store.ts';
 import {seal,unseal,tokenDigest} from '../../../src/features/identity/crypto.ts';
-import {AcademyCrmStore} from '../../../src/features/contact-ops/server/academy-crm-store.ts';
+import {AcademyCrmStore,type AcademyInquiryContactDataInput} from '../../../src/features/contact-ops/server/academy-crm-store.ts';
+import {freshActor,lockWorkspace} from '../../../src/features/identity/data.ts';
+import {requirePractitioner} from '../../../src/features/cases/policy.ts';
+import {FishingBillingInquiryFamilyProposals} from '../../../src/lib/fishing-billing-inquiry-family-proposal.ts';
 import {ContactCutoverStore} from '../../../src/features/contact-ops/server/cutover-store.ts';
 import {privateDigest} from '../../../src/features/contact-ops/server/digests.ts';
 import {crmProfileAad} from '../../../src/features/contact-ops/server/native-store.ts';
 import type {AcademyCrmCommand,AcademyInitializationInput} from '../../../src/features/contact-ops/core/academy-crm.ts';
 import {PublicGroupApplicationStore} from '../../../src/features/group-application/store.ts';
-import {floridaGroupApplicationNotice,groupApplicationFieldsSchema,type GroupApplicationFields} from '../../../src/features/group-application/contract.ts';
+import {floridaGroupApplicationNotice,groupApplicationFieldsSchema,isTrip390Interest,type GroupApplicationFields} from '../../../src/features/group-application/contract.ts';
 import {groupApplicationPayloadAad,groupApplicationRequestDigest} from '../../../src/features/group-application/group-application-record.ts';
 import {trip390V1InterestSchema} from '../../../src/features/group-application/academy-trip390-v1.ts';
 import {trip390V3InterestSchema} from '../../../src/features/group-application/academy-trip390-v3.ts';
@@ -41,16 +44,19 @@ beforeAll(async()=>{
   expect(createHash('sha256').update(sql.replaceAll('\r\n','\n')).digest('hex')).toBe(manifest.find(m=>m.name===name)?.sha256);
   await engine.exec(sql);
  }
+ await engine.exec('CREATE SCHEMA ls_fishing_billing');
+ await engine.exec(await readFile('migrations/proposals/UNNUMBERED_ls_fishing_inquiry_family_proposals.sql','utf8'));
 },20000);
 afterEach(()=>{expect(globalThis.fetch).toBe(network);expect(network).not.toHaveBeenCalled();});
 afterAll(async()=>{try{if(engine)await engine.close();}finally{vi.unstubAllGlobals();}});
 
 type QueryObserver=(direct:SqlSession,sql:string,values:readonly unknown[])=>Promise<void>;
-async function setup(initialize=true){
+async function setup(initialize=true,emailQueue=false){
  const workspace=asId(randomUUID(),'workspace');let at=new Date(initial),observer:QueryObserver|null=null;
+ let transactions=0;
  const statements:string[]=[];
  const clock={now:()=>new Date(at)};
- const db:IdentityStore={transaction:work=>engine.transaction(async raw=>{
+ const db:IdentityStore={transaction:work=>{transactions++;return engine.transaction(async raw=>{
   const direct:SqlSession={query:async<T extends object>(sql:string,values:readonly unknown[]=[])=>
    (await raw.query<T>(sql,[...values])).rows};
   const tx:SqlSession={query:async<T extends object>(sql:string,values:readonly unknown[]=[])=>{
@@ -60,7 +66,7 @@ async function setup(initialize=true){
    if(observer)await observer(direct,sql,values);return rows;
   }};
   return work(tx);
- })};
+ });}};
  await engine.query('INSERT INTO ls_identity.workspaces(id,created_at) VALUES($1,$2)',[workspace,initial]);
  async function actor(role:Actor['role']){
   const id=asId(randomUUID(),'account'),personId=asId(randomUUID(),'person'),digest=tokenDigest(randomBytes(32).toString('base64url'));
@@ -80,7 +86,7 @@ async function setup(initialize=true){
   decisionId:'ACADEMY-ONLY-CRM-20261028-01',evidence:{retiredSourcesFence:'a'.repeat(64),retiredSchedulesFence:'b'.repeat(64),
    retainedAcademyRecords:'c'.repeat(64),queueReconciliation:'d'.repeat(64),restorePlan:'e'.repeat(64)}};
  const authority=new ContactCutoverStore(db,ring,key,clock),crm=new AcademyCrmStore(db,ring,key,clock);
- const source=new PublicGroupApplicationStore(db,workspace,ring,key,clock);
+ const source=new PublicGroupApplicationStore(db,workspace,ring,key,clock,emailQueue);
  if(initialize)await authority.initializeAcademy(owner,initialization);
  const submit=async()=>{
   const fields=currentTrip390Fields();fields.children.push({id:randomUUID(),name:'Synthetic sibling',ageYears:13,experience:'some'});
@@ -114,7 +120,7 @@ async function setup(initialize=true){
   return {id,operationId,fields};
  };
  return {workspace,owner,parent,db,clock,crm,source,authority,initialization,submit,applications,count,effects,convert,savedHistorical,statements,
-  observe:(next:QueryObserver|null)=>{observer=next;},advance:(next:Date)=>{at=new Date(next);}};
+  observe:(next:QueryObserver|null)=>{observer=next;},advance:(next:Date)=>{at=new Date(next);},transactionCount:()=>transactions};
 }
 
 it('current v4 siblings retain exact saved bytes through explicit CRM conversion, reload and operation replay',async()=>{
@@ -361,4 +367,150 @@ it('an admitted profile from a different initialization cannot supply a port con
   [s.workspace,result.personId,seal(JSON.stringify(profile),crmProfileAad(s.workspace,result.personId),ring)]);
  await expect(s.crm.withInquiryContact(s.owner,{reference:saved.item.id,expectedEpoch:1,intent:'read'},work)).rejects.toThrow('UNAVAILABLE');
  expect(work).not.toHaveBeenCalled();
+});
+
+type Setup=Awaited<ReturnType<typeof setup>>;
+const dataInput=(s:Setup,reference:string,lock:'shared'|'snapshot'='snapshot'):AcademyInquiryContactDataInput=>
+ ({workspaceId:s.workspace,reference,expectedEpoch:1,lock});
+const dataRead=(s:Setup,reference:string,lock:'shared'|'snapshot'='snapshot')=>s.db.transaction(tx=>s.crm.readInquiryContactDataInTransaction(tx,dataInput(s,reference,lock)));
+
+it('current-data snapshot reuses one actually authenticated owner TX and preserves source, native, proposal, old ACK and counter bytes',async()=>{
+  const s=await setup(true,true),saved=await s.submit(),{result,preview}=await s.convert(saved.item.id);
+  if(!isTrip390Interest(saved.item.fields))throw Error('SYNTHETIC_CURRENT_SOURCE');
+  const familyId=randomUUID();await engine.query('INSERT INTO ls_cases.families VALUES($1,$2,$3,$4)',[familyId,s.workspace,seal('SYNTHETIC Family',`family:${s.workspace}:${familyId}`,ring),initial]);
+  await engine.query("INSERT INTO ls_cases.family_members VALUES($1,$2,$3,'guardian')",[s.workspace,familyId,result.personId]);
+  const children=[];
+  for(const child of saved.item.fields.children){const nativeChildId=randomUUID();
+   await engine.query("INSERT INTO ls_identity.people VALUES($1,$2,'minor',$3,$4)",[nativeChildId,s.workspace,seal(JSON.stringify({displayName:'SYNTHETIC native child'}),`person:${s.workspace}:${nativeChildId}`,ring),initial]);
+   await engine.query("INSERT INTO ls_cases.family_members VALUES($1,$2,$3,'child')",[s.workspace,familyId,nativeChildId]);children.push({applicationChildId:child.id,nativeChildId});
+  }
+  const proposals=new FishingBillingInquiryFamilyProposals(s.db,s.workspace,ring,key,s.clock),selection={reference:saved.item.id,familyId,children};
+  const p=await proposals.preview(s.owner,{selection,expectedEpoch:1});
+  const proposal=(await proposals.propose(s.owner,{operationId:randomUUID(),expectedEpoch:1,selection,expectedSourceDigest:p.sourceDigest,expectedNativeDigest:p.nativeDigest})).record;
+  expect(proposal).toMatchObject({state:'proposed',guardianVerified:false,recipientVerified:false,financialAcceptance:false,outboundEligible:false});
+  expect((await engine.query('SELECT purpose,state FROM ls_service_interest.inquiry_email_outbox WHERE workspace_id=$1',[s.workspace])).rows)
+   .toEqual([{purpose:'academy_inquiry_acknowledgment_v1',state:'queued'}]);
+  const protectedRows=async()=>Promise.all(['ls_service_interest.public_applications','ls_service_interest.public_application_operations',
+   'ls_service_interest.inquiry_email_outbox','ls_fishing_billing.inquiry_family_proposals','ls_identity.people','ls_cases.families','ls_cases.family_members',
+   'ls_contact_ops.cutover','ls_contact_ops.academy_crm_contacts','ls_contact_ops.academy_crm_activity'].map(async table=>
+   (await engine.query(`SELECT to_jsonb(t) AS row FROM ${table} t WHERE workspace_id=$1 ORDER BY to_jsonb(t)::text`,[s.workspace])).rows));
+  const before=await protectedRows(),transactions=s.transactionCount();let dataStatements:string[]=[];
+  const data=await s.db.transaction(async tx=>{
+   await tx.query('SET TRANSACTION READ ONLY');requirePractitioner(await freshActor(tx,s.owner,s.clock.now()));
+   const begin=s.statements.length,value=await s.crm.readInquiryContactDataInTransaction(tx,dataInput(s,saved.item.id));dataStatements=s.statements.slice(begin);return value;
+  });
+  expect(s.transactionCount()).toBe(transactions+1);
+  expect(data).toEqual({classification:'current_scope_data_only_not_authority',record:saved.item,sourceDigest:preview.sourceDigest,
+   contact:(await s.crm.read(s.owner,result.personId,1)).contact,authorityEpoch:1,initializationId:s.initialization.operationId,consistency:'snapshot'});
+  expect(dataStatements.every(sql=>sql.trimStart().startsWith('SELECT'))).toBe(true);
+  expect(dataStatements.some(sql=>/FOR (SHARE|UPDATE)|advisory|SET TRANSACTION/.test(sql))).toBe(false);
+  expect(Object.isFrozen(data)).toBe(true);expect(Object.isFrozen(data.record.fields)).toBe(true);expect(Object.isFrozen(data.contact.origin)).toBe(true);
+  if('children' in data.record.fields)expect(Object.isFrozen(data.record.fields.children[0])).toBe(true);
+  expect(()=>Object.defineProperty(data.contact.origin,'language',{value:'en'})).toThrow(TypeError);
+  expect(data).not.toHaveProperty('actor');expect(data).not.toHaveProperty('permission');expect(await protectedRows()).toEqual(before);
+});
+
+it('current-data shared mode executes the existing nonblocking fence before actual Cutover/source locks inside a workspace-held TX',async()=>{
+ const s=await setup(),saved=await s.submit();await s.convert(saved.item.id);
+ const before=(await engine.query('SELECT * FROM ls_contact_ops.cutover WHERE workspace_id=$1',[s.workspace])).rows;
+ const calls:{sql:string;values:readonly unknown[]}[]=[];
+ const data=await s.db.transaction(async tx=>{
+  await lockWorkspace(tx,s.workspace);requirePractitioner(await freshActor(tx,s.owner,s.clock.now()));
+  return s.crm.readInquiryContactDataInTransaction({query:async<T extends object>(sql:string,values:readonly unknown[]=[])=>{
+   const rows=await tx.query<T>(sql,values);calls.push({sql,values});return rows;
+  }},dataInput(s,saved.item.id,'shared'));
+ });
+ expect(data.consistency).toBe('shared');expect(calls[0]).toEqual({sql:'SELECT pg_try_advisory_xact_lock(hashtextextended($1,0)) AS locked',values:[`${s.workspace}:contact-authority`]});
+ expect(calls[1]!.sql).toContain('ls_contact_ops.cutover');expect(calls[1]!.sql).toContain('FOR SHARE');
+ expect(calls.some(c=>c.sql.includes('FOR SHARE OF a,p,i,r'))).toBe(true);
+ expect((await engine.query('SELECT * FROM ls_contact_ops.cutover WHERE workspace_id=$1',[s.workspace])).rows).toEqual(before);
+});
+
+it.each(['false','missing'] as const)('current-data %s fence result fails closed before row locks using qualified real-query-result fault injection',async fault=>{
+ const s=await setup(),saved=await s.submit();await s.convert(saved.item.id);const statements:string[]=[];
+ const before=await s.applications(),counter=(await engine.query('SELECT * FROM ls_contact_ops.cutover WHERE workspace_id=$1',[s.workspace])).rows;
+ await expect(s.db.transaction(async tx=>{
+  await lockWorkspace(tx,s.workspace);
+  return s.crm.readInquiryContactDataInTransaction({query:async<T extends object>(sql:string,values:readonly unknown[]=[])=>{
+   const rows=await tx.query<T>(sql,values);statements.push(sql);
+   // Execute actual pg_try first, then inject only a DENIAL result. This is
+   // failure-branch testing, NOT competing PostgreSQL connection contention.
+   if(sql.startsWith('SELECT pg_try_advisory_xact_lock'))return fault==='missing'?[]:rows.map(r=>({...r,locked:false}));
+   return rows;
+  }},dataInput(s,saved.item.id,'shared'));
+ })).rejects.toThrow('CONFLICT');
+ expect(statements).toEqual(['SELECT pg_try_advisory_xact_lock(hashtextextended($1,0)) AS locked']);
+ expect(await s.applications()).toEqual(before);
+ expect((await engine.query('SELECT * FROM ls_contact_ops.cutover WHERE workspace_id=$1',[s.workspace])).rows).toEqual(counter);
+});
+
+it('current-data snapshot is genuine READONLY compatible while shared row locking is rejected by the database',async()=>{
+ const s=await setup(),saved=await s.submit();await s.convert(saved.item.id);
+ expect(await s.db.transaction(async tx=>{await tx.query('SET TRANSACTION READ ONLY');return s.crm.readInquiryContactDataInTransaction(tx,dataInput(s,saved.item.id));}))
+  .toMatchObject({consistency:'snapshot',contact:{outboundEligible:false}});
+ await expect(s.db.transaction(async tx=>{await tx.query('SET TRANSACTION READ ONLY');return s.crm.readInquiryContactDataInTransaction(tx,dataInput(s,saved.item.id,'shared'));})).rejects.toThrow('read-only transaction');
+});
+
+it('current-data preserves authenticated historical email-only source bytes without granting current offer authority',async()=>{
+ const s=await setup(),saved=await s.savedHistorical(v1()),before=await s.applications();await s.convert(saved.id);
+ const data=await dataRead(s,saved.id);expect(data).toMatchObject({classification:'current_scope_data_only_not_authority',record:{fields:saved.fields},contact:{origin:{phone:null,language:'he'},outboundEligible:false}});
+ expect(await s.applications()).toEqual(before);
+});
+
+it('current-data rejects absent initialization and stale epochs with no initialization or counter writes',async()=>{
+ const empty=await setup(false),source=await empty.submit();
+ for(const mode of ['snapshot','shared'] as const)await expect(empty.db.transaction(tx=>empty.crm.readInquiryContactDataInTransaction(tx,{...dataInput(empty,source.item.id,mode),expectedEpoch:0}))).rejects.toThrow('CONFLICT');
+ expect(await empty.count('ls_contact_ops.cutover')).toBe(0);expect(await empty.count('ls_contact_ops.cutover_history')).toBe(0);
+ const s=await setup(),saved=await s.submit();await s.convert(saved.item.id);
+ await expect(s.db.transaction(tx=>s.crm.readInquiryContactDataInTransaction(tx,{...dataInput(s,saved.item.id),expectedEpoch:0}))).rejects.toThrow('CONFLICT');
+});
+
+it('current-data requires exact admitted source, workspace and program without matching by identity endpoints',async()=>{
+ const s=await setup(),other=await setup(),saved=await s.submit();
+ await expect(dataRead(s,saved.item.id)).rejects.toThrow('NOT_FOUND');await s.convert(saved.item.id);
+ await expect(dataRead(other,saved.item.id)).rejects.toThrow('NOT_FOUND');await expect(dataRead(s,randomUUID())).rejects.toThrow('NOT_FOUND');
+ const wrong=await s.source.submit({operationId:randomUUID(),fields:{parentName:'SYNTHETIC other program',contact:'other@example.invalid',language:'en',cityArea:'SYNTHETIC Florida',
+  programId:'private_fishing_life_skills',schedulePreference:['sunday'],permission:{confirmed:true,version:floridaGroupApplicationNotice.version,language:'en'}}});
+ await expect(dataRead(s,wrong.item.id)).rejects.toThrow('NOT_FOUND');
+});
+
+it('current-data authenticates the real source decoder before an unadmitted record can hide corruption',async()=>{
+ const s=await setup(),id=randomUUID(),fields=currentTrip390Fields();
+ await engine.query(`INSERT INTO ls_service_interest.public_applications(workspace_id,id,contact_digest,request_digest,payload_ciphertext,notice_version,notice_language,received_at)
+  VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,[s.workspace,id,'a'.repeat(64),'b'.repeat(64),seal(JSON.stringify(fields),groupApplicationPayloadAad(s.workspace,id),ring),fields.acknowledgment.version,'en',initial]);
+ await expect(dataRead(s,id)).rejects.toThrow('UNAVAILABLE');
+});
+
+it('current-data rejects a sealed profile whose initialization disagrees with current immutable admission',async()=>{
+ const s=await setup(),saved=await s.submit(),{result}=await s.convert(saved.item.id);
+ const row=(await engine.query<{payload_ciphertext:string}>('SELECT payload_ciphertext FROM ls_contact_ops.profiles WHERE workspace_id=$1 AND person_id=$2',[s.workspace,result.personId])).rows[0]!;
+ const profile=JSON.parse(unseal(row.payload_ciphertext,crmProfileAad(s.workspace,result.personId),ring));profile.academyOrigin.initializationId=randomUUID();
+ await engine.query('UPDATE ls_contact_ops.profiles SET payload_ciphertext=$3 WHERE workspace_id=$1 AND person_id=$2',[s.workspace,result.personId,seal(JSON.stringify(profile),crmProfileAad(s.workspace,result.personId),ring)]);
+ await expect(dataRead(s,saved.item.id)).rejects.toThrow('UNAVAILABLE');
+});
+
+it('current-data rejects invalid or authority-shaped inputs before any query',async()=>{
+ const s=await setup(),saved=await s.submit();s.statements.length=0;
+ for(const bad of [{...dataInput(s,saved.item.id),actor:s.owner},{...dataInput(s,saved.item.id),expectedEpoch:-1},{...dataInput(s,saved.item.id),lock:'write'}])
+  await expect(s.db.transaction(tx=>s.crm.readInquiryContactDataInTransaction(tx,bad as AcademyInquiryContactDataInput))).rejects.toThrow('INVALID_REQUEST');
+ expect(s.statements).toEqual([]);
+});
+
+it('current-data pins caller workspace, reference and bound transaction before the first awaited query',async()=>{
+ const s=await setup(),saved=await s.submit();await s.convert(saved.item.id);const request=dataInput(s,saved.item.id);let changed=false;
+ const data=await s.db.transaction(async direct=>{
+  const tx:SqlSession={query:async<T extends object>(sql:string,values:readonly unknown[]=[])=>{
+   const rows=await direct.query<T>(sql,values);if(!changed){changed=true;request.workspaceId=asId(randomUUID(),'workspace');request.reference=randomUUID();request.expectedEpoch=0;
+    tx.query=undefined as unknown as SqlSession['query'];}return rows;
+  }};
+  return s.crm.readInquiryContactDataInTransaction(tx,request);
+ });
+ expect(changed).toBe(true);expect(data.record.id).toBe(saved.item.id);expect(data.authorityEpoch).toBe(1);expect(data.contact.origin.language).toBe('he');
+});
+
+it('current-data recorded scope is not current owner session access',async()=>{
+ const s=await setup(),saved=await s.submit();await s.convert(saved.item.id);
+ await engine.query('UPDATE ls_identity.sessions SET revoked_at=$2 WHERE token_digest=$1',[s.owner.sessionDigest,initial]);
+ expect(await dataRead(s,saved.item.id)).toMatchObject({classification:'current_scope_data_only_not_authority',contact:{outboundEligible:false}});
+ await expect(s.crm.withInquiryContact(s.owner,{reference:saved.item.id,expectedEpoch:1,intent:'read'},async()=>true)).rejects.toThrow('UNAUTHENTICATED');
 });
