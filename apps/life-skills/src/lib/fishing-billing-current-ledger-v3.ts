@@ -1,6 +1,6 @@
 import 'server-only';
 import {AppError} from './errors.ts';
-import {familyOfferSchema,type LedgerReceipt,type ReminderPolicy} from '../features/fishing-billing/contracts.ts';
+import {familyOfferSchema,type LedgerReceipt,type ReminderPolicy,type ReminderIntent} from '../features/fishing-billing/contracts.ts';
 import {projectBalanceV2,type LedgerReceiptV2} from '../features/fishing-billing/contracts-v2.ts';
 import {projectGuestBalanceV3} from '../features/fishing-billing/guest-domain-v3.ts';
 import {cardExceptionSchema} from '../features/fishing-billing/card-contracts.ts';
@@ -58,13 +58,37 @@ export interface BillingCurrentCardLedgerAccessV3{
  withCurrentCardServiceV3<T>(binding:BillingStripeBinding,quoteId:string,work:(ledger:BillingCurrentCardLedgerV3)=>Promise<T>):Promise<T>;
 }
 export type BillingCurrentFinancialServiceAuthorityV3=BillingFinancialServiceAuthority;
+/** Detached data for one newly reserved UNKNOWN intent in the SAME native TX.
+ * intent is the original queued intent, not the later UNKNOWN copy; dispatchId
+ * must identify that copy and its same-TX durable outbox reservation. Native
+ * validates every frame/intent/policy/dispatch/scope join before this handoff. */
+export type CurrentReminderReservationV3=Readonly<{
+ frame:CurrentLedgerFrameV3;intent:ReminderIntent;policy:ReminderPolicy;dispatchId:string;
+}>;
+/** A terminal resolver is ONE joint decision for ALL new reservations (1..50),
+ * after every other awaited native guard/read/write. It freshly authorizes the
+ * actual raw owner session OR independent service and every current native
+ * family/guardian/recipient/policy/window in context.tx. It must be read-only,
+ * perform no network work, and hold/guarantee stable actual decision facts
+ * through commit (for example by native row locks); a prior permission array,
+ * cached owner Actor or unverified claim is not a substitute.
+ *
+ * Native parses strict DispatchPermission values in exact descriptor order,
+ * requires equal lengths and exact recipient/channel/locale/eligibility joins,
+ * then performs only synchronous validation and returns: no later awaited
+ * native IO, cleanup, sequential per-reservation resolver or fallback. Missing
+ * resolver denies NEW reservations; queueing and original late-outcome recovery
+ * keep their separate rules. This type installs no implementation or authority. */
+export type CurrentReminderReservationPermissionsV3=readonly DispatchPermission[];
 /** The same current permission/policy/locale/audience resolution, with explicit
  * quote provenance instead of falsely relabelling a guest as an account. No
  * send defaults or new outbox; existing BillingReminderServiceOutbox stays. */
 export interface BillingCurrentOwnerAuthorityV3 extends Pick<BillingAuthority,'authorize'>{
  reminderPermission(context:BillingContext,frame:CurrentLedgerFrameV3,policy:ReminderPolicy,guardianId:string,channel:'email'|'whatsapp'):Promise<DispatchPermission>;
+ terminalReservationPermissions?(context:Readonly<BillingLedgerContext>,actor:Readonly<Actor>,reservations:readonly CurrentReminderReservationV3[]):Promise<CurrentReminderReservationPermissionsV3>;
 }
 export interface BillingCurrentReminderServiceAuthorityV3 extends Pick<BillingReminderServiceAuthority,'authorize'>{
  plan(context:BillingLedgerContext,binding:ReminderServiceBinding,frame:CurrentLedgerFrameV3):Promise<ReminderServicePlan|null>;
  permission(context:BillingLedgerContext,binding:ReminderServiceBinding,frame:CurrentLedgerFrameV3,policy:ReminderPolicy,audience:ReminderServiceAudience):Promise<DispatchPermission>;
+ terminalReservationPermissions?(context:Readonly<BillingLedgerContext>,binding:Readonly<ReminderServiceBinding>,reservations:readonly CurrentReminderReservationV3[]):Promise<CurrentReminderReservationPermissionsV3>;
 }
