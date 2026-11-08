@@ -9,7 +9,7 @@ import {seal,unseal,type Keyring} from '../features/identity/crypto.ts';
 import {one,type IdentityStore,type SqlSession} from '../features/identity/store.ts';
 import {systemClock,type Actor,type IdentityClock,type WorkspaceId} from '../features/identity/types.ts';
 import {isTrip390Interest,type GroupApplicationRecord} from '../features/group-application/contract.ts';
-import {isCurrentTrip390Interest,type Trip390CurrentInterest} from '../features/group-application/academy-trip390-contract.ts';
+import {isCurrentTrip390Interest,trip390CurrentInterestSchema,type Trip390CurrentInterest} from '../features/group-application/academy-trip390-contract.ts';
 
 export const FISHING_INQUIRY_FAMILY_PROPOSAL_VERSION='JLFA-FISHING-INQUIRY-FAMILY-PROPOSAL-v1' as const;
 const uuid=z.uuid(),digest=z.string().regex(/^[a-f0-9]{64}$/);
@@ -56,6 +56,34 @@ export function decodeFishingInquiryFamilyProposalRecord(row:FishingInquiryFamil
  }catch{fail();}
 }
 
+const nativeFingerprintInputSchema=z.object({workspaceId:uuid,selection,guardianPersonId:uuid,
+ currentFields:trip390CurrentInterestSchema,lock:z.enum(['shared','snapshot'])}).strict();
+export type FishingInquiryNativeFingerprintInput=Omit<z.infer<typeof nativeFingerprintInputSchema>,'workspaceId'>&{workspaceId:WorkspaceId};
+
+/** Same-TX native data fingerprint ONLY. The caller separately authenticates
+ * access and obtains actual current source fields/admitted contact; passing
+ * fields or membership IDs supplies no guardian, recipient or billing grant.
+ * No transaction, clock, approval, family or identity is created here. */
+export async function readFishingInquiryNativeFingerprint(tx:SqlSession,input:FishingInquiryNativeFingerprintInput,integrityKey:string):Promise<string>{
+ const parsed=nativeFingerprintInputSchema.safeParse(input);
+ if(!parsed.success||!tx||typeof tx.query!=='function')throw new AppError('INVALID_REQUEST');
+ const c=parsed.data,workspace=c.workspaceId as WorkspaceId,choice=c.selection,fields=c.currentFields,lock=c.lock==='shared';
+ const pinned:SqlSession=Object.freeze({query:tx.query.bind(tx)});
+ if(choice.children.length!==fields.children.length||!fields.children.every(child=>choice.children.some(m=>m.applicationChildId===child.id)))fail('CONFLICT');
+ const family=await one<{id:string;label:string;createdAt:Date;guardianId:string;guardianProfile:string;guardianRole:string}>(pinned,
+  'SELECT f.id,f.label_ciphertext AS label,f.created_at AS "createdAt",p.id AS "guardianId",p.profile_ciphertext AS "guardianProfile",m.role AS "guardianRole" FROM ls_cases.families f JOIN ls_cases.family_members m ON m.workspace_id=f.workspace_id AND m.family_id=f.id AND m.person_id=$3 AND m.role IN (\'parent\',\'guardian\') JOIN ls_identity.people p ON p.workspace_id=m.workspace_id AND p.id=m.person_id AND p.kind=\'adult\' WHERE f.workspace_id=$1 AND f.id=$2'+(lock?' FOR SHARE OF f,m,p':''),
+  [workspace,choice.familyId,c.guardianPersonId]);
+ if(!family)fail();
+ const children=await pinned.query<{applicationChildId:string;nativeChildId:string;profile:string}>(
+  'SELECT d.application_child_id AS "applicationChildId",p.id AS "nativeChildId",p.profile_ciphertext AS profile FROM jsonb_to_recordset($3::jsonb) AS d(application_child_id uuid,native_child_id uuid) JOIN ls_cases.family_members m ON m.workspace_id=$1 AND m.family_id=$2 AND m.person_id=d.native_child_id AND m.role=\'child\' JOIN ls_identity.people p ON p.workspace_id=m.workspace_id AND p.id=m.person_id AND p.kind=\'minor\' ORDER BY d.application_child_id'+(lock?' FOR SHARE OF m,p':''),
+  [workspace,choice.familyId,JSON.stringify(choice.children.map(child=>({application_child_id:child.applicationChildId,native_child_id:child.nativeChildId})))]);
+ if(children.length!==choice.children.length||new Set(children.map(child=>child.nativeChildId)).size!==children.length)fail();
+ // Preserve the original fingerprint envelope and SQL ordering exactly.
+ // Ciphertext fingerprints detect drift without copying private profiles.
+ return privateDigest({domain:'fishing-inquiry-family-proposal-native/v1',workspace,
+  value:{family:{...family,createdAt:family.createdAt.toISOString()},children}},integrityKey);
+}
+
 /** Internal preparation only. This associates an authentic current inquiry and
  * its already admitted Academy adult contact with explicitly selected EXISTING
  * native membership records. It does not verify identity/guardianship/recipient,
@@ -72,27 +100,13 @@ export class FishingBillingInquiryFamilyProposals{
   const owner=Object.freeze({...actor});
   if(owner.workspaceId!==this.workspace)throw new AppError('FORBIDDEN');return owner;
  }
- private hash(domain:string,value:unknown){return privateDigest({domain,workspace:this.workspace,value},this.integrityKey);}
  private request(actorId:string,command:FishingFamilyProposalCommand){return proposalRequestDigest(this.workspace,this.integrityKey,actorId,command);}
  private fields(record:GroupApplicationRecord):Trip390CurrentInterest{
   if(!isTrip390Interest(record.fields)||!isCurrentTrip390Interest(record.fields))throw new AppError('NOT_FOUND');
   return record.fields;
  }
  private async native(tx:SqlSession,input:Selection,guardianId:string,fields:Trip390CurrentInterest,lock:boolean){
-  if(input.children.length!==fields.children.length||!fields.children.every(c=>input.children.some(m=>m.applicationChildId===c.id)))fail('CONFLICT');
-  // The guardian ID comes only from the exact current inquiry-origin Academy
-  // contact. A caller cannot substitute a person or match private names.
-  const family=await one<{id:string;label:string;createdAt:Date;guardianId:string;guardianProfile:string;guardianRole:string}>(tx,
-   'SELECT f.id,f.label_ciphertext AS label,f.created_at AS "createdAt",p.id AS "guardianId",p.profile_ciphertext AS "guardianProfile",m.role AS "guardianRole" FROM ls_cases.families f JOIN ls_cases.family_members m ON m.workspace_id=f.workspace_id AND m.family_id=f.id AND m.person_id=$3 AND m.role IN (\'parent\',\'guardian\') JOIN ls_identity.people p ON p.workspace_id=m.workspace_id AND p.id=m.person_id AND p.kind=\'adult\' WHERE f.workspace_id=$1 AND f.id=$2'+(lock?' FOR SHARE OF f,m,p':''),
-   [this.workspace,input.familyId,guardianId]);
-  if(!family)fail();
-  const children=await tx.query<{applicationChildId:string;nativeChildId:string;profile:string}>(
-   'SELECT d.application_child_id AS "applicationChildId",p.id AS "nativeChildId",p.profile_ciphertext AS profile FROM jsonb_to_recordset($3::jsonb) AS d(application_child_id uuid,native_child_id uuid) JOIN ls_cases.family_members m ON m.workspace_id=$1 AND m.family_id=$2 AND m.person_id=d.native_child_id AND m.role=\'child\' JOIN ls_identity.people p ON p.workspace_id=m.workspace_id AND p.id=m.person_id AND p.kind=\'minor\' ORDER BY d.application_child_id'+(lock?' FOR SHARE OF m,p':''),
-   [this.workspace,input.familyId,JSON.stringify(input.children.map(c=>({application_child_id:c.applicationChildId,native_child_id:c.nativeChildId})))]);
-  if(children.length!==input.children.length||new Set(children.map(c=>c.nativeChildId)).size!==children.length)fail();
-  // Ciphertext fingerprints detect native drift without decrypting or copying
-  // unrelated family profiles into a second customer-data store.
-  return this.hash('fishing-inquiry-family-proposal-native/v1',{family:{...family,createdAt:family.createdAt.toISOString()},children});
+  return readFishingInquiryNativeFingerprint(tx,{workspaceId:this.workspace,selection:input,guardianPersonId:guardianId,currentFields:fields,lock:lock?'shared':'snapshot'},this.integrityKey);
  }
  private decode(row:Row):FishingInquiryFamilyProposal{
   return decodeFishingInquiryFamilyProposalRecord(row,{workspaceId:this.workspace,keyring:this.ring,integrityKey:this.integrityKey});

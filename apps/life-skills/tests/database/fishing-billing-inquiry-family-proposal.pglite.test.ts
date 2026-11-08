@@ -14,7 +14,7 @@ import {AcademyCrmStore} from '../../src/features/contact-ops/server/academy-crm
 import {PublicGroupApplicationStore} from '../../src/features/group-application/store.ts';
 import {groupApplicationRequestDigest} from '../../src/features/group-application/group-application-record.ts';
 import {TRIP390_V1_INTEREST_VERSION,TRIP390_V1_NOTICE_VERSION,TRIP390_V1_OFFER,type Trip390V1Interest} from '../../src/features/group-application/academy-trip390-v1.ts';
-import {decodeFishingInquiryFamilyProposalRecord,FishingBillingInquiryFamilyProposals,type FishingFamilyProposalCommand,type FishingInquiryFamilyProposalRow} from '../../src/lib/fishing-billing-inquiry-family-proposal.ts';
+import {decodeFishingInquiryFamilyProposalRecord,readFishingInquiryNativeFingerprint,FishingBillingInquiryFamilyProposals,type FishingFamilyProposalCommand,type FishingInquiryFamilyProposalRow,type FishingInquiryNativeFingerprintInput} from '../../src/lib/fishing-billing-inquiry-family-proposal.ts';
 vi.mock('server-only',()=>({}));
 
 // New no-URL memory DB, real committed DDL/stores/crypto and synthetic data.
@@ -92,6 +92,59 @@ async function reloadActor(f:Awaited<ReturnType<typeof fixture>>){
 async function storedProposal(f:Awaited<ReturnType<typeof fixture>>){
  return (await engine.query<FishingInquiryFamilyProposalRow>('SELECT id,application_id AS reference,family_id AS "familyId",guardian_person_id AS "guardianId",operation_id AS "operationId",recorded_by AS "recordedBy",source_digest AS "sourceDigest",native_digest AS "nativeDigest",request_digest AS "requestDigest",payload_ciphertext AS ciphertext,created_at AS "createdAt" FROM ls_fishing_billing.inquiry_family_proposals WHERE workspace_id=$1',[f.workspace])).rows[0]!;
 }
+function nativeInput(f:Awaited<ReturnType<typeof fixture>>,lock:'shared'|'snapshot'='snapshot'):FishingInquiryNativeFingerprintInput{
+ return {workspaceId:f.workspace,selection:f.selection,guardianPersonId:f.guardianId,currentFields:f.fields,lock};
+}
+it('native data fingerprint reads actual current rows and detects drift without upgrading the original proposal',async()=>{
+ const f=await fixture(),command=await f.prepare(),saved=await f.store().propose(f.owner,command),original=await storedProposal(f),source=await f.source(),counts=await f.counts();
+ const first=await db.transaction(tx=>readFishingInquiryNativeFingerprint(tx,nativeInput(f),key));
+ expect(first).toBe(command.expectedNativeDigest);
+ const child=f.selection.children[0]!.nativeChildId;
+ await engine.query('UPDATE ls_identity.people SET profile_ciphertext=$3 WHERE workspace_id=$1 AND id=$2',[f.workspace,child,seal('SYNTHETIC changed native profile',`person:${f.workspace}:${child}`,ring)]);
+ const changed=await db.transaction(tx=>readFishingInquiryNativeFingerprint(tx,nativeInput(f),key));
+ expect(changed).not.toBe(first);expect(await storedProposal(f)).toEqual(original);expect(await f.source()).toEqual(source);expect(await f.counts()).toEqual(counts);
+ expect(saved.record).toMatchObject({guardianVerified:false,recipientVerified:false,financialAcceptance:false,outboundEligible:false});
+ await expect(f.store().read(f.owner,{reference:f.saved.item.id,expectedEpoch:1})).rejects.toThrow('CONFLICT');
+});
+it('native data fingerprint pins parsed scope, mappings, fields, lock and bound TX before awaited SQL',async()=>{
+ const f=await fixture(),expected=(await f.prepare()).expectedNativeDigest,input=nativeInput(f,'shared'),source=await f.source();
+ let changed=false;const queries:string[]=[];
+ const result=await db.transaction(async real=>{
+  const mutable:SqlSession={query:async<T extends object>(sql:string,values:readonly unknown[]=[])=>{
+   const rows=await real.query<T>(sql,values);queries.push(sql);
+   if(sql.startsWith('SELECT f.id')){
+    changed=true;input.workspaceId=asId(randomUUID(),'workspace');input.selection.familyId=randomUUID();input.guardianPersonId=f.parent.personId;
+    input.selection.children[0]!.nativeChildId=randomUUID();input.currentFields.children[0]!.id=randomUUID();input.lock='snapshot';
+    mutable.query=async()=>{throw new Error('MUTATED_TX_MUST_NOT_BE_USED');};
+   }
+   return rows;
+  }};
+  return readFishingInquiryNativeFingerprint(mutable,input,key);
+ });
+ expect(changed).toBe(true);expect(result).toBe(expected);expect(queries).toHaveLength(2);expect(queries.every(sql=>sql.includes('FOR SHARE'))).toBe(true);expect(await f.source()).toEqual(source);
+});
+it.each(['workspace','family','guardian'] as const)('native data fingerprint refuses unrelated %s without fabricating membership',async wrong=>{
+ const f=await fixture(),input=nativeInput(f),counts=await f.counts();
+ if(wrong==='workspace')input.workspaceId=asId(randomUUID(),'workspace');
+ if(wrong==='family')input.selection={...input.selection,familyId:randomUUID()};
+ if(wrong==='guardian')input.guardianPersonId=f.parent.personId;
+ await expect(db.transaction(tx=>readFishingInquiryNativeFingerprint(tx,input,key))).rejects.toThrow('UNAVAILABLE');expect(await f.counts()).toEqual(counts);
+});
+it('native data fingerprint requires every current source child in the explicit native mapping',async()=>{
+ const f=await fixture(),input=nativeInput(f);input.selection={...input.selection,children:input.selection.children.slice(0,1)};
+ await expect(db.transaction(tx=>readFishingInquiryNativeFingerprint(tx,input,key))).rejects.toThrow('CONFLICT');
+});
+it('native data fingerprint rejects a historical source tuple instead of using it as current input',async()=>{
+ const f=await fixture(),input=nativeInput(f);
+ const historical={...input,currentFields:{...input.currentFields,version:TRIP390_V1_INTEREST_VERSION}} as unknown as FishingInquiryNativeFingerprintInput;
+ await expect(db.transaction(tx=>readFishingInquiryNativeFingerprint(tx,historical,key))).rejects.toThrow('INVALID_REQUEST');
+});
+it('native data snapshot runs in actual READ ONLY while shared row locking is denied there',async()=>{
+ const f=await fixture(),expected=(await f.prepare()).expectedNativeDigest,counts=await f.counts();
+ expect(await db.transaction(async tx=>{await tx.query('SET TRANSACTION READ ONLY');return readFishingInquiryNativeFingerprint(tx,nativeInput(f),key);})).toBe(expected);
+ await expect(db.transaction(async tx=>{await tx.query('SET TRANSACTION READ ONLY');return readFishingInquiryNativeFingerprint(tx,nativeInput(f,'shared'),key);})).rejects.toMatchObject({code:'25006'});
+ expect(await f.counts()).toEqual(counts);
+});
 it('pure integrity decoder authenticates the actual stored proposal without granting authority or changing records',async()=>{
  const f=await fixture(),saved=await f.store().propose(f.owner,await f.prepare()),row=await storedProposal(f),source=await f.source(),counts=await f.counts();
  const context={workspaceId:f.workspace,keyring:ring,integrityKey:key},decoded=decodeFishingInquiryFamilyProposalRecord(row,context);
