@@ -47,14 +47,14 @@
 .hero[data-reflow=true]{display:flex;flex-direction:column;block-size:auto}
 .hero[data-reflow=true] picture,.hero[data-reflow=true] img{block-size:auto}
 .hero[data-reflow=true] .heroText{position:static;order:-2;padding:24px 12px 12px}
-.hero[data-reflow=true] .heroAction{position:static;order:-1;padding:12px 20px 24px}
+.hero[data-reflow=true] .heroAction{position:static;order:1;padding:12px 20px 24px}
 /* The picture selects the landscape original for portrait widths >=1000px.
    Use natural flow before hydration and without JavaScript as well. */
 @media(min-width:1000px) and (orientation:portrait){
  .hero{display:flex;flex-direction:column;block-size:auto}
  .hero picture,.hero img{block-size:auto}
  .heroText{position:static;order:-2;padding:24px 12px 12px}
- .heroAction{position:static;order:-1;padding:12px 20px 24px}
+ .heroAction{position:static;order:1;padding:12px 20px 24px}
 }
 
 /* Natural flow is the default for shallow landscape frames. */
@@ -63,39 +63,36 @@
  .hero:not([data-desktop-bands=overlay]){display:flex;flex-direction:column;block-size:auto}
  .hero:not([data-desktop-bands=overlay]) picture,.hero:not([data-desktop-bands=overlay]) img{block-size:auto}
  .hero:not([data-desktop-bands=overlay]) .heroText{position:static;order:-2;padding:16px 12px 8px}
- .hero:not([data-desktop-bands=overlay]) .heroAction{position:static;order:-1;padding:8px 20px 16px}
+ .hero:not([data-desktop-bands=overlay]) .heroAction{position:static;order:1;padding:8px 20px 16px}
 }
 
-/* At ordinary desktop proportions, compose the first frame from the same
-   original-pixel bands used by measurement. Percentages in translateY refer
-   to the actual foreground group, so neither text height nor crop is guessed. */
-@supports (opacity:attr(data-master-height type(<number>))){
- @media(min-width:1024px) and (min-height:768px) and (orientation:landscape) and (max-aspect-ratio:9/5){
-  .hero[data-master-height]{
-   --initial-desktop-overlay:1;
-   --master-height:attr(data-master-height type(<number>));
-   --master-top:attr(data-master-top type(<number>));
-   --master-bottom:attr(data-master-bottom type(<number>));
-   --hero-frame:calc(100svh - var(--header-height));
-   container-type:inline-size;
-  }
-  .hero[data-master-height]:not([data-desktop-bands=flow]){display:block;block-size:var(--hero-frame)}
-  .hero[data-master-height]:not([data-desktop-bands=flow]) picture{block-size:100%}
-  .hero[data-master-height]:not([data-desktop-bands=flow]) img{block-size:min(var(--hero-frame),calc(100cqw * var(--master-height)))}
-  .hero[data-master-height]:not([data-desktop-bands=flow]) :is(.heroText,.heroAction){
-   --photo-top:min(0px,calc((var(--hero-frame) - 100cqw * var(--master-height)) / 2));
-   position:absolute;padding:0;
-  }
-  .hero[data-master-height]:not([data-desktop-bands=flow]) .heroText{
-   inset-block-start:4px;
-   transform:translateY(clamp(0px,calc(var(--photo-top) + 100cqw * var(--master-top) - 100% - 8px),8px));
-  }
-  .hero[data-master-height]:not([data-desktop-bands=flow]) .heroAction{
-   inset-block-end:4px;
-   --lower-band:calc(var(--hero-frame) - var(--photo-top) - 100cqw * var(--master-bottom));
-   transform:translateY(calc(-1 * clamp(0px,calc(var(--lower-band) - 100% - 8px),calc(var(--hero-frame) * .08 - 4px))));
-  }
+/* Registered ratios arrive as numeric SSR custom properties, not typed attr().
+   Foreground fits the real sky/lower bands at ordinary wide desktop ratios.
+   Only an insufficient legible band can extend the first-screen frame. */
+@media(min-width:1024px) and (min-height:601px) and (orientation:landscape){
+ .hero[data-master-height]{
+  --initial-desktop-overlay:1;
+  --hero-frame:max(calc(100svh - var(--header-height)),calc(100cqw * var(--master-height) - 200cqw * var(--master-top) + 260px),calc(200cqw * var(--master-bottom) - 100cqw * var(--master-height) + 208px));
+  --photo-top:min(0px,calc((var(--hero-frame) - 100cqw * var(--master-height)) / 2));
+  --upper-band:calc(var(--photo-top) + 100cqw * var(--master-top));
+  --lower-band:calc(var(--hero-frame) - var(--photo-top) - 100cqw * var(--master-bottom));
+  --hero-region-size:clamp(20px,calc(var(--upper-band) * .14),22px);
+  --hero-pillars-size:clamp(26px,calc(var(--lower-band) * .24),28px);
+  container-type:inline-size;
  }
+ .hero[data-master-height]:not([data-desktop-bands=flow]){display:block;block-size:auto}
+ .hero[data-master-height]:not([data-desktop-bands=flow]) picture{block-size:var(--hero-frame)}
+ .hero[data-master-height]:not([data-desktop-bands=flow]) img{block-size:min(var(--hero-frame),calc(100cqw * var(--master-height)))}
+ .hero[data-master-height]:not([data-desktop-bands=flow]) :is(.heroText,.heroAction){position:absolute;box-sizing:border-box;transform:none;justify-content:center}
+ .hero[data-master-height]:not([data-desktop-bands=flow]) .heroText{display:flex;flex-direction:column;inset-block-start:0;block-size:var(--upper-band);padding:8px 0}
+ .hero[data-master-height] .heroEyebrow{font-size:var(--hero-region-size);margin-block-end:8px}
+ .page .hero[data-master-height] .heroText h1{font-size:clamp(36px,min(4vw,calc((var(--upper-band) - var(--hero-region-size) * 1.4 - 24px) / 2.16)),60px)}
+ .hero[data-master-height]:not([data-desktop-bands=flow]) .heroAction{
+  inset-block-end:0;block-size:var(--lower-band);padding:4px 0;
+  gap:clamp(12px,calc(var(--lower-band) - var(--hero-pillars-size) * 1.2 - 60px),16px);
+ }
+ .page .hero[data-master-height] .heroPillars{font-size:var(--hero-pillars-size);line-height:1.2}
+ .page .hero[data-master-height] .heroAction .action{box-sizing:border-box;min-block-size:52px;padding:10px 32px}
 }
 
 /* Reading rhythm and distinct content groups. */
@@ -257,9 +254,9 @@
  .hero{display:flex;flex-direction:column;block-size:auto}
  .hero picture,.hero img{block-size:auto}
  .heroText{position:static;order:-2;padding:24px 12px 12px}
- .heroAction{position:static;order:-1;padding:12px 20px 24px}
+ .heroAction{position:static;order:1;padding:12px 20px 24px}
 }
-@media(max-height:480px){.hero{display:flex;flex-direction:column;block-size:auto}.hero picture,.hero img{block-size:auto}.heroText{position:static;order:-2;padding:16px 12px 8px}.heroAction{position:static;order:-1;padding:8px 20px 16px}.dialogHeader{padding-block:8px}.page .dialogHeader h2{font-size:21px}}
+@media(max-height:480px){.hero{display:flex;flex-direction:column;block-size:auto}.hero picture,.hero img{block-size:auto}.heroText{position:static;order:-2;padding:16px 12px 8px}.heroAction{position:static;order:1;padding:8px 20px 16px}.dialogHeader{padding-block:8px}.page .dialogHeader h2{font-size:21px}}
 @media(prefers-reduced-motion:reduce){.page *{scroll-behavior:auto}}
 
 .sectionHeading{text-align:center}.sectionHeading h2{margin-inline:auto}.page .lead{max-inline-size:62ch}

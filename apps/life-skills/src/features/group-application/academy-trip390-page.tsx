@@ -32,7 +32,24 @@ const desktopGeometry = desktopRegion.sourceSha256 === desktopMaster.sha256
  'data-master-height': desktopMaster.height / desktopMaster.width,
  'data-master-top': protectedTop / desktopMaster.width,
  'data-master-bottom': protectedBottom / desktopMaster.width,
+ style: {
+  '--master-height': desktopMaster.height / desktopMaster.width,
+  '--master-top': protectedTop / desktopMaster.width,
+  '--master-bottom': protectedBottom / desktopMaster.width,
+ } as React.CSSProperties,
 } : {};
+
+/** Same registered bands as the initial CSS. A wider frame keeps the original
+ * width/people scale; only foreground fit can select the readable fallback. */
+export function desktopHeroBands(width:number,viewportFrame:number,headingHeight:number,actionHeight:number) {
+ if(!Number.isFinite(width)||!Number.isFinite(viewportFrame)||width<=0||viewportFrame<=0||!Number.isFinite(headingHeight)||!Number.isFinite(actionHeight)||headingHeight<=0||actionHeight<=0||protectedTop===undefined||protectedBottom===undefined)return null;
+ const scale=width/desktopMaster.width,photoHeight=desktopMaster.height*scale;
+ // Enough room for the minimum legible foreground, without reducing the photo.
+ const height=Math.max(viewportFrame,photoHeight-2*protectedTop*scale+260,2*protectedBottom*scale-photoHeight+208);
+ const photoOffset=photoHeight<=height?0:(height-photoHeight)/2;
+ const upperBand=photoOffset+protectedTop*scale,lowerBand=height-photoOffset-protectedBottom*scale;
+ return {height,photoHeight,photoOffset,upperBand,lowerBand,overlay:headingHeight+16<=upperBand&&actionHeight+8<=lowerBand};
+}
 
 function registeredHero(image:HTMLImageElement) {
  if(!image.naturalWidth||!image.currentSrc)return null;
@@ -328,28 +345,18 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, reser
    const eyebrow=heading.firstElementChild,title=heading.lastElementChild;
    const pillars=action.firstElementChild,button=action.lastElementChild;
    if(desktop&&asset?.role==='desktop'&&eyebrow&&title&&pillars&&button){
-    const scale=node.getBoundingClientRect().width/asset.original.width;
-    const photoHeight=scale*asset.original.height;
-    // Compute the prospective overlay independently of the current flow state.
-    // Width-fit aligns the full original at the top; cover centers its tall axis.
-    const imageOffset=Math.min(0,(height-photoHeight)/2);
-    const [,top,,bottom]=asset.region.protectedRect;
-    if(top!==undefined&&bottom!==undefined){
-     const upperBand=imageOffset+top*scale,lowerBand=height-(imageOffset+bottom*scale);
-     const clearance=4;
-     const titleLines=eyebrow.getBoundingClientRect().height+title.getBoundingClientRect().height;
-     const actionHeight=button.getBoundingClientRect().bottom-pillars.getBoundingClientRect().top;
-     const titleGap=parseFloat(getComputedStyle(eyebrow).marginBlockEnd);
-     const titleInset=Math.min(12,upperBand-titleLines-titleGap-clearance);
-     const actionInset=Math.min(height*.08,lowerBand-actionHeight-clearance);
-     // CSS chooses the initial composition. Measurement can protect a larger
-     // foreground by falling back to flow, but never promotes an initial flow.
-     const initialOverlay=getComputedStyle(node).getPropertyValue('--initial-desktop-overlay').trim()==='1';
-     const overlay=initialOverlay&&titleInset>=clearance&&actionInset>=clearance;
-     node.dataset.desktopBands=overlay?'overlay':'flow';
-     setHeroReflow(!overlay);
-     return;
-    }
+    const titleLines=eyebrow.getBoundingClientRect().height+title.getBoundingClientRect().height;
+    const actionHeight=button.getBoundingClientRect().bottom-pillars.getBoundingClientRect().top;
+    const titleGap=parseFloat(getComputedStyle(eyebrow).marginBlockEnd);
+    const bands=desktopHeroBands(node.getBoundingClientRect().width,height,titleLines+titleGap,actionHeight);
+    if(bands)node.dataset.photoFit=bands.photoHeight<=bands.height?'width':'cover';
+    // CSS already overlays ordinary frames before image load or hydration.
+    // Measurement handles genuine font enlargement, not a support/ratio cliff.
+    const initialOverlay=getComputedStyle(node).getPropertyValue('--initial-desktop-overlay').trim()==='1';
+    const overlay=initialOverlay&&bands?.overlay===true;
+    node.dataset.desktopBands=overlay?'overlay':'flow';
+    setHeroReflow(!overlay);
+    return;
    }
    delete node.dataset.desktopBands;
    setHeroReflow(desktop||portraitLandscape||heading.getBoundingClientRect().height>height*.25||action.getBoundingClientRect().height>height*.18);
