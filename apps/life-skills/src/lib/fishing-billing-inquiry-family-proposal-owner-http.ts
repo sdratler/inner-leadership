@@ -31,7 +31,7 @@ const equal=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
  * exposed here. A lost response must retain and retry the original command. */
 export async function fishingInquiryFamilyProposalOwnerHttp(request:Request,
  load:()=>Promise<FishingInquiryFamilyProposalOwnerHttpDependencies>):Promise<Response>{
- const requestId=randomUUID();let response:Response;
+ const requestId=randomUUID();let response:Response,proposalInvoked=false;
  try{
   const cookies=(request.headers.get('cookie')??'').split(';').map(value=>value.trim()).filter(value=>value.startsWith(SESSION_COOKIE+'='));
   if(cookies.length!==1)throw new AppError('UNAUTHENTICATED');
@@ -62,12 +62,15 @@ export async function fishingInquiryFamilyProposalOwnerHttp(request:Request,
     if(!equal(preview.selection,input.selection))throw new AppError('UNAVAILABLE');
     response=successResponse({version:FISHING_INQUIRY_FAMILY_PROPOSAL_VERSION,kind:'preview',preview},requestId);
    }else{
+    // The transaction adapter may fail after COMMIT. Once invoked, no typed
+    // error proves rollback; retain the original operation for read/replay.
+    proposalInvoked=true;
     const saved=await d.store.propose(actor,input.command),record=fishingInquiryFamilyProposalSchema.parse(saved.record);
     if(record.workspaceId!==actor.workspaceId||record.recordedBy!==actor.id||!equal(record.command,input.command)||typeof saved.replayed!=='boolean')throw new AppError('UNAVAILABLE');
     response=successResponse({version:FISHING_INQUIRY_FAMILY_PROPOSAL_VERSION,kind:'proposed',record,replayed:saved.replayed},requestId);
    }
   }
- }catch(error){response=failureResponse(error instanceof AppError?error:new AppError('UNAVAILABLE'),requestId);}
+ }catch(error){response=failureResponse(proposalInvoked?new AppError('UNAVAILABLE'):error instanceof AppError?error:new AppError('UNAVAILABLE'),requestId);}
  response.headers.set('Vary','Cookie');response.headers.set('Referrer-Policy','no-referrer');
  response.headers.set('X-Content-Type-Options','nosniff');response.headers.set('Content-Security-Policy',"default-src 'none'; frame-ancestors 'none'");
  return response;

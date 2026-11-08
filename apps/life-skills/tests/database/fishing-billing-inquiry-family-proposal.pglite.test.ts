@@ -144,7 +144,7 @@ it('owner proposal HTTP exact retries retain the original proposal and conflicti
  // The proposal replay preserves its row; the existing write-intent wrapper
  // still advances its native counter. Conflicts must roll back their own TX.
  const replayState=await f.cutover.read(f.owner);expect(replayState.nativeWritesSinceSwitch).toBe(state.nativeWritesSinceSwitch+1);
- const conflict=await http.call({action:'propose',command:{...command,operationId:randomUUID()}});expect(conflict.status).toBe(409);
+ const conflict=await http.call({action:'propose',command:{...command,operationId:randomUUID()}});expect(conflict.status).toBe(503);expect((await conflict.json()).error.code).toBe('UNAVAILABLE');
  expect(await storedProposal(f)).toEqual(row);expect(await f.count()).toBe(1);expect(await f.cutover.read(f.owner)).toEqual(replayState);
 });
 it.each(['CONFLICT','INVALID_REQUEST','FORBIDDEN','UNAUTHENTICATED'] as const)('owner proposal HTTP post-COMMIT %s remains uncertain with durable fresh-session recovery',async code=>{
@@ -170,7 +170,7 @@ it('owner proposal HTTP rejects an actual parent session without assuming guardi
  const f=await fixture(),http=await ownerHttpHarness(f,f.parent),response=await http.call({action:'preview',expectedEpoch:1,selection:f.selection});
  expect(response.status).toBe(403);expect(await f.count()).toBe(0);expect(JSON.stringify(await response.json())).not.toContain(f.fields.email);
 });
-it('owner proposal HTTP store denies a real session revoked after actual actor loading',async()=>{
+it('owner proposal HTTP reports store-stage session loss as uncertain after actual actor loading',async()=>{
  const f=await fixture(),command=await f.prepare(),state=await f.cutover.read(f.owner);let digest='',revoked=false;
  const sessionStore:IdentityStore={transaction:work=>db.transaction(real=>work({query:async<T extends object>(sql:string,values:readonly unknown[]=[])=>{
   const rows=await real.query<T>(sql,values);
@@ -178,7 +178,13 @@ it('owner proposal HTTP store denies a real session revoked after actual actor l
   return rows;
  }}))};
  const http=await ownerHttpHarness(f,f.owner,sessionStore);digest=tokenDigest(http.token);
- const response=await http.call({action:'propose',command});expect(revoked).toBe(true);expect(response.status).toBe(401);expect(await f.count()).toBe(0);expect(await f.cutover.read(f.owner)).toEqual(state);
+ const response=await http.call({action:'propose',command});expect(revoked).toBe(true);expect(response.status).toBe(503);expect((await response.json()).error.code).toBe('UNAVAILABLE');expect(await f.count()).toBe(0);expect(await f.cutover.read(f.owner)).toEqual(state);
+});
+it('owner proposal HTTP definitively denies a real revoked session before proposal invocation',async()=>{
+ const f=await fixture(),http=await ownerHttpHarness(f),command=await f.prepare(),state=await f.cutover.read(f.owner);
+ await engine.query('UPDATE ls_identity.sessions SET revoked_at=$2 WHERE token_digest=$1',[tokenDigest(http.token),now]);
+ const response=await http.call({action:'propose',command});expect(response.status).toBe(401);expect((await response.json()).error.code).toBe('UNAUTHENTICATED');
+ expect(await f.count()).toBe(0);expect(await f.cutover.read(f.owner)).toEqual(state);
 });
 it.each(['foreign_origin','bad_csrf','cross_site'] as const)('owner proposal HTTP blocks %s mutation requests',async bad=>{
  const f=await fixture(),http=await ownerHttpHarness(f),command=await f.prepare(),state=await f.cutover.read(f.owner);
