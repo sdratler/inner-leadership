@@ -163,6 +163,18 @@ for(const locale of ['en','he'] as const)test(`${locale}: real two-child save, r
 test('landing matrix, native dialog interactions and independent holdout regression',async({page},info)=>{
  test.skip(info.project.name!=='desktop','One responsive matrix covers both locales; each project retains its real save/readback cases.');
  const diagnostics:unknown[]=[];
+ // Keep the original assertion/error; diagnostics must never mask its failure.
+ const requireLanding=async(options:Parameters<typeof inspectLanding>[1],caseLabel:string)=>{
+  try{
+   await expect.poll(async()=>(await inspectLanding(page,options)).findings).toEqual([]);
+  }catch(originalError){
+   try{console.error('ACADEMY_LANDING_FAILURE_DIAGNOSTIC '+JSON.stringify({caseLabel,requestedViewport:page.viewportSize(),options,landing:await inspectLanding(page,options)}));}
+   catch{console.error('ACADEMY_LANDING_FAILURE_DIAGNOSTIC_READ_FAILED '+caseLabel);}
+   try{await page.screenshot({path:info.outputPath(`${caseLabel}-failure.png`)});}
+   catch{console.error('ACADEMY_LANDING_FAILURE_SCREENSHOT_FAILED '+caseLabel);}
+   throw originalError;
+  }
+ };
  const sizes=[[320,568],[375,667],[390,844],[430,932],[768,1024],[1366,768],[1440,900],[844,390]] as const;
  for(const locale of ['en','he'] as const){
   for(const [width,height] of sizes){
@@ -216,7 +228,7 @@ test('landing matrix, native dialog interactions and independent holdout regress
    if(width===1440||width===390)await page.screenshot({path:info.outputPath(`${locale}-${width}x${height}-founder.png`)});
    await page.evaluate(async()=>{await document.fonts.ready;window.scrollTo(0,0);});
    await expect.poll(()=>page.locator('section[aria-labelledby="trip390-title"] picture img').evaluate(image=>(image as HTMLImageElement).complete&&(image as HTMLImageElement).naturalWidth>0)).toBe(true);
-   await expect.poll(async()=>(await inspectLanding(page,landingOptions)).findings).toEqual([]);
+   await requireLanding(landingOptions,`${locale}-${width}x${height}-landing`);
    const landing=await inspectLanding(page,landingOptions);diagnostics.push({locale,width,height,landing});
    await page.screenshot({path:info.outputPath(`${locale}-${width}x${height}-hero.png`)});
    expect(landing.findings,JSON.stringify(landing)).toEqual([]);
@@ -303,7 +315,7 @@ test('landing matrix, native dialog interactions and independent holdout regress
   await expect.poll(async()=>(await inspectBodyContact(page)).findings).toEqual([]);
   await page.screenshot({path:info.outputPath(`${locale}-200percent-communication-viewport.png`)});
   await page.evaluate(()=>window.scrollTo(0,0));
-  await expect.poll(async()=>(await inspectLanding(page,{declaredEnlargedText:true})).findings).toEqual([]);
+  await requireLanding({declaredEnlargedText:true},`${locale}-200percent-landing`);
   const enlarged=await inspectLanding(page,{declaredEnlargedText:true});diagnostics.push({locale,textEmulation:'200% computed font sizes',enlarged});
   expect(enlarged.findings,JSON.stringify(enlarged)).toEqual([]);
   await page.screenshot({path:info.outputPath(`${locale}-200percent-text-viewport.png`)});

@@ -128,7 +128,19 @@ export async function inspectLanding(page:Page,options:{declaredShortCase?:strin
     if(c.left<b.right&&c.right>b.left&&c.top<b.bottom&&c.bottom>b.top)findings.push('whatsapp-obscures-control');
    }
   }
-  return {findings,heroContent,primaryAction,viewport:{width:innerWidth,height:innerHeight},headerHeight:header.height,hero:{left:hb.left,width:hb.width,height:hb.height,bottom:hb.bottom},image:{src:photo.currentSrc,fit,subject},faqCount:faq.querySelectorAll('[data-trip390-faq]').length};
+  // Public layout evidence only: no form values, session data or API payloads.
+  const heroStyle=getComputedStyle(hero),photoStyle=getComputedStyle(photo);
+  const layoutDiagnostics={
+   scroll:{x:scrollX,y:scrollY},clientViewport:{width:document.documentElement.clientWidth,height:document.documentElement.clientHeight},
+   visualViewport:visualViewport?{width:visualViewport.width,height:visualViewport.height,offsetTop:visualViewport.offsetTop,offsetLeft:visualViewport.offsetLeft,scale:visualViewport.scale}:null,
+   header:rect(header),picture:rect(box(photo.parentElement!)),
+   flags:{reflow:hero.getAttribute('data-reflow'),desktopBands:hero.getAttribute('data-desktop-bands'),photoFit:hero.getAttribute('data-photo-fit')},
+   cssVariables:Object.fromEntries(['--header-height','--hero-frame','--initial-desktop-overlay','--master-height','--master-top','--master-bottom','--photo-top','--upper-band','--lower-band'].map(name=>[name,heroStyle.getPropertyValue(name)])),
+   heroStyle:{blockSize:heroStyle.blockSize,minBlockSize:heroStyle.minBlockSize,position:heroStyle.position,display:heroStyle.display,containerType:heroStyle.containerType},
+   photoStyle:{blockSize:photoStyle.blockSize,objectFit:photoStyle.objectFit,objectPosition:photoStyle.objectPosition},
+   heading:rect(box(heading)),fonts:{status:document.fonts.status,heading:getComputedStyle(heading).font,page:getComputedStyle(hero.closest('div[lang]')!).font},
+  };
+  return {findings,heroContent,primaryAction,layoutDiagnostics,viewport:{width:innerWidth,height:innerHeight},headerHeight:header.height,hero:{left:hb.left,width:hb.width,height:hb.height,bottom:hb.bottom},image:{src:photo.currentSrc,fit,subject},faqCount:faq.querySelectorAll('[data-trip390-faq]').length};
  },{expectedFaqIds:trip390Copy.en.faqs.map(item=>item.id).filter(id=>id!=='cancellation'&&id!=='conduct'),declaredShortCase:options.declaredShortCase??null,declaredEnlargedText:options.declaredEnlargedText===true});
  const actionMode=primaryActionMode(observed.primaryAction);
  if(actionMode==='unreachable')observed.findings.push('initial-primary-action-unreachable');
