@@ -308,3 +308,21 @@ it('current reminder hardening uses the actual full open card-exception frame to
  expect((await native().readCurrentLedgerV3(owner,f.id)).balance.state).toBe('review_required');
  expect((await native().reserveCurrentReminderServiceBatchV3({limit:1})).results[0]).toMatchObject({state:'suppressed',reason:'financial_review'});expect(await outboxRows()).toHaveLength(0);
 });
+it.each(['owner','service'] as const)('M4 R01 terminal %s decision refuses a consent revocation in the last Native authority reads',async mode=>{
+ const f=await queued(),due=f.intents.find(i=>Date.parse(i.scheduledAt)<=initial.valueOf())!;
+ let reads=0,armed=false,tripped=0;
+ const capture=async(...args:Parameters<typeof permission>)=>{
+  const allowed=await permission(...args);if(++reads===(mode==='owner'?2:3))armed=true;return allowed;
+ };
+ const ownerPort:BillingCurrentOwnerAuthorityV3={...currentOwner,reminderPermission:capture};
+ const servicePort:BillingCurrentReminderServiceAuthorityV3={...currentService,permission:async(c,_b,frame,p,audience)=>capture(c,frame,p,audience.guardianId,audience.channel)};
+ const barrier:IdentityStore={transaction:work=>binder.transaction(tx=>work({query:async<T extends object>(sql:string,values:readonly unknown[]=[])=>{
+  if(armed&&(sql.includes('FROM synthetic_current.families')||sql.includes('FROM synthetic_current.service'))){
+   armed=false;tripped++;await tx.query('UPDATE synthetic_current.preferences SET consented=false WHERE guardian_id=$1',[f.guardianId]);
+  }
+  return tx.query<T>(sql,values);
+ }}))};
+ const current=native(ownerPort,{binding,authority:servicePort},outbox,barrier);
+ await expect(mode==='owner'?current.reserveCurrentReminderV3(owner,due.id,randomUUID()):current.reserveCurrentReminderServiceBatchV3({limit:1})).rejects.toThrow();
+ expect(tripped).toBe(1);expect((await stored(due.id)).state).toBe('queued');expect(await outboxRows()).toHaveLength(0);
+});
