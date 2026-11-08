@@ -456,3 +456,26 @@ it('current V3 detached frame and date mutation cannot rewrite the trusted sourc
  });
  expect(current.source.quote.revision).toBe(4);expect(current.source.quote.lines[0]!.amountMinor).toBe(65000);expect(current.balance.remainingMinor).toBe(130000);
 });
+it.each(['actor','service'] as const)('current V3 late second advance during final %s guard rolls back the first write',async mode=>{
+ const f=await scenario();let finalizing=false,triggered=false,caught=false;
+ let retained:BillingCurrentCardLedgerV3['advance']|undefined;
+ const barrier:IdentityStore={transaction:work=>binder.transaction(tx=>work({query:async<T extends object>(sql:string,values:readonly unknown[]=[])=>{
+  const rows=await tx.query<T>(sql,values);
+  if(finalizing&&!triggered&&sql.includes('FROM synthetic_billing.program_families')){
+   triggered=true;if(!retained)throw Error('SYNTHETIC_MISSING_RETAINED_ADVANCE');
+   try{await retained();}catch(error){expect(error).toBeInstanceOf(AppError);expect((error as AppError).code).toBe('CONFLICT');caught=true;}
+   expect(caught).toBe(true);
+  }
+  return rows;
+ }}))};
+ const financial:BillingFinancialServiceAuthority={authorize:async(c,_b,s)=>{
+  const rows=await c.tx.query('SELECT family_id FROM synthetic_billing.program_families WHERE workspace_id=$1 AND family_id=$2 AND revoked=false',[c.workspaceId,s.familyId]);
+  if(rows.length!==1)throw new AppError('FORBIDDEN');
+ }};
+ const native=new FishingBillingStore(barrier,workspace,ring,Buffer.alloc(32,9),authority,{now:()=>now},outbox,financial);
+ const work=async(l:BillingCurrentCardLedgerV3)=>{retained=l.advance;const first=await l.advance([currentV3Payment(l)]);finalizing=true;return first;};
+ const binding=billingStripeBindingSchema.parse({accountId:'acct_Synthetic',livemode:false,apiVersion:'2026-09-30.endive',verifiedBindingId:'SYNTHETIC_CURRENT'});
+ await expect(mode==='actor'?native.withCurrentCardActorV3(owner,f.quote.id,work):native.withCurrentCardServiceV3(binding,f.quote.id,work)).rejects.toThrow('CONFLICT');
+ expect(triggered).toBe(true);expect(caught).toBe(true);
+ const current=await store().readCurrentLedgerV3(owner,f.quote.id);expect(current.source.quote.revision).toBe(3);expect(current.balance.receipts).toHaveLength(0);
+});

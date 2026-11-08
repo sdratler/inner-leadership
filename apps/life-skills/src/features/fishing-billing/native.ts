@@ -493,7 +493,7 @@ export class FishingBillingStore implements BillingCurrentCardLedgerAccessV3{
   };
   // A callback must not let an unfinished advance escape the transaction. If
   // check rejects, drain its SQL while this TX is still open, then roll back.
-  return {ledger,check:()=>requireBilling(!failed&&(!advanced||completed),'CONFLICT'),close:async()=>{active=false;await Promise.allSettled([...pending]);}};
+  return {ledger,stop:()=>{active=false;},check:()=>requireBilling(!failed&&(!advanced||completed),'CONFLICT'),close:async()=>{active=false;await Promise.allSettled([...pending]);}};
  }
  async withCurrentCardActorV3<T>(actor:Actor,quoteId:string,work:(ledger:BillingCurrentCardLedgerV3&{actor:AccountFacts})=>Promise<T>):Promise<T>{
   const identity=Object.freeze({...actor});requireBilling(identity.workspaceId===this.workspaceId,'FORBIDDEN');
@@ -502,7 +502,11 @@ export class FishingBillingStore implements BillingCurrentCardLedgerAccessV3{
    const initial=await freshActor(tx,identity,this.currentNow());requireBilling(initial.workspaceId===this.workspaceId&&initial.state==='active'&&['practitioner','parent'].includes(initial.role),'FORBIDDEN');
    const record=await this.currentQuoteRecord(c,quoteId),s=scope(record.source.quote),guard=()=>this.currentActorGuard(c,identity,'card',s);
    await guard();const state=await this.currentLedgerState(c,record),actual=await guard(),port=this.currentCardLedger(c,state,guard);
-   try{const result=await work({...port.ledger,actor:Object.freeze({...actual})});port.check();await guard();return result;}finally{await port.close();}
+   let result:T;
+   try{
+    result=await work({...port.ledger,actor:Object.freeze({...actual})});port.stop();port.check();await guard();
+   }catch(error){await port.close();throw error;}
+   await port.close();port.check();return result;
   });
  }
  async withCurrentCardServiceV3<T>(binding:BillingStripeBinding,quoteId:string,work:(ledger:BillingCurrentCardLedgerV3)=>Promise<T>):Promise<T>{
@@ -512,7 +516,11 @@ export class FishingBillingStore implements BillingCurrentCardLedgerAccessV3{
    await lockWorkspace(tx,this.workspaceId);const c=Object.freeze({tx,workspaceId:this.workspaceId,now:this.currentNow()});
    const record=await this.currentQuoteRecord(c,quoteId),s=scope(record.source.quote),guard=()=>this.currentServiceGuard(c,actualBinding,s);
    await guard();const state=await this.currentLedgerState(c,record);await guard();const port=this.currentCardLedger(c,state,guard);
-   try{const result=await work(port.ledger);port.check();await guard();return result;}finally{await port.close();}
+   let result:T;
+   try{
+    result=await work(port.ledger);port.stop();port.check();await guard();
+   }catch(error){await port.close();throw error;}
+   await port.close();port.check();return result;
   });
  }
  private async cardLedger(c:BillingLedgerContext,q:FamilyOffer):Promise<BillingCardLedger>{
