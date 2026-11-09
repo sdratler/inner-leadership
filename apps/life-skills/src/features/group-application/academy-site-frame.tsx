@@ -3,6 +3,7 @@ import {useAcademyHref,useAcademyRouteMode} from "./academy-route-context.tsx";
 import {useAcademyCampaign} from './academy-campaign-state.ts';
 import {academyExactCopy} from './academy-exact-copy.ts';
 import {academyMetadata} from "./academy-metadata.ts";
+import {inquiryEmailControlPresentationMetadata} from './academy-inquiry-email-control-copy.ts';
 import {useEffect,useRef,useState,type ReactNode} from "react";
 import type {Locale} from "../../lib/locale.ts";
 import {JlfaLogo} from "./jlfa-brand.tsx";
@@ -17,7 +18,8 @@ export function AcademySiteFrame({locale,children,hero,onLocaleChange,path="",in
  function close(restore=false){setOpen(false);if(restore)toggle.current?.focus();}
  useEffect(()=>{
 
-  const meta=academyMetadata(locale,intake?"/apply":path,undefined,routeMode,campaign);
+  const metadataPath=intake?"/apply":path;
+  const meta=inquiryEmailControlPresentationMetadata(academyMetadata(locale,metadataPath,undefined,routeMode,campaign),locale,metadataPath,location.search);
   document.title=meta.title;
   for(const [selector,attribute,value] of [
    ['meta[property="og:image"]','content',meta.openGraph.images[0]!.url],

@@ -9,10 +9,10 @@ import {canonicalForwardedRequest} from "../integration/canonical-forwarded-requ
 import type {PublicGroupApplicationStore} from "./store.ts";
 import {reviewCursorSchema} from "./store.ts";
 import {isFloridaGroupApplication,isTrip390Interest,type GroupApplicationRecord} from "./contract.ts";
-import {trip390InterestSchema} from "./academy-trip390-contract.ts";
+import {trip390InterestSchema,isCurrentTrip390Interest} from "./academy-trip390-contract.ts";
 import type {InquiryEmailSetupReport} from "./inquiry-email-setup.ts";
 
-export type GroupApplicationReviewDependencies={origin:string;actor:(token:string)=>Promise<Actor>;store:Pick<PublicGroupApplicationStore,"list">&Partial<Pick<PublicGroupApplicationStore,"listPage"|"readForOwner">>;emailSetup?:()=>InquiryEmailSetupReport};
+export type GroupApplicationReviewDependencies={origin:string;actor:(token:string)=>Promise<Actor>;store:Pick<PublicGroupApplicationStore,"list">&Partial<Pick<PublicGroupApplicationStore,"listPage"|"readForOwner">>;emailSetup?:()=>InquiryEmailSetupReport;emailControl?:(actor:Actor,reference:string)=>Promise<{kind:"inquiry_mailbox_control_only";applicationId:string;verifiedAt:string}|null>};
 
 function academyRecord(item:GroupApplicationRecord):boolean {
  const fields=item.fields;
@@ -40,7 +40,9 @@ export async function groupApplicationReviewHttp(request:Request,load:()=>Promis
    const item=await d.store.readForOwner(actor,reference.toLowerCase());
    if(item.id!==reference.toLowerCase()||!academyRecord(item))throw new AppError("UNAVAILABLE");
    const emailSetup=isTrip390Interest(item.fields)?null:d.emailSetup?.()??null;
-   response=successResponse({items:[item],nextCursor:null,emailSetup},requestId);
+   const emailControl=d.emailControl&&isTrip390Interest(item.fields)&&isCurrentTrip390Interest(item.fields)?await d.emailControl(actor,item.id):undefined;
+   if(emailControl&&(emailControl.applicationId!==item.id||emailControl.kind!=='inquiry_mailbox_control_only'||!Number.isFinite(Date.parse(emailControl.verifiedAt))))throw new AppError("UNAVAILABLE");
+   response=successResponse({items:[item],nextCursor:null,emailSetup,...(emailControl!==undefined?{emailControl}:{})},requestId);
   }else{
    if(url.search&&!d.store.listPage)throw new AppError("UNAVAILABLE");
    const page=d.store.listPage?await d.store.listPage(actor,{search,...(cursor?{cursor}:{})}):{items:await d.store.list(actor)};

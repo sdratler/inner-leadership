@@ -16,9 +16,24 @@ export function startApplication({host=process,spawn=nativeSpawn,schedule=setTim
  if(enabled&&(!env.LS_ACADEMY_SIGNUP_WORKER_ADMISSION_JSON||env.LS_INQUIRY_EMAIL_QUEUE_ENABLED!=='true'||(controlledFlag?env.LS_INQUIRY_EMAIL_SEND_ENABLED==='true':env.LS_INQUIRY_EMAIL_SEND_ENABLED!=='true')||env.LS_ACADEMY_FREE_REGISTRATION_ENABLED!=='true'||(controlledFlag?env.LS_ACADEMY_FOUNDER_EMAIL_APPROVED==='true':env.LS_ACADEMY_FOUNDER_EMAIL_APPROVED!=='true')))throw Error('SIGNUP_WORKER_NOT_ADMITTED');
  // Dedicated Trip ACK authority never turns on generic/founder mail. TS does
  // the complete source/scope validation; invalid/expired mail leaves web up.
+ const controlRequested=env.LS_ACADEMY_INQUIRY_EMAIL_CONTROL_ENABLED==='true';
+ const controlPolicyBytes=env.LS_ACADEMY_INQUIRY_EMAIL_CONTROL_ADMISSION_JSON;
+ // Startup selects one existing mail-worker mode; full source/target/payload
+ // admission remains inside TS and again at the final transport boundary.
+ const controlStillAdmitted=()=>{
+  if(!controlRequested||env.LS_ACADEMY_INQUIRY_EMAIL_CONTROL_ENABLED!=='true'||env.LS_ACADEMY_INQUIRY_EMAIL_CONTROL_QUEUE_ENABLED!=='true'||!controlPolicyBytes||env.LS_ACADEMY_INQUIRY_EMAIL_CONTROL_ADMISSION_JSON!==controlPolicyBytes)return false;
+  if(env.LS_ACADEMY_TRIP390_ACK_ENABLED==='true'||env.LS_INQUIRY_EMAIL_SEND_ENABLED!=='false'||env.LS_ACADEMY_SIGNUP_WORKER_ENABLED==='true'||env.LS_ACADEMY_SIGNUP_CONTROLLED_SEND_ENABLED==='true'||env.LS_ACADEMY_FOUNDER_EMAIL_APPROVED==='true'||env.LS_AUTH_EMAIL_ENABLED!=='true'||env.LS_AUTH_EMAIL_PROVIDER!=='gmail'||env.LS_AUTH_EMAIL_FROM!=='office@bneineviimacademy.org')return false;
+  const ttl=env.LS_ACADEMY_INQUIRY_EMAIL_CONTROL_SECURITY_LIFETIME_MS;
+  if(!ttl||!/^\d+$/.test(ttl)||Number(ttl)<1000||Number(ttl)>86400000)return false;
+  try{const p=JSON.parse(controlPolicyBytes),at=now();
+   const dates=Number.isFinite(at)&&Number.isFinite(Date.parse(p.admittedAt))&&Date.parse(p.admittedAt)<=at&&Number.isFinite(Date.parse(p.notBefore))&&Date.parse(p.notBefore)<=Date.parse(p.admittedAt);
+   const population=p.population?.mode==='future_requests'?p.expiresAt===null:p.population?.mode==='controlled_test'&&Number.isFinite(Date.parse(p.expiresAt))&&Date.parse(p.expiresAt)>at&&Date.parse(p.expiresAt)-Date.parse(p.admittedAt)<=7200000;
+   return dates&&population&&p.version==='JLFA-INQUIRY-EMAIL-CONTROL-ADMISSION-v1';
+  }catch{return false;}
+ };
  const tripPolicyBytes=env.LS_ACADEMY_TRIP390_ACK_ADMISSION_JSON;
  const tripStillAdmitted=()=>{
-  if(env.LS_ACADEMY_TRIP390_ACK_ENABLED!=='true'||!tripPolicyBytes||env.LS_ACADEMY_TRIP390_ACK_ADMISSION_JSON!==tripPolicyBytes)return false;
+  if(controlRequested||env.LS_ACADEMY_TRIP390_ACK_ENABLED!=='true'||!tripPolicyBytes||env.LS_ACADEMY_TRIP390_ACK_ADMISSION_JSON!==tripPolicyBytes)return false;
   try{const p=JSON.parse(tripPolicyBytes),at=now();
    const dates=Number.isFinite(at)&&Number.isFinite(Date.parse(p.admittedAt))&&Date.parse(p.admittedAt)<=at&&Number.isFinite(Date.parse(p.notBefore))&&Date.parse(p.notBefore)<=Date.parse(p.admittedAt);
    const purpose=p.population?.mode==='future_requests'?p.expiresAt===null:p.population?.mode==='controlled_test'&&Number.isFinite(Date.parse(p.expiresAt))&&Date.parse(p.expiresAt)>at&&Date.parse(p.expiresAt)-Date.parse(p.admittedAt)<=7_200_000;
@@ -26,7 +41,8 @@ export function startApplication({host=process,spawn=nativeSpawn,schedule=setTim
    return dates&&purpose&&supportedVersion&&env.LS_INQUIRY_EMAIL_SEND_ENABLED==='false'&&env.LS_ACADEMY_TRIP390_ACK_QUEUE_ENABLED==='true'&&env.LS_ACADEMY_SIGNUP_WORKER_ENABLED!=='true'&&env.LS_ACADEMY_SIGNUP_CONTROLLED_SEND_ENABLED!=='true'&&env.LS_ACADEMY_FOUNDER_EMAIL_APPROVED!=='true'&&env.LS_AUTH_EMAIL_ENABLED==='true'&&env.LS_AUTH_EMAIL_PROVIDER==='gmail'&&env.LS_AUTH_EMAIL_FROM==='office@bneineviimacademy.org';
   }catch{return false;}
  };
- const tripAck=tripStillAdmitted();
+ const tripAck=controlRequested?controlStillAdmitted():tripStillAdmitted();
+ const selectedMailStillAdmitted=()=>controlRequested?controlStillAdmitted():tripStillAdmitted();
  const ownerNotifications=env.LS_ACADEMY_OWNER_NOTIFICATION_ENABLED==='true';
  if(ownerNotifications&&(env.LS_ACADEMY_OWNER_NOTIFICATION_TO!=='sdratler@gmail.com'||env.LS_INQUIRY_EMAIL_QUEUE_ENABLED!=='true'||env.LS_AUTH_EMAIL_PROVIDER!=='gmail'||env.LS_AUTH_EMAIL_FROM!=='office@bneineviimacademy.org'))throw Error('OWNER_NOTIFICATION_NOT_ADMITTED');
  const children=new Set();let stopping=false,hardStop,tripRestart;let tripFailures=0,tripClosed=false;
@@ -40,12 +56,12 @@ export function startApplication({host=process,spawn=nativeSpawn,schedule=setTim
  const onInt=()=>stop('SIGINT'),onTerm=()=>stop('SIGTERM');host.on('SIGINT',onInt);host.on('SIGTERM',onTerm);
  // At most one live child or restart timer; every replacement revalidates the
  // same source-bound purpose in TS before runtime construction or reservation.
- const tripArgs=['--conditions=react-server','--import','tsx',fileURLToPath(new URL('./inquiry-email-worker.ts',import.meta.url)),'--hosted-trip390-ack'];
+ const tripArgs=['--conditions=react-server','--import','tsx',fileURLToPath(new URL('./inquiry-email-worker.ts',import.meta.url)),controlRequested?'--hosted-inquiry-email-control':'--hosted-trip390-ack'];
  const restartTrip=()=>{
-  if(stopping||tripClosed||tripRestart!==undefined||!tripStillAdmitted())return;
+  if(stopping||tripClosed||tripRestart!==undefined||!selectedMailStillAdmitted())return;
   const delay=Math.min(300_000,5_000*2**Math.min(tripFailures++,6));
   host.stderr?.write?.('Fishing acknowledgment worker stopped; recovery scheduled under unchanged authority.\n');
-  tripRestart=schedule(()=>{tripRestart=undefined;if(stopping||tripClosed||!tripStillAdmitted())return;launchTrip();},delay);tripRestart.unref?.();
+  tripRestart=schedule(()=>{tripRestart=undefined;if(stopping||tripClosed||!selectedMailStillAdmitted())return;launchTrip();},delay);tripRestart.unref?.();
  };
  const launchTrip=()=>{try{launch(tripArgs,true,false,false,true);}catch{restartTrip();}};
  const launch=(args,isWorker=false,isSignupWorker=isWorker,isBnaWorker=false,isTripAck=false)=>{

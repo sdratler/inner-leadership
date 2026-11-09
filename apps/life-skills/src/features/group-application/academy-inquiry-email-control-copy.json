@@ -1,0 +1,42 @@
+{
+  "version": "JLFA-INQUIRY-EMAIL-CONTROL-COPY-20261109-v1",
+  "scope": "Prospective inquiry mailbox verification only; historical R2 receipt bytes remain unchanged",
+  "locales": {
+    "en": {
+      "emailSubject": "Confirm your email address for Fishing Academy",
+      "verificationPrompt": "Please confirm this email address so we can contact you about your Fishing Academy request.",
+      "action": "Confirm my email address",
+      "ignore": "If you did not submit this request, you can ignore this email.",
+      "heading": "Confirm your email address",
+      "intro": "Confirm that you can receive messages at the email address on your Fishing Academy request.",
+      "small": "This confirms your email address only. It does not confirm a place, start date or payment obligation.",
+      "busy": "Confirming your email address…",
+      "confirmedHeading": "Your email address is confirmed.",
+      "confirmedText": "Your request is saved. We’ll contact you as we arrange a suitable group, location and start date. No payment is due now.",
+      "usedHeading": "Your email address is already confirmed.",
+      "usedText": "There is nothing else to do here.",
+      "unavailable": "This confirmation link is no longer available. Contact the Academy so we can check your request.",
+      "missing": "Open the complete confirmation link from your registration email.",
+      "uncertain": "We haven’t confirmed the result yet. Please try checking again.",
+      "retry": "Check confirmation status"
+    },
+    "he": {
+      "emailSubject": "אימות כתובת הדוא״ל לאקדמיית הדיג",
+      "verificationPrompt": "אנא אשרו כתובת דוא״ל זו כדי שנוכל ליצור איתכם קשר בנוגע לבקשתכם לאקדמיית הדיג.",
+      "action": "אישור כתובת הדוא״ל שלי",
+      "ignore": "אם לא שלחתם בקשה זו, אפשר להתעלם מהודעה זו.",
+      "heading": "אישור כתובת הדוא״ל שלכם",
+      "intro": "אשרו שאתם יכולים לקבל הודעות בכתובת הדוא״ל שמסרתם בבקשתכם לאקדמיית הדיג.",
+      "small": "אישור זה מאמת את כתובת הדוא״ל בלבד. הוא אינו מאשר מקום, מועד התחלה או התחייבות לתשלום.",
+      "busy": "מאמתים את כתובת הדוא״ל שלכם…",
+      "confirmedHeading": "כתובת הדוא״ל שלכם אומתה.",
+      "confirmedText": "בקשתכם נשמרה. ניצור איתכם קשר בזמן שנארגן קבוצה מתאימה, מיקום ומועד התחלה. אין תשלום כעת.",
+      "usedHeading": "כתובת הדוא״ל שלכם כבר אומתה.",
+      "usedText": "אין צורך בפעולה נוספת כאן.",
+      "unavailable": "קישור האישור הזה אינו זמין עוד. צרו קשר עם האקדמיה כדי שנוכל לבדוק את בקשתכם.",
+      "missing": "פתחו את קישור האישור המלא מתוך הודעת ההרשמה שקיבלתם בדוא״ל.",
+      "uncertain": "עדיין לא אישרנו את התוצאה. אנא נסו לבדוק שוב.",
+      "retry": "בדיקת מצב האישור"
+    }
+  }
+}

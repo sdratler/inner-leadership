@@ -25,7 +25,7 @@ it('native reply proposal is atomic/additive; concurrent receipts/reviews preser
  const db=await historicalPracticeDatabase('0118_ls_contact_delta_history.sql'),client=await db.pool.connect(),pool=new pg.Pool({connectionString:db.url,ssl:false,max:6});
  const query=(sql:string,values?:readonly unknown[])=>client.query(sql,values?[...values]:undefined);
  try{
-  expect(db.inventory).toHaveLength(70);const index=db.inventory.findIndex(m=>m.name==='0150_ls_bna_mailbox_replies.sql');expect(index).toBe(69);
+  expect(db.inventory).toHaveLength(72);const index=db.inventory.findIndex(m=>m.name==='0150_ls_bna_mailbox_replies.sql');expect(index).toBe(69);
   const beforeFiles=db.inventory.slice(0,index),proposal=db.inventory[index]!;await migrate({query},beforeFiles,false);
   const baseline=(await query('SELECT name,checksum FROM ls_control.migrations ORDER BY name')).rows;
   expect(await readBnaMailboxRepliesSchemaStage({query})).toBe(0);
