@@ -58,7 +58,7 @@ it('native reply proposal is atomic/additive; concurrent receipts/reviews preser
   await expect(migrate({query},[...beforeFiles,{...proposal,sql:proposal.sql+'\nSELECT 1/0;'}],false)).rejects.toThrow('MIGRATION_FAILED');
   expect((await query("SELECT to_regclass('ls_service_interest.bna_mailbox_reply_receipts') AS relation")).rows[0].relation).toBeNull();
   expect((await query('SELECT name,checksum FROM ls_control.migrations ORDER BY name')).rows).toEqual(baseline);
-  expect(await migrate({query},db.inventory,false)).toEqual({applied:1,pending:0});expect(await migrate({query},db.inventory,false)).toEqual({applied:0,pending:0});
+  expect(await migrate({query},db.inventory,false)).toEqual({applied:3,pending:0});expect(await migrate({query},db.inventory,false)).toEqual({applied:0,pending:0});
   expect(await bnaMailboxRepliesCatalogFingerprint({query})).toBe(BNA_MAILBOX_REPLIES_CATALOG_SHA256);expect(await readBnaMailboxRepliesSchemaStage({query})).toBe(1);
   expect(bnaMailboxRepliesSchemaPlan(db.inventory,baseline,0).pending.map(p=>p.name)).toEqual([proposal.name]);
   for(const change of [
