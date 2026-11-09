@@ -7,7 +7,7 @@ import {trip390ReservationNotice} from '../../../src/features/group-application/
 import {trip390StudentConduct} from '../../../src/features/group-application/academy-trip390-student-conduct.ts';
 import {trip390LearningAssets} from '../../../src/features/group-application/academy-trip390-learning-assets.ts';
 import {TRIP390_MEDIA_TYPE} from '../../../src/features/group-application/academy-trip390-transport.ts';
-import {inspectLanding,inspectDialog,inspectFaqContact,inspectBodyHeadings,inspectBodyContact,inspectHeroActionReachability,inspectContactRestoration} from './academy-trip390.visual-checks.ts';
+import {scrollLandingToTop,inspectLanding,inspectDialog,inspectFaqContact,inspectBodyHeadings,inspectBodyContact,inspectHeroActionReachability,inspectContactRestoration} from './academy-trip390.visual-checks.ts';
 import scenes from '../../../src/features/group-application/academy-scenes.json' with {type:'json'};
 
 import iconManifest from '../../../public/groups/academy/icons/r2/manifest.json' with {type:'json'};
@@ -42,7 +42,7 @@ for(const locale of ['en','he'] as const)test(`${locale}: real two-child save, r
  await expect(costDetails.locator('summary')).toContainText(cost.q);
  await costDetails.locator('summary').click();
  await expect(costDetails.locator('p')).toBeVisible();await expect(costDetails.locator('p')).toHaveText(cost.a);
- await costDetails.locator('summary').click();await page.evaluate(()=>window.scrollTo(0,0));
+ await costDetails.locator('summary').click();await scrollLandingToTop(page);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1)).toBe(true);
  await page.screenshot({path:test.info().outputPath(locale+'-trip390-landing.png'),fullPage:true});
  await page.goto('/'+locale+'/florida/apply#academy-form');
@@ -226,7 +226,7 @@ test('landing matrix, native dialog interactions and independent holdout regress
    await portrait.scrollIntoViewIfNeeded();
    await expect.poll(()=>portrait.evaluate(image=>(image as HTMLImageElement).complete&&(image as HTMLImageElement).naturalWidth>0)).toBe(true);
    if(width===1440||width===390)await page.screenshot({path:info.outputPath(`${locale}-${width}x${height}-founder.png`)});
-   await page.evaluate(async()=>{await document.fonts.ready;window.scrollTo(0,0);});
+   await page.evaluate(()=>document.fonts.ready);await scrollLandingToTop(page);
    await expect.poll(()=>page.locator('section[aria-labelledby="trip390-title"] picture img').evaluate(image=>(image as HTMLImageElement).complete&&(image as HTMLImageElement).naturalWidth>0)).toBe(true);
    await requireLanding(landingOptions,`${locale}-${width}x${height}-landing`);
    const landing=await inspectLanding(page,landingOptions);diagnostics.push({locale,width,height,landing});
@@ -314,7 +314,7 @@ test('landing matrix, native dialog interactions and independent holdout regress
   await page.locator('#values article').nth(1).scrollIntoViewIfNeeded();
   await expect.poll(async()=>(await inspectBodyContact(page)).findings).toEqual([]);
   await page.screenshot({path:info.outputPath(`${locale}-200percent-communication-viewport.png`)});
-  await page.evaluate(()=>window.scrollTo(0,0));
+  await scrollLandingToTop(page);
   await requireLanding({declaredEnlargedText:true},`${locale}-200percent-landing`);
   const enlarged=await inspectLanding(page,{declaredEnlargedText:true});diagnostics.push({locale,textEmulation:'200% computed font sizes',enlarged});
   const blockedContact=enlarged.contactMode==='blocked'?await page.locator('a[class*="whatsapp"]').elementHandle():null;

@@ -197,7 +197,7 @@ describe('CONTACT-SCROLL-R01 actual layout-hook event lifecycle',()=>{
    page:{current:{querySelectorAll:(selector:string)=>{queries++;if(geometry)return geometry.targets.filter(r=>selector==='a,button,summary,input,select,textarea'?r.g===12:selector==='[data-jlfa-values] article svg'&&r.g===4).map(targetNode);return blocked&&selector==='a,button,summary,input,select,textarea'?[obstacle]:paintedTop!==null&&selector==='[data-jlfa-values] article svg'?[{getBoundingClientRect:()=>rect(paintedTop!,800)}]:[];}}},header:{current:{getBoundingClientRect:()=>({bottom:80})}},dialog:{current:{open:false}},menuOpen:false,
    registeredHero:()=>null,contactDockState,initialContactDock:contactDockState(false,false,'pending'),ResizeObserver:undefined,
    requestAnimationFrame:(fn:()=>void)=>{frames.set(++serial,fn);return serial;},cancelAnimationFrame:(id:number)=>{frames.delete(id);},getComputedStyle:()=>({visibility:'visible',fontSize:`${fontSize}px`}),
-   window:{innerWidth:viewportWidth,innerHeight:geometry?.height??800,addEventListener:(event:string,fn:()=>void)=>{windowEvents.set(event,fn);},removeEventListener:(event:string,fn:()=>void)=>{if(windowEvents.get(event)===fn)windowEvents.delete(event);}},
+   window:{innerWidth:viewportWidth,innerHeight:geometry?.height??800,matchMedia:()=>({matches:viewportWidth<=999&&!oldHighFallback}),addEventListener:(event:string,fn:()=>void)=>{windowEvents.set(event,fn);},removeEventListener:(event:string,fn:()=>void)=>{if(windowEvents.get(event)===fn)windowEvents.delete(event);}},
    document:{addEventListener:(event:string,fn:()=>void)=>{documentEvents.set(event,fn);},removeEventListener:(event:string,fn:()=>void)=>{if(documentEvents.get(event)===fn)documentEvents.delete(event);}}};
   const emitted=ts.transpileModule(`return (${callback});`,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
   const cleanup=(new Function(...Object.keys(dependencies),emitted)(...Object.values(dependencies)) as ()=>()=>void)();
@@ -250,12 +250,26 @@ describe('CONTACT-SCROLL-R01 actual layout-hook event lifecycle',()=>{
   css.walkRules(rule=>{if(rule.selector==='.page .whatsapp')rule.walkDecls(d=>{if(d.prop==='inset-inline-end')logicalEnd=true;if(d.prop==='right')physicalRight=true;});if(rule.selector==='.page[dir=rtl] .whatsapp')rule.walkDecls('inset-inline-end',d=>{rtlSafeArea=d.value.includes('safe-area-inset-left');});});
   expect(logicalEnd).toBe(true);expect(physicalRight).toBe(false);expect(rtlSafeArea).toBe(true);
   const current=mounted(false,17,390,false,logicalEnd&&!physicalRight?at(18,74):at(301,357));current.flush();
-  expect(current.link.dataset.contactReady).toBe('true');expect(current.lift()).toBeCloseTo(9.21875);expect(current.link.getBoundingClientRect().left).toBe(18);
+  expect(current.link.dataset.contactReady).toBe('true');expect(current.lift()).toBe(0);expect(current.link.getBoundingClientRect().left).toBe(18);
   const priorTop=current.link.getBoundingClientRect().top;current.scroll();expect(current.link.getBoundingClientRect().top).toBe(priorTop);current.cleanup();
  });
- it('preserves higher same-node restoration only in the existing enlarged text-reflow layout',()=>{
-  const current=mounted(false,34,390),sameLink=current.link;current.flush();current.setPaintedTop(400);current.scroll();
+ it('preserves higher same-node restoration in the desktop enlarged text-reflow layout',()=>{
+  const current=mounted(false,34,1280),sameLink=current.link;current.flush();current.setPaintedTop(400);current.scroll();
   expect(current.link).toBe(sameLink);expect(current.link.dataset.contactReady).toBe('true');expect(current.link.style.visibility).toBe('');expect(current.lift()).toBeGreaterThan(224);expect(current.link.getBoundingClientRect().top).toBeGreaterThan(92);current.cleanup();
+ });
+ it('keeps the mobile contact link still, available and focusable across scroll and viewport changes at enlarged text',()=>{
+  const current=mounted(false,34,390);
+  const origin=current.link.getBoundingClientRect(),queries=current.queries();
+  current.transitions.length=0;
+  current.setBlocked(true);current.setPaintedTop(400);
+  for(let i=0;i<20;i++)current.scroll();
+  current.resize();
+  expect(current.link.getBoundingClientRect()).toEqual(origin);
+  expect(current.queries()).toBe(queries);
+  expect(current.transitions).not.toContain('false');
+  expect(current.link.tabIndex).toBe(0);
+  expect(current.link.dataset.contactReady).toBe('true');
+  current.cleanup();
  });
 });
 
