@@ -39,7 +39,7 @@ const reviewedPhone=z.string().refine(value=>normalizePhone(value)===value&&(!va
 // Owner labels describe a conversation. They do not establish a platform identity, permission or provider binding.
 export const academyTrackingShape={
  leadSource:academyLeadSourceSchema.optional(),conversationChannel:academyConversationChannelSchema.optional(),
- confirmedPhone:reviewedPhone.optional(),
+ confirmedPhone:reviewedPhone.nullable().optional(),
 };
 export const academyAdminFieldsSchema=z.object({stage:z.string().trim().min(1).max(120),
  nextAction:z.string().max(500).nullable(),followUpDate:z.string().refine(dateOnly).nullable(),

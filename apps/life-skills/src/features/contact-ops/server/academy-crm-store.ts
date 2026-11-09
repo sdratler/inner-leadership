@@ -28,7 +28,7 @@ const PAGE_SIZE=12;
 function adminFields(fields:AcademyContact["fields"]):AcademyContact["fields"] {
  const {stage,nextAction,followUpDate,notes,leadSource,conversationChannel,confirmedPhone}=fields;
  return academyAdminFieldsSchema.parse({stage,nextAction,followUpDate,notes,
-  ...(leadSource&&{leadSource}),...(conversationChannel&&{conversationChannel}),...(confirmedPhone&&{confirmedPhone})});
+  ...(leadSource&&{leadSource}),...(conversationChannel&&{conversationChannel}),...(confirmedPhone!==undefined&&{confirmedPhone})});
 }
 
 /** Academy admission precedes decryption. No workspace-wide phone/email/name
@@ -176,10 +176,13 @@ export class AcademyCrmStore {
     personId=command.personId;const current=await this.contact(tx,actor,state,personId);
     if(current.version!==command.expectedVersion)throw new AppError("CONFLICT");
     if(command.action==="update"){
-     if(command.fields.confirmedPhone&&command.fields.confirmedPhone!==current.fields.confirmedPhone){
+     const {confirmedPhone}=command.fields;
+     if(confirmedPhone!==undefined&&confirmedPhone!==current.fields.confirmedPhone){
       if(current.origin.kind!=="manual"||current.origin.phone||current.origin.email)throw new AppError("INVALID_REQUEST");
-      const contacts=await this.contacts(tx,actor,state);
-      if(contacts.some(row=>row.personId!==personId&&(row.fields.confirmedPhone??row.origin.phone)===command.fields.confirmedPhone))throw new AppError("CONFLICT");
+      if(confirmedPhone!==null){
+       const contacts=await this.contacts(tx,actor,state);
+       if(contacts.some(row=>row.personId!==personId&&(row.fields.confirmedPhone??row.origin.phone)===confirmedPhone))throw new AppError("CONFLICT");
+      }
      }
      const saved=await this.profiles(tx).read(actor,personId);if(!saved)throw new AppError("NOT_FOUND");
      const updated=await this.profiles(tx).update(actor,{...saved.profile,...command.fields},command.expectedVersion,"academy-profile:"+command.operationId);

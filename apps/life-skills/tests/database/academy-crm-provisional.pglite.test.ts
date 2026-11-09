@@ -56,10 +56,21 @@ it("saves, replays and reloads one provisional adult with private notes and no e
   expect((await crm().read(actor,saved.personId,1)).contact.fields).toMatchObject({confirmedPhone:"+13055550175",conversationChannel:"whatsapp",stage:"Follow up"});
   const tagged=await crm().execute(actor,{...oldClientEdit,operationId:randomUUID(),expectedVersion:revised.version,fields:{...oldClientEdit.fields,leadSource:"facebook"}});
   expect((await crm().list(actor,{search:"facebook"}))).toMatchObject({total:1,items:[{fields:{leadSource:"facebook",conversationChannel:"whatsapp"}}]});
-  await crm().execute(actor,{...oldClientEdit,operationId:randomUUID(),expectedVersion:tagged.version,fields:{...oldClientEdit.fields,leadSource:"unknown"}});
+  const untagged=await crm().execute(actor,{...oldClientEdit,operationId:randomUUID(),expectedVersion:tagged.version,fields:{...oldClientEdit.fields,leadSource:"unknown"}});
   expect((await crm().list(actor,{search:"facebook"}))).toMatchObject({total:0});
   await expect(crm().execute(actor,{...input,operationId:randomUUID(),fields:{...input.fields,name:"Different adult",phone:"+13055550175"}})).rejects.toThrow("CONFLICT");
-  expect((await db.query("SELECT count(*)::int AS n FROM ls_contact_ops.academy_crm_contacts")).rows).toEqual([{n:1}]);
+  const clear={...oldClientEdit,operationId:randomUUID(),expectedVersion:untagged.version,fields:{...oldClientEdit.fields,confirmedPhone:null}};
+  const cleared=await crm().execute(actor,clear);
+  expect(await crm().execute(actor,clear)).toMatchObject({version:cleared.version,replayed:true});
+  const afterClear=await crm().read(actor,saved.personId,1);
+  expect(afterClear.contact).toMatchObject({origin:{phone:null},fields:{confirmedPhone:null,conversationChannel:"whatsapp"},outboundEligible:false});
+  expect(afterClear.history.find(entry=>entry.operationId===clear.operationId)?.fields?.confirmedPhone).toBeNull();
+  expect(await crm().list(actor,{search:"+13055550175"})).toMatchObject({total:0});
+  const correct=await crm().execute(actor,{...input,operationId:randomUUID(),fields:{...input.fields,name:"Different adult",phone:"+13055550175"}});
+  expect(await crm().list(actor,{search:"+13055550175"})).toMatchObject({total:1,items:[{personId:correct.personId}]});
+  await expect(crm().execute(actor,{...clear,personId:correct.personId,operationId:randomUUID(),expectedVersion:correct.version})).rejects.toThrow("INVALID_REQUEST");
+  expect((await crm().read(actor,correct.personId,1)).contact.origin.phone).toBe("+13055550175");
+  expect((await db.query("SELECT count(*)::int AS n FROM ls_contact_ops.academy_crm_contacts")).rows).toEqual([{n:2}]);
   expect((await db.query("SELECT count(*)::int AS n FROM ls_contact_ops.outbound_projections")).rows).toEqual([{n:0}]);
  } finally {await db.close();}
 },60000);

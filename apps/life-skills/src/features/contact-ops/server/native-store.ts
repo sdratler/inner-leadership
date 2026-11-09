@@ -56,7 +56,7 @@ export const crmProfileSchema=z.object({personId:z.string().uuid(),stage:z.strin
         // lead without manufacturing a second WhatsApp inquiry/lead identity.
         (!p.inboundActivity||Boolean(p.whatsappInquiry||p.nativeInquiry||p.legacyIds.length))&&
         (p.academyOrigin||(p.leadSource===undefined&&p.conversationChannel===undefined&&p.confirmedPhone===undefined))&&
-        (!p.confirmedPhone||(p.academyOrigin?.kind==="manual"&&!p.academyOrigin.phone&&!p.academyOrigin.email))&&
+        (p.confirmedPhone===undefined||(p.academyOrigin?.kind==="manual"&&!p.academyOrigin.phone&&!p.academyOrigin.email))&&
         (!p.academyOrigin||(p.legacyIds.length===0&&!p.nativeInquiry&&!p.whatsappInquiry&&!p.inboundActivity&&!p.outreach&&!p.leadUpdates)));
 function validateProfile(profile:unknown):asserts profile is CrmProfile {
     requireThat(crmProfileSchema.safeParse(profile).success,"BAD_PROFILE");

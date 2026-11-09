@@ -146,7 +146,7 @@ function ContactEditor({locale,contact,inquiry,epoch,busy,save}:{locale:Locale;c
  const submit=(event:FormEvent)=>{event.preventDefault();const base={operationId:crypto.randomUUID(),expectedEpoch:epoch};
   const normalizedPhone=phone.trim()?(normalizeFloridaLeadContact(phone)??normalizePhone(phone)??phone.trim()):null;
   const command:AcademyCrmCommand=contact?{...base,action:"update",personId:contact.personId,expectedVersion:contact.version,
-   fields:provisional&&phone!==String(contact.fields.confirmedPhone??"")?{...fields,confirmedPhone:normalizedPhone??""}:fields}:
+   fields:provisional&&phone!==String(contact.fields.confirmedPhone??"")?{...fields,confirmedPhone:normalizedPhone}:fields}:
    inquiry?{...base,action:"from_inquiry",sourceApplicationId:inquiry.sourceApplicationId,sourceDigest:inquiry.sourceDigest,fields}:
    {...base,action:"create",fields:{...fields,name,phone:normalizedPhone,
     email:email.trim()?email.trim().toLowerCase():null,language:locale,relationship}};
