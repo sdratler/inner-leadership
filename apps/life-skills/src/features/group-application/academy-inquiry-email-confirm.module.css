@@ -1,0 +1,4 @@
+.content{display:grid;gap:16px;justify-items:center}
+section.content h1{margin:0}
+.action{max-inline-size:100%;white-space:normal;text-align:center}
+@media(max-width:600px){.action{inline-size:100%}}

@@ -24,6 +24,9 @@ export type PublicGroupApplicationHttpDependencies={enabled:boolean;environment:
   * participation waiver, typed-name or child-signature collection authority. */
  trip390ReservationAdmitted?:boolean;
  afterCommit?:(reference:string)=>Promise<"queued"|"unknown"|"sent"|"canceled"|"not_requested"|undefined>;
+ /** Prospective inquiry-only email intent; invoked for a new current save only.
+  * The durable saved inquiry is the worker recovery trigger if this hook fails. */
+ afterNewTrip390Save?:(reference:string)=>Promise<"queued"|"unknown"|"sent"|"canceled"|"not_requested"|undefined>;
  refreshFounder?:(reference:string)=>Promise<FounderPublicResult|undefined>};
 
 const trip390SubmissionSchema=trip390ReadableCommandSchema.extend({challenge:z.string().min(80).max(1024),website:z.literal('')}).strict();
@@ -74,7 +77,10 @@ export async function publicGroupApplicationHttp(request:Request,load:(trip390:b
    }
    // A prior application is never queued retroactively by a replay.
    let acknowledgment:string='acknowledgment' in result&&typeof result.acknowledgment==='string'?result.acknowledgment:'not_queued';
-   if(!historicalTrip&&!result.replayed&&!result.duplicate&&acknowledgment==='queued'&&dependencies.afterCommit){try{const sent=await dependencies.afterCommit(result.item.id);acknowledgment=sent==='not_requested'?'not_queued':sent??acknowledgment;}catch{acknowledgment='unknown';}}
+   if(!historicalTrip&&!result.replayed&&!result.duplicate){
+    const after=dependencies.afterNewTrip390Save??(acknowledgment==='queued'?dependencies.afterCommit:undefined);
+    if(after)try{const sent=await after(result.item.id);acknowledgment=sent==='not_requested'?'not_queued':sent??acknowledgment;}catch{acknowledgment='unknown';}
+   }
    response=successResponse({reference:result.item.id,operationId:body.operationId,acknowledgment,replayed:result.replayed},requestId,result.replayed||result.duplicate?200:201);
   }else if(request.method==="GET")response=successResponse({notice:floridaGroupApplicationNotice,...(programId==="sunday_fishing_academy"?{schoolNotice:floridaSchoolInquiryNotice,registrationNotice:academyRegistrationNotice}:{}),
    challenge:issueFloridaGroupApplicationChallenge(dependencies.challengeKey,programId,dependencies.now())},requestId);
