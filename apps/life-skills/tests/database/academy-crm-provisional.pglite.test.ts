@@ -6,12 +6,12 @@ vi.mock("server-only",()=>({}));
 import {asId} from "../../src/lib/ids.ts";
 import {AcademyCrmStore} from "../../src/features/contact-ops/server/academy-crm-store.ts";
 import {ContactCutoverStore} from "../../src/features/contact-ops/server/cutover-store.ts";
+import {PublicGroupApplicationStore} from "../../src/features/group-application/store.ts";
+import {floridaGroupApplicationNotice} from "../../src/features/group-application/contract.ts";
 import type {IdentityStore,SqlSession} from "../../src/features/identity/store.ts";
 import type {Actor} from "../../src/features/identity/types.ts";
 
-it("saves, replays and reloads one provisional adult with private notes and no external effect",async()=>{
- const db=new PGlite();
- try{
+async function fixture(db:PGlite){
   await db.exec("CREATE SCHEMA ls_control");
   const migrations=(await readdir("migrations")).filter(name=>/^\d{4}_.*\.sql$/.test(name)&&Number(name.slice(0,4))<=138).sort();
   for(const name of migrations)await db.exec(await readFile("migrations/"+name,"utf8"));
@@ -28,13 +28,20 @@ it("saves, replays and reloads one provisional adult with private notes and no e
   await db.query("INSERT INTO ls_identity.sessions(token_digest,workspace_id,account_id,created_at,expires_at) VALUES($1,$2,$3,$4,$5)",[digest,workspace,operator,now,new Date("2035-01-01")]);
   const ring={activeKeyId:"synthetic",keys:{synthetic:Buffer.alloc(32,9)}},clock={now:()=>now},key="local-synthetic-integrity-key-only";
   const crm=()=>new AcademyCrmStore(adapter,ring,key,clock);
+  const initialize=()=>new ContactCutoverStore(adapter,ring,key,clock).initializeAcademy(actor,{operationId:randomUUID(),expectedEpoch:0,
+   observedNativeWritesSinceSwitch:0,decisionId:"ACADEMY-ONLY-CRM-20261028-01",evidence:{
+   retiredSourcesFence:digest,retiredSchedulesFence:digest,retainedAcademyRecords:digest,queueReconciliation:digest,restorePlan:digest}});
+  return {crm,actor,initialize,applications:new PublicGroupApplicationStore(adapter,workspace,ring,key,clock)};
+}
+it("saves, replays and reloads one provisional adult with private notes and no external effect",async()=>{
+ const db=new PGlite();
+ try{
+  const {crm,actor,initialize}=await fixture(db);
   const input={action:"create" as const,operationId:randomUUID(),expectedEpoch:1,fields:{
    name:"Synthetic adult",language:"en" as const,relationship:"adult_partner" as const,phone:null,email:null,
    stage:"Interested",nextAction:"Verify phone",followUpDate:null,notes:"Discussed the program. Contact endpoint unconfirmed."}};
   await expect(crm().execute(actor,input)).rejects.toThrow("CONFLICT");
-  await new ContactCutoverStore(adapter,ring,key,clock).initializeAcademy(actor,{operationId:randomUUID(),expectedEpoch:0,
-   observedNativeWritesSinceSwitch:0,decisionId:"ACADEMY-ONLY-CRM-20261028-01",evidence:{
-   retiredSourcesFence:digest,retiredSchedulesFence:digest,retainedAcademyRecords:digest,queueReconciliation:digest,restorePlan:digest}});
+  await initialize();
   const saved=await crm().execute(actor,input);
   expect(saved.outboundEligible).toBe(false);
   expect(await crm().execute(actor,input)).toMatchObject({personId:saved.personId,replayed:true});
@@ -73,4 +80,59 @@ it("saves, replays and reloads one provisional adult with private notes and no e
   expect((await db.query("SELECT count(*)::int AS n FROM ls_contact_ops.academy_crm_contacts")).rows).toEqual([{n:2}]);
   expect((await db.query("SELECT count(*)::int AS n FROM ls_contact_ops.outbound_projections")).rows).toEqual([{n:0}]);
  } finally {await db.close();}
+},60000);
+
+it("admits an owner-reviewed namesake only for the exact inquiry and current Academy collision set",async()=>{
+ const db=new PGlite();
+ try{
+  const {crm,actor,initialize,applications}=await fixture(db);await initialize();
+  const admin={stage:"Interested",nextAction:null,followUpDate:null,notes:"Synthetic conversation."};
+  const create=(name:string,phone:string|null)=>crm().execute(actor,{action:"create",operationId:randomUUID(),expectedEpoch:1,
+   fields:{...admin,name,phone,email:null,language:"en",relationship:"adult_partner"}});
+  const original=await create("Synthetic namesake",null);
+  async function preview(phone:string){
+   const source=await applications.submit({operationId:randomUUID(),fields:{parentName:"Synthetic namesake",contact:phone,language:"en",
+    cityArea:"Synthetic Florida",programId:"sunday_fishing_academy",schedulePreference:["sunday"],
+    permission:{confirmed:true,language:"en",version:floridaGroupApplicationNotice.version}}});
+   return crm().previewInquiry(actor,source.item.id,1);
+  }
+  const first=await preview("+13055550180"),other=await preview("+13055550181");
+  expect(first.review?.contacts.map(c=>c.personId)).toEqual([original.personId]);
+  const base={action:"from_inquiry" as const,operationId:first.review!.operationId,expectedEpoch:1,fields:admin,
+   sourceApplicationId:first.sourceApplicationId,sourceDigest:first.sourceDigest};
+  await expect(crm().execute(actor,base)).rejects.toThrow("CONFLICT");
+  const reviewed={...base,differentAdultProof:first.review!.proof};
+  await expect(crm().execute(actor,{...reviewed,sourceDigest:"0".repeat(64)})).rejects.toThrow("CONFLICT");
+  await expect(crm().execute(actor,{...reviewed,sourceApplicationId:other.sourceApplicationId,sourceDigest:other.sourceDigest})).rejects.toThrow("CONFLICT");
+  await expect(crm().execute(actor,{...reviewed,operationId:randomUUID()})).rejects.toThrow("CONFLICT");
+  await expect(crm().execute(actor,{...reviewed,expectedEpoch:0})).rejects.toThrow("CONFLICT");
+  await expect(crm().execute({...actor,workspaceId:asId(randomUUID(),"workspace")},reviewed)).rejects.toThrow();
+  await db.query("UPDATE ls_identity.accounts SET role='parent' WHERE id=$1",[actor.id]);
+  await expect(crm().execute(actor,reviewed)).rejects.toThrow();
+  await db.query("UPDATE ls_identity.accounts SET role='practitioner' WHERE id=$1",[actor.id]);
+  const changed=await crm().execute(actor,{action:"update",operationId:randomUUID(),expectedEpoch:1,expectedVersion:original.version,
+   personId:original.personId,fields:{...admin,stage:"Archived"}});
+  await expect(crm().execute(actor,reviewed)).rejects.toThrow("CONFLICT");
+  expect((await crm().previewInquiry(actor,first.sourceApplicationId,1)).review).toBeNull();
+  const current=await crm().execute(actor,{action:"update",operationId:randomUUID(),expectedEpoch:1,expectedVersion:changed.version,
+   personId:original.personId,fields:admin});
+  await expect(crm().execute(actor,reviewed)).rejects.toThrow("CONFLICT");
+  const refreshed=await crm().previewInquiry(actor,first.sourceApplicationId,1);
+  const decision={...base,operationId:refreshed.review!.operationId,differentAdultProof:refreshed.review!.proof};
+  const added=await crm().execute(actor,decision);
+  expect(await crm().execute(actor,decision)).toMatchObject({personId:added.personId,replayed:true,outboundEligible:false});
+  expect(added.personId).not.toBe(original.personId);
+  expect((await crm().read(actor,original.personId,1)).contact).toMatchObject({version:current.version,origin:{kind:"manual",phone:null}});
+  const converted=await crm().read(actor,added.personId,1);
+  expect(converted.contact.origin).toMatchObject({kind:"inquiry",sourceApplicationId:first.sourceApplicationId});
+  expect(converted.history[0]).toMatchObject({recordedBy:actor.id,operationId:decision.operationId,differentAdult:{
+   sourceApplicationId:first.sourceApplicationId,sourceDigest:first.sourceDigest,compared:[{personId:original.personId,version:current.version}]}});
+  const pending=await crm().previewInquiry(actor,other.sourceApplicationId,1);
+  await create("Another synthetic adult","+13055550181");
+  await expect(crm().execute(actor,{...base,sourceApplicationId:other.sourceApplicationId,sourceDigest:other.sourceDigest,
+   operationId:pending.review!.operationId,differentAdultProof:pending.review!.proof})).rejects.toThrow("CONFLICT");
+  expect((await crm().previewInquiry(actor,other.sourceApplicationId,1)).review).toBeNull();
+  expect(await crm().list(actor)).toMatchObject({total:3});
+  expect((await db.query("SELECT count(*)::int AS n FROM ls_contact_ops.outbound_projections")).rows).toEqual([{n:0}]);
+ }finally{await db.close();}
 },60000);

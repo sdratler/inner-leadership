@@ -99,7 +99,7 @@ export function AcademyCrmWorkspace({locale,initialInquiryId,initialPersonId}:{l
   {error!==null&&<div className="lsw-alert" role="alert"><p>{statusText}</p>
    {error===401?<a href={loginHref(locale,`/${locale}/app/clients`)}>{text("Sign in","כניסה")}</a>:
     pending?null:
-    <button className="lsw-button" disabled={busy} onClick={()=>{void load(search);if(detail)void open(detail.contact.personId,detail.authorityEpoch);}}>{text("Reload saved records","רענון הרשומות השמורות")}</button>}</div>}
+    <button className="lsw-button" disabled={busy} onClick={()=>{if(inquiry){window.location.reload();return;}void load(search);if(detail)void open(detail.contact.personId,detail.authorityEpoch);}}>{text("Reload saved records","רענון הרשומות השמורות")}</button>}</div>}
   {message&&<p role="status">{message}</p>}
   {pending&&!busy&&<div role="status" className="lsw-alert"><p>{text("The save is not confirmed yet. Retry to check the same operation.","השמירה עדיין לא אושרה. ניסיון חוזר יבדוק את אותה פעולה.")}</p>
    <button className="lsw-button" onClick={()=>void save(pending)}>{text("Retry the same save","ניסיון חוזר לאותה שמירה")}</button></div>}
@@ -143,11 +143,13 @@ function ContactEditor({locale,contact,inquiry,epoch,busy,save}:{locale:Locale;c
  const [name,setName]=useState(contact?.name??inquiry?.name??""),[phone,setPhone]=useState(contact?.fields.confirmedPhone??contact?.origin.phone??inquiry?.phone??"");
  const [email,setEmail]=useState(contact?.origin.email??inquiry?.email??""),[relationship,setRelationship]=useState<"guardian"|"adult_partner">("adult_partner");
  const [fields,setFields]=useState(contact?.fields??blankFields);
+ const [differentAdult,setDifferentAdult]=useState(false);
  const submit=(event:FormEvent)=>{event.preventDefault();const base={operationId:crypto.randomUUID(),expectedEpoch:epoch};
   const normalizedPhone=phone.trim()?(normalizeFloridaLeadContact(phone)??normalizePhone(phone)??phone.trim()):null;
   const command:AcademyCrmCommand=contact?{...base,action:"update",personId:contact.personId,expectedVersion:contact.version,
    fields:provisional&&phone!==String(contact.fields.confirmedPhone??"")?{...fields,confirmedPhone:normalizedPhone}:fields}:
-   inquiry?{...base,action:"from_inquiry",sourceApplicationId:inquiry.sourceApplicationId,sourceDigest:inquiry.sourceDigest,fields}:
+   inquiry?{...base,action:"from_inquiry",sourceApplicationId:inquiry.sourceApplicationId,sourceDigest:inquiry.sourceDigest,fields,
+    ...(differentAdult&&inquiry.review&&{operationId:inquiry.review.operationId,differentAdultProof:inquiry.review.proof})}:
    {...base,action:"create",fields:{...fields,name,phone:normalizedPhone,
     email:email.trim()?email.trim().toLowerCase():null,language:locale,relationship}};
   void save(command);
@@ -155,6 +157,11 @@ function ContactEditor({locale,contact,inquiry,epoch,busy,save}:{locale:Locale;c
  return <form onSubmit={submit}><h2>{contact?contact.name:inquiry?text("Add this Academy inquiry","הוספת הפנייה לאקדמיה"):text("New Academy contact","איש קשר חדש לאקדמיה")}</h2>
   {inquiry&&<p>{text("Review these saved inquiry details before adding the contact.","יש לבדוק את פרטי הפנייה השמורה לפני הוספת איש הקשר.")}</p>}
   <fieldset disabled={busy} className="academy-crm-fields"><legend className="academy-crm-sr">{text("Contact information","פרטי איש הקשר")}</legend>
+   {inquiry?.review&&<div><p>{text("Review these Academy contacts with the same name before adding this inquiry.","לפני הוספת הפנייה יש לבדוק את אנשי הקשר באקדמיה בעלי אותו שם.")}</p>
+    <ul>{inquiry.review.contacts.map(match=><li key={match.personId}><a href={`/${locale}/app/clients?personId=${match.personId}`} target="_blank" rel="noreferrer">{match.name}</a>
+     {" · "}{match.stage}{" · "}{new Date(match.createdAt).toLocaleDateString(locale)}</li>)}</ul>
+    <label><input type="checkbox" required checked={differentAdult} onChange={event=>setDifferentAdult(event.target.checked)}/>
+     {text("I reviewed these contacts and confirm this inquiry is from a different adult.","בדקתי את אנשי הקשר ואישרתי שהפנייה התקבלה מאדם אחר.")}</label></div>}
    <label>{text("Name","שם")}<input value={name} readOnly={Boolean(contact||inquiry)} required maxLength={120} onChange={event=>setName(event.target.value)}/></label>
    <label>{provisional?text("Confirmed phone","טלפון מאומת"):text("Phone","טלפון")}<input type="tel" dir="ltr" value={phone} readOnly={Boolean((contact&&!provisional)||inquiry)} maxLength={64} onChange={event=>setPhone(event.target.value)}/></label>
    <label>{text("Email","דוא״ל")}<input type="email" dir="ltr" value={email} readOnly={Boolean(contact||inquiry)} maxLength={254} onChange={event=>setEmail(event.target.value)}/></label>
@@ -184,6 +191,7 @@ function ConversationHistory({locale,detail,confirmedOperationId,busy,save}:{loc
    <button className="lsw-button" disabled={busy||!note.trim()}>{text("Save note","שמירת סיכום")}</button>
   </form>
   {detail.history.map(item=><article key={item.operationId}><h3>{label(item.kind)}</h3><time dateTime={item.recordedAt}>{new Intl.DateTimeFormat(locale==="he"?"he-IL":"en-US",{dateStyle:"medium",timeStyle:"short"}).format(new Date(item.recordedAt))}</time>
+   {item.differentAdult&&<p>{text("The owner reviewed the matching names and recorded this inquiry as a different adult.","לאחר בדיקת השמות התואמים, הפנייה תועדה כשייכת לאדם אחר.")}</p>}
    {item.text&&<p className="academy-crm-note">{item.text}</p>}{item.fields?.nextAction&&<p>{text("Next action:","הפעולה הבאה:")} {item.fields.nextAction}</p>}</article>)}
   {detail.historyHasMore&&<p>{text("Showing the 50 most recent entries.","מוצגים 50 העדכונים האחרונים.")}</p>}
  </section>;

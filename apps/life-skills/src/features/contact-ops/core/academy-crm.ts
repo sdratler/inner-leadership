@@ -60,7 +60,7 @@ const command={operationId:uuid,expectedEpoch:academyEpoch};
 export const academyCrmCommandSchema=z.discriminatedUnion("action",[
  z.object({action:z.literal("create"),...command,fields:academyManualFieldsSchema}).strict(),
  z.object({action:z.literal("from_inquiry"),...command,sourceApplicationId:uuid,sourceDigest:digest,
-  fields:academyAdminFieldsSchema}).strict(),
+  differentAdultProof:digest.optional(),fields:academyAdminFieldsSchema}).strict(),
  z.object({action:z.literal("update"),...command,personId:uuid,
   expectedVersion:z.number().int().min(1).max(2147483645),fields:academyAdminFieldsSchema}).strict(),
  z.object({action:z.literal("note"),...command,personId:uuid,
@@ -72,7 +72,9 @@ export const academyCrmResultSchema=z.object({personId:uuid,version:z.number().i
 export type AcademyCrmResult=z.infer<typeof academyCrmResultSchema>;
 export const academyActivitySchema=z.object({operationId:uuid,kind:z.enum(["created","updated","note"]),
  recordedAt:z.iso.datetime(),recordedBy:uuid,text:z.string().max(5000),
- result:academyCrmResultSchema,fields:academyAdminFieldsSchema.optional()}).strict();
+ result:academyCrmResultSchema,fields:academyAdminFieldsSchema.optional(),differentAdult:z.object({
+  sourceApplicationId:uuid,sourceDigest:digest,compared:z.array(z.object({personId:uuid,version:z.number().int().positive()}).strict()).min(1)
+ }).strict().optional()}).strict();
 export type AcademyActivity=z.infer<typeof academyActivitySchema>;
 export type AcademyContact={personId:string;name:string;version:number;origin:AcademyContactOrigin;
  fields:z.infer<typeof academyAdminFieldsSchema>;outboundEligible:false};
