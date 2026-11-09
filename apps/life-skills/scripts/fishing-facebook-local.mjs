@@ -7,9 +7,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const ROOT = "C:\\Users\\User\\tools\\fb-group-auto-poster";
-export const COMMIT = "1719f0551b67b56e882b821e662917933557ef10";
+export const COMMIT = "a6e8869bce6f394187760909d3f9d5d0b33a7ddd";
 export const MODULES = Object.freeze({
-  florida_campaign: "eed28040168658f61748d208e2a7de59ddf7e0a869adce96364a96ef6a415ea2",
+  florida_campaign: "e592b9626e7e6110c3ba43d6ea887e8914480653ab4ef8552b13f66dcd25e5dc",
   florida_browser: "3a92ad89e77c1e1d95d572f9d84037d6901727a496053a636a3cb8c2fd8bd7b4",
   safe_poster: "516fbf3ef2d99e744ee7c349546d1381ab9c49ca1a7119623f92b6eea04e3ee3",
   daily_queue: "98ef4f9a6054995776db8dd2d084bec39ca96402fe7389bd9b7bccf775f8bd73",
