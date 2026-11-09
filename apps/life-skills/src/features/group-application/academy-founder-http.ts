@@ -10,21 +10,34 @@ import {configuredGroupApplicationOrigin} from './public-origin.ts';
 import {verifyMutationOrigin} from '../../lib/security/csrf.ts';
 import {founderOwnerCommandSchema} from './academy-founder-contract.ts';
 import type {AcademyFounderStore} from './academy-founder-store.ts';
+import {INQUIRY_EMAIL_CONTROL_PURPOSE,INQUIRY_EMAIL_CONTROL_VERSION,type InquiryEmailControlVerification} from './academy-inquiry-email-verification.ts';
 // Additive result fields remain optional at this boundary for historical
 // adapters. Current storage supplies them; public renderers fail closed when
 // absent and never infer founder rights or confirmation from HTTP success.
 export type FounderPublicDependencies={enabled:boolean;store:Pick<AcademyFounderStore,'aggregate'>&{
  confirm(token:string):Promise<{confirmed:boolean;reference:string;alreadyConfirmed?:boolean;founderRateReserved?:boolean}>;
  confirmationContext(token:string):Promise<{reference:string;deadline:string|null;timezone:string;confirmed:boolean;available:boolean;founderRateReserved?:boolean;unusable?:boolean}>;
-};environment:Record<string,string|undefined>;limits:RateLimitStore;rateKey:string;afterConfirm?:(reference:string)=>Promise<void>};
+};environment:Record<string,string|undefined>;limits:RateLimitStore;rateKey:string;afterConfirm?:(reference:string)=>Promise<void>;
+ emailControl?:{enabled:boolean;confirmPost:InquiryEmailControlVerification['confirmPost']}};
 function headers(response:Response){response.headers.set('Cache-Control','private, no-store');response.headers.set('Referrer-Policy','no-referrer');response.headers.set('X-Content-Type-Options','nosniff');return response;}
 export async function founderPublicHttp(request:Request,load:()=>Promise<FounderPublicDependencies>){const requestId=randomUUID();try{
- const d=await load();if(!d.enabled)throw new AppError('UNAVAILABLE');const origin=configuredGroupApplicationOrigin(request,d.environment);if(!origin)throw new AppError('FORBIDDEN');
+ const d=await load();if(!d.enabled&&!d.emailControl?.enabled)throw new AppError('UNAVAILABLE');const origin=configuredGroupApplicationOrigin(request,d.environment);if(!origin)throw new AppError('FORBIDDEN');
  if(request.method==='POST'){if(request.headers.get('sec-fetch-site')!=='same-origin')throw new AppError('FORBIDDEN');verifyMutationOrigin(request,origin);}
  const url=new URL(request.url);if(url.search||url.pathname!=='/api/public/academy-founder')throw new AppError('INVALID_REQUEST');
  await enforceRateLimit(d.limits,opaqueRateLimitKey('academy-founder-public',d.rateKey),60,60_000);
- if(request.method==='GET')return headers(successResponse(campaignSnapshotSchema.parse(await d.store.aggregate()),requestId));
- if(request.method!=='POST')throw new AppError('INVALID_REQUEST');const body=await readJson(request,z.object({action:z.enum(['confirm_interest','read_confirmation']),token:z.string().regex(/^[A-Za-z0-9_-]{43}$/)}).strict());
+ if(request.method==='GET'){if(!d.enabled)throw new AppError('UNAVAILABLE');return headers(successResponse(campaignSnapshotSchema.parse(await d.store.aggregate()),requestId));}
+ if(request.method!=='POST')throw new AppError('INVALID_REQUEST');const token=z.string().regex(/^[A-Za-z0-9_-]{43}$/);
+ const body=await readJson(request,z.union([
+  z.object({action:z.enum(['confirm_interest','read_confirmation']),token}).strict(),
+  z.object({action:z.literal('confirm_inquiry_email'),purpose:z.literal(INQUIRY_EMAIL_CONTROL_PURPOSE),version:z.literal(INQUIRY_EMAIL_CONTROL_VERSION),token}).strict(),
+ ]));
+ if(body.action==='confirm_inquiry_email'){
+  if(!d.emailControl?.enabled)throw new AppError('UNAVAILABLE');
+  // Separate inquiry-only capability. Never pass its bearer to the historical
+  // founder store or trigger founder confirmation/afterConfirm effects.
+  return headers(successResponse(await d.emailControl.confirmPost({method:'POST',token:body.token}),requestId));
+ }
+ if(!d.enabled)throw new AppError('UNAVAILABLE');
  if(body.action==='read_confirmation')return headers(successResponse(await d.store.confirmationContext(body.token),requestId));
  const confirmed=await d.store.confirm(body.token);
  // Confirmation is durable before delivery. Failed dispatch leaves the existing

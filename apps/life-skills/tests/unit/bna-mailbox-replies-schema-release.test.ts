@@ -6,14 +6,14 @@ import {bnaMailboxRepliesSchemaPlan,BNA_MAILBOX_REPLIES_MIGRATION,readBnaMailbox
 const manifest=JSON.parse(readFileSync('migrations/manifest.json','utf8')) as {name:string;sha256:string}[];
 const files=manifest.map(m=>({name:m.name,checksum:m.sha256,sql:readFileSync('migrations/'+m.name,'utf8')}));
 it('freezes the entire accepted69 prefix and admits exact0150 after exact0149',()=>{
- expect(files).toHaveLength(70);expect(manifest[69]).toEqual({name:BNA_MAILBOX_REPLIES_MIGRATION.name,sha256:BNA_MAILBOX_REPLIES_MIGRATION.sha256});
+ expect(files).toHaveLength(72);expect(manifest[69]).toEqual({name:BNA_MAILBOX_REPLIES_MIGRATION.name,sha256:BNA_MAILBOX_REPLIES_MIGRATION.sha256});
  expect(createHash('sha256').update(readFileSync('migrations/'+BNA_MAILBOX_REPLIES_MIGRATION.name)).digest('hex')).toBe(BNA_MAILBOX_REPLIES_MIGRATION.sha256);
  const before=files.slice(0,69);expect(bnaMailboxRepliesSchemaPlan(files,before,0).pending.map(m=>m.name)).toEqual([BNA_MAILBOX_REPLIES_MIGRATION.name]);
  expect(bnaMailboxRepliesSchemaPlan(files,files,1).pending).toEqual([]);expect(()=>bnaMailboxRepliesSchemaPlan(files,before,1)).toThrow();
  expect(()=>bnaMailboxRepliesSchemaPlan(files,before.slice(0,-1),0)).toThrow();
  const changed=files.map((f,i)=>i===0?{...f,checksum:'e'.repeat(64)}:f);expect(()=>bnaMailboxRepliesSchemaPlan(changed,changed.slice(0,69),0)).toThrow('BNA_MAILBOX_REPLIES_SCHEMA_PREFIX_MISMATCH');
  expect(()=>bnaMailboxRepliesSchemaPlan(files.map((f,i)=>i===69?{...f,checksum:'a'.repeat(64)}:f),before,0)).toThrow('BNA_MAILBOX_REPLIES_SCHEMA_SOURCE_MISMATCH');
- const future={name:'0151_future.sql',checksum:'e'.repeat(64),sql:'SELECT 1;'};expect(bnaMailboxRepliesSchemaPlan([...files,future],[...files,future],1).pending).toEqual([]);
+ const future={name:'0153_future.sql',checksum:'e'.repeat(64),sql:'SELECT 1;'};expect(bnaMailboxRepliesSchemaPlan([...files,future],[...files,future],1).pending).toEqual([]);
 });
 it('rejects every partial catalog and orphan function state',async()=>{
  const db=(receipts:string|null,reviews:string|null,monitor:string|null,n=0)=>({query:async<T extends object>(sql:string)=>({rows:(sql.includes('to_regclass')?[{receipts,reviews,monitor}]:[{n}]) as unknown as T[]})});

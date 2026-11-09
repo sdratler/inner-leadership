@@ -16,6 +16,13 @@ const item:GroupApplicationRecord={id:ref,source:"public_group_application",stat
 const body={ok:true,data:{items:[item],nextCursor:null,emailSetup:null}};
 afterEach(()=>vi.unstubAllGlobals());
 describe("Fishing inquiry presentation boundary",()=>{
+ it("keeps mailbox evidence narrow and bound to the selected inquiry",()=>{
+  const emailControl={kind:'inquiry_mailbox_control_only',applicationId:ref,verifiedAt:'2026-11-09T12:00:00.000Z'};
+  expect(decodeInquiryReview({ok:true,data:{...body.data,emailControl}})).toEqual({...body.data,emailControl});
+  expect(decodeInquiryReview({ok:true,data:{...body.data,emailControl:null}})).toEqual({...body.data,emailControl:null});
+  for(const bad of [{...emailControl,applicationId:fields.children[0]!.id},{...emailControl,kind:'legal_guardian'},{...emailControl,guardianAssurance:true},{...emailControl,verifiedAt:'not-a-date'}])expect(()=>decodeInquiryReview({ok:true,data:{...body.data,emailControl:bad}})).toThrow();
+  expect(()=>decodeInquiryReview({ok:true,data:{items:[],emailControl}})).toThrow();
+ });
  it("decodes the complete saved tuple and distinguishes an actual empty page",()=>{
   expect(decodeInquiryReview(body)).toEqual(body.data);
   expect(decodeInquiryReview({ok:true,data:{items:[]}})).toEqual({items:[]});
