@@ -267,6 +267,13 @@
 }
 @media(max-width:639px){.skills,.introInclusions{grid-template-columns:1fr}}
 @media(max-width:359px){.headerInner,.section,.packageInner,.footer{padding-inline:16px}.headerInner{gap:6px}.logo img{inline-size:50px;block-size:50px}.dialogHeader,.dialogBody{padding-inline:16px}.heroAction{inset-inline:16px}.page .heroText h1{font-size:28px}.heroText{inset-inline:12px}}
+@media(max-width:359px){
+ /* Keep long English and Hebrew words whole at enlarged type on narrow phones. */
+ .page[data-text-reflow=true] .hero[data-reflow=true] .heroText{padding-inline:0}
+ .page[data-text-reflow=true] .heroText h1{letter-spacing:-.03em}
+ .page[data-text-reflow=true] .introduction .sectionHeading h2,.page[data-text-reflow=true] .valuesGrid h3{margin-inline:-12px;letter-spacing:-.035em}
+ .page[data-text-reflow=true] .headerInner{padding-inline:6px;gap:4px}
+}
 /* Short mobile viewports scroll rather than placing an action over people. */
 @media(max-width:767px) and (max-height:600px){
  .hero{display:flex;flex-direction:column;block-size:auto}

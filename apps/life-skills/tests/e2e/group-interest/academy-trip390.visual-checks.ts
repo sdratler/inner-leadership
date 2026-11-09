@@ -105,7 +105,7 @@ export async function inspectLanding(page:Page,options:{declaredShortCase?:strin
   const hero=heading.closest('section')!,photo=hero.querySelector('img')!;
   const hb=box(hero),ib=box(photo),header=box(document.querySelector('header')!);
   const width=document.documentElement.clientWidth;
-  if(document.documentElement.scrollWidth>innerWidth+1)findings.push('page-horizontal-overflow');
+  if(document.documentElement.scrollWidth>innerWidth+1||reading.scrollWidth>width+1)findings.push('page-horizontal-overflow');
   if(Math.abs(hb.left)>1||Math.abs(hb.right-width)>1)findings.push('hero-boxed');
   if(!photo.complete||!photo.naturalWidth)findings.push('hero-image-unloaded');
   const headingBlocks=hero.querySelectorAll('[data-hero-heading]'),actions=hero.querySelectorAll('[data-hero-action]');
@@ -119,7 +119,9 @@ export async function inspectLanding(page:Page,options:{declaredShortCase?:strin
    const walker=document.createTreeWalker(span,NodeFilter.SHOW_TEXT);
    for(let text=walker.nextNode();text;text=walker.nextNode())for(const match of (text.textContent??'').matchAll(/\S+/g)){
     const range=document.createRange();range.setStart(text,match.index!);range.setEnd(text,match.index!+match[0].length);
-    if([...range.getClientRects()].filter(r=>r.width>0&&r.height>0).length>1)findings.push('hero-word-fragment');
+     const boxes=[...range.getClientRects()].filter(r=>r.width>0&&r.height>0);
+     if(boxes.length>1)findings.push('hero-word-fragment');
+     if(boxes.some(r=>r.left< -1||r.right>width+1))findings.push('hero-word-outside-reading-width');
    }
   }
   if(innerHeight>600&&hero.getAttribute('data-reflow')!=='true'&&Math.abs(hb.bottom-reading.bottom)>3)findings.push('hero-first-screen-height');
@@ -229,8 +231,8 @@ async function readingViewport(page:Page){
  return page.evaluate(()=>{
   const pane=document.querySelector<HTMLElement>('[data-academy-reading-pane]');
   if(pane&&pane.clientHeight&&getComputedStyle(pane).overflowY==='auto')
-   return {bottom:pane.getBoundingClientRect().bottom,scrollTop:pane.scrollTop,separate:true};
-  return {bottom:innerHeight,scrollTop:window.scrollY,separate:false};
+   return {bottom:pane.getBoundingClientRect().bottom,scrollTop:pane.scrollTop,scrollWidth:pane.scrollWidth,separate:true};
+  return {bottom:innerHeight,scrollTop:window.scrollY,scrollWidth:document.documentElement.scrollWidth,separate:false};
  });
 }
 export async function scrollLandingToTop(page:Page){
