@@ -13,7 +13,7 @@ import {NativeCrmStore,crmProfileAad,crmProfileSchema,type CrmProfile} from "./n
 import {privateDigest} from "./digests.ts";
 import {MAX_NATIVE_CONTACTS} from "../core/limits.ts";
 import {ACADEMY_CRM_PROGRAM,academyActivitySchema,academyAdminFieldsSchema,academyContactOriginSchema,
- academyCrmCommandSchema,academyCrmResultSchema,academyManualFieldsSchema,type AcademyActivity,type AcademyContact,
+ academyCrmCommandSchema,academyCrmResultSchema,academyManualFieldsSchema,provisionalNameConflict,type AcademyActivity,type AcademyContact,
  type AcademyCrmCommand,type AcademyCrmPage,type AcademyCrmResult} from "../core/academy-crm.ts";
 import {nextFishingMembership,fishingLabelDesired} from "../core/fishing-lead.ts";
 import type {CutoverState} from "../core/cutover.ts";
@@ -138,7 +138,8 @@ export class AcademyCrmStore {
     // A shared endpoint never links accounts, guardians, cases or permissions.
     const existing=await this.contacts(tx,actor,state);
     if(existing.length>=MAX_NATIVE_CONTACTS)throw new AppError("UNAVAILABLE");
-    if(existing.some(row=>fields.phone!==null&&row.origin.phone===fields.phone||fields.email!==null&&row.origin.email===fields.email))throw new AppError("CONFLICT");
+    if(existing.some(row=>fields.phone!==null&&row.origin.phone===fields.phone||fields.email!==null&&row.origin.email===fields.email||
+     provisionalNameConflict(fields,{name:row.name,phone:row.origin.phone,email:row.origin.email})))throw new AppError("CONFLICT");
     if(observed){const used=await tx.query("SELECT person_id FROM ls_contact_ops.academy_crm_contacts WHERE workspace_id=$1 AND source_application_id=$2",[actor.workspaceId,observed.sourceApplicationId]);
      if(used.length)throw new AppError("CONFLICT");}
     personId=randomUUID();

@@ -29,14 +29,24 @@ export type AcademyInitialization=z.infer<typeof academyInitializationSchema>;
 export const academyContactOriginSchema=z.object({kind:z.enum(["manual","inquiry"]),
  program:z.literal(ACADEMY_CRM_PROGRAM),initializationId:uuid,sourceApplicationId:uuid.nullable(),
  sourceDigest:digest.nullable(),language:z.enum(["en","he"]),...endpoint,createdAt:z.iso.datetime()}).strict()
- .refine(hasEndpoint).refine(value=>value.kind==="inquiry"?
-  value.sourceApplicationId!==null&&value.sourceDigest!==null:value.sourceApplicationId===null&&value.sourceDigest===null);
+ .refine(value=>value.kind==="inquiry"?
+  hasEndpoint(value)&&value.sourceApplicationId!==null&&value.sourceDigest!==null:
+  value.sourceApplicationId===null&&value.sourceDigest===null);
 export type AcademyContactOrigin=z.infer<typeof academyContactOriginSchema>;
 export const academyAdminFieldsSchema=z.object({stage:z.string().trim().min(1).max(120),
  nextAction:z.string().max(500).nullable(),followUpDate:z.string().refine(dateOnly).nullable(),
  notes:z.string().max(5000)}).strict();
 export const academyManualFieldsSchema=z.object({name:z.string().trim().min(1).max(120),
- language:z.enum(["en","he"]),relationship:z.enum(["guardian","adult_partner"]),...endpoint,...academyAdminFieldsSchema.shape}).strict().refine(hasEndpoint);
+ language:z.enum(["en","he"]),relationship:z.enum(["guardian","adult_partner"]),...endpoint,...academyAdminFieldsSchema.shape}).strict()
+ .refine(value=>hasEndpoint(value)||value.notes.trim().length>0,
+  {message:"A manual contact without a confirmed phone or email needs a conversation note",path:["notes"]});
+
+/** A name is only a collision warning for provisional leads. Never merge identities by name. */
+export function provisionalNameConflict(a:{name:string;phone:string|null;email:string|null},
+ b:{name:string;phone:string|null;email:string|null}):boolean {
+ const normalize=(name:string)=>name.normalize("NFKC").trim().replace(/\s+/g," ").toLowerCase();
+ return (!hasEndpoint(a)||!hasEndpoint(b))&&normalize(a.name)===normalize(b.name);
+}
 const command={operationId:uuid,expectedEpoch:academyEpoch};
 export const academyCrmCommandSchema=z.discriminatedUnion("action",[
  z.object({action:z.literal("create"),...command,fields:academyManualFieldsSchema}).strict(),

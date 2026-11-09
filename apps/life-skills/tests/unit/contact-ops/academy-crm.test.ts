@@ -1,6 +1,6 @@
 import {expect,it,vi} from "vitest";
 vi.mock("server-only",()=>({}));
-import {academyCrmCommandSchema,academyInitializationInputSchema,academyContactOriginSchema} from "../../../src/features/contact-ops/core/academy-crm.ts";
+import {academyCrmCommandSchema,academyInitializationInputSchema,academyContactOriginSchema,provisionalNameConflict} from "../../../src/features/contact-ops/core/academy-crm.ts";
 import {writeDestination,advanceCutover,type CutoverState,type CutoverProof} from "../../../src/features/contact-ops/core/cutover.ts";
 import {cutoverStateSchema} from "../../../src/features/contact-ops/server/cutover-state.ts";
 import {inboundProjectionEnabled} from "../../../src/features/contact-ops/core/inbound-projection.ts";
@@ -34,6 +34,20 @@ it("accepts genuine email-only or phone-only contacts without fabricated phone v
 it.each(["program","workspaceId","personId","initializationId","outboundEligible","permission","send","imported"])
 ("rejects client-supplied admission or effect %s",field=>{
  expect(academyCrmCommandSchema.safeParse({action:"create",operationId,expectedEpoch:1,fields,[field]:"untrusted"}).success).toBe(false);
+});
+it("admits an owner-entered conversation with pending contact details but preserves inquiry evidence requirements",()=>{
+ const person={...fields,phone:null,email:null,notes:"Discussed Sunday fishing; confirm the number."};
+ const input={action:"create",operationId,expectedEpoch:1,fields:person};
+ expect(academyCrmCommandSchema.parse(input)).toMatchObject({fields:{phone:null,email:null,notes:person.notes}});
+ expect(academyCrmCommandSchema.safeParse({...input,fields:{...person,notes:"   "}}).success).toBe(false);
+ expect(academyCrmCommandSchema.safeParse({...input,fields:{...person,phone:"unconfirmed"}}).success).toBe(false);
+ const origin={kind:"manual",program:"sunday_fishing_academy",initializationId:operationId,language:"en",phone:null,email:null,
+  sourceApplicationId:null,sourceDigest:null,createdAt:"2026-11-09T12:00:00.000Z"};
+ expect(academyContactOriginSchema.safeParse(origin).success).toBe(true);
+ expect(academyContactOriginSchema.safeParse({...origin,kind:"inquiry",sourceApplicationId:operationId,sourceDigest:"f".repeat(64)}).success).toBe(false);
+ expect(provisionalNameConflict(person,{...fields,name:"  SYNTHETIC  Academy parent  "})).toBe(true);
+ expect(provisionalNameConflict(fields,{...fields,email:"second@example.invalid"})).toBe(false);
+ expect(provisionalNameConflict(person,{...fields,name:"Other adult"})).toBe(false);
 });
 it("keeps source origin internally consistent and administrative mutations separate",()=>{
  const origin={kind:"manual",program:"sunday_fishing_academy",initializationId:operationId,sourceApplicationId:null,sourceDigest:null,
