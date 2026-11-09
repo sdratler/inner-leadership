@@ -4,7 +4,8 @@ import type {Locale} from "../../lib/locale.ts";
 import {IdentityClientError,sessionInfo} from "../identity/client.ts";
 import {loginHref} from "../identity/login-return.ts";
 import {normalizePhone} from "./core/contact-resolution.ts";
-import {academyCrmCommandSchema,type AcademyActivity,type AcademyContact,type AcademyCrmCommand,
+import {normalizeFloridaLeadContact} from "../group-application/contract.ts";
+import {academyCrmCommandSchema,academyLeadSourceSchema,academyConversationChannelSchema,type AcademyActivity,type AcademyContact,type AcademyCrmCommand,
  type AcademyCrmPage,type AcademyCrmResult} from "./core/academy-crm.ts";
 import type {AcademyCrmStore} from "./server/academy-crm-store.ts";
 import "./academy-crm.css";
@@ -19,7 +20,10 @@ async function read<T>(query:Record<string,string>={}):Promise<T>{
   {credentials:"same-origin",cache:"no-store",redirect:"error",referrerPolicy:"no-referrer"});
  const body=await response.json().catch(()=>null);if(!response.ok||!body?.ok)throw new RequestError(response.status);return body.data as T;
 }
-const blankFields={stage:"New inquiry",nextAction:null,followUpDate:null,notes:""};
+const blankFields:AcademyContact["fields"]={stage:"New inquiry",nextAction:null,followUpDate:null,notes:""};
+const sourceLabels={unknown:["Unknown","לא ידוע"],facebook:["Facebook","פייסבוק"],referral:["Referral","הפניה"],website:["Website","אתר"],other:["Other","אחר"]} as const;
+const channelLabels={unknown:["Unknown","לא ידוע"],whatsapp:["WhatsApp","וואטסאפ"],messenger:["Facebook Messenger","מסנג׳ר"],
+ phone:["Phone","טלפון"],email:["Email","דוא״ל"],in_person:["In person","פנים אל פנים"],other:["Other","אחר"]} as const;
 export function AcademyCrmWorkspace({locale,initialInquiryId,initialPersonId}:{locale:Locale;initialInquiryId?:string|undefined;initialPersonId?:string|undefined}){
  const text=(en:string,he:string)=>locale==="he"?he:en;
  const [page,setPage]=useState<AcademyCrmPage|null>(null),[search,setSearch]=useState(""),[detail,setDetail]=useState<Detail|null>(null);
@@ -113,7 +117,9 @@ export function AcademyCrmWorkspace({locale,initialInquiryId,initialPersonId}:{l
     {page.items.length===0&&<p>{search?text("No Academy contacts match this search.","לא נמצאו אנשי קשר שמתאימים לחיפוש."):text("Your Academy contact list is empty. Add a contact or open a saved Academy inquiry.","רשימת האקדמיה ריקה. אפשר להוסיף איש קשר או לפתוח פנייה שמורה לאקדמיה.")}</p>}
     {page.items.map(row=><article className="lsw-card academy-crm-row" key={row.personId}>
      <h2><button type="button" disabled={busy||pending!==null} onClick={()=>void open(row.personId,page.authorityEpoch)}>{row.name}</button></h2>
-     <p><bdi dir="ltr">{row.origin.email??row.origin.phone}</bdi></p><p>{row.fields.stage}</p>
+     <p><bdi dir="ltr">{row.fields.confirmedPhone??row.origin.email??row.origin.phone}</bdi></p><p>{row.fields.stage}</p>
+     {row.fields.leadSource&&row.fields.leadSource!=="unknown"&&<p>{text("Source","מקור")}: {sourceLabels[row.fields.leadSource][locale==="he"?1:0]}</p>}
+     {row.fields.conversationChannel&&row.fields.conversationChannel!=="unknown"&&<p>{text("Channel","ערוץ")}: {channelLabels[row.fields.conversationChannel][locale==="he"?1:0]}</p>}
      {row.fields.nextAction&&<p><strong>{text("Next:","הפעולה הבאה:")}</strong> {row.fields.nextAction}</p>}
      {row.fields.followUpDate&&<time dateTime={row.fields.followUpDate}>{row.fields.followUpDate}</time>}
     </article>)}
@@ -133,13 +139,16 @@ export function AcademyCrmWorkspace({locale,initialInquiryId,initialPersonId}:{l
 function ContactEditor({locale,contact,inquiry,epoch,busy,save}:{locale:Locale;contact?:AcademyContact;inquiry?:Inquiry|null;
  epoch:number;busy:boolean;save:(command:AcademyCrmCommand)=>Promise<boolean|undefined>}){
  const text=(en:string,he:string)=>locale==="he"?he:en;
- const [name,setName]=useState(contact?.name??inquiry?.name??""),[phone,setPhone]=useState(contact?.origin.phone??inquiry?.phone??"");
- const [email,setEmail]=useState(contact?.origin.email??inquiry?.email??""),[relationship,setRelationship]=useState<"guardian"|"adult_partner">("guardian");
+ const provisional=contact?.origin.kind==="manual"&&!contact.origin.phone&&!contact.origin.email;
+ const [name,setName]=useState(contact?.name??inquiry?.name??""),[phone,setPhone]=useState(contact?.fields.confirmedPhone??contact?.origin.phone??inquiry?.phone??"");
+ const [email,setEmail]=useState(contact?.origin.email??inquiry?.email??""),[relationship,setRelationship]=useState<"guardian"|"adult_partner">("adult_partner");
  const [fields,setFields]=useState(contact?.fields??blankFields);
  const submit=(event:FormEvent)=>{event.preventDefault();const base={operationId:crypto.randomUUID(),expectedEpoch:epoch};
-  const command:AcademyCrmCommand=contact?{...base,action:"update",personId:contact.personId,expectedVersion:contact.version,fields}:
+  const normalizedPhone=phone.trim()?(normalizeFloridaLeadContact(phone)??normalizePhone(phone)??phone.trim()):null;
+  const command:AcademyCrmCommand=contact?{...base,action:"update",personId:contact.personId,expectedVersion:contact.version,
+   fields:provisional&&phone!==String(contact.fields.confirmedPhone??"")?{...fields,confirmedPhone:normalizedPhone??""}:fields}:
    inquiry?{...base,action:"from_inquiry",sourceApplicationId:inquiry.sourceApplicationId,sourceDigest:inquiry.sourceDigest,fields}:
-   {...base,action:"create",fields:{...fields,name,phone:phone.trim()?normalizePhone(phone)??phone.trim():null,
+   {...base,action:"create",fields:{...fields,name,phone:normalizedPhone,
     email:email.trim()?email.trim().toLowerCase():null,language:locale,relationship}};
   void save(command);
  };
@@ -147,10 +156,14 @@ function ContactEditor({locale,contact,inquiry,epoch,busy,save}:{locale:Locale;c
   {inquiry&&<p>{text("Review these saved inquiry details before adding the contact.","יש לבדוק את פרטי הפנייה השמורה לפני הוספת איש הקשר.")}</p>}
   <fieldset disabled={busy} className="academy-crm-fields"><legend className="academy-crm-sr">{text("Contact information","פרטי איש הקשר")}</legend>
    <label>{text("Name","שם")}<input value={name} readOnly={Boolean(contact||inquiry)} required maxLength={120} onChange={event=>setName(event.target.value)}/></label>
-   <label>{text("Phone","טלפון")}<input type="tel" dir="ltr" value={phone} readOnly={Boolean(contact||inquiry)} maxLength={64} onChange={event=>setPhone(event.target.value)}/></label>
+   <label>{provisional?text("Confirmed phone","טלפון מאומת"):text("Phone","טלפון")}<input type="tel" dir="ltr" value={phone} readOnly={Boolean((contact&&!provisional)||inquiry)} maxLength={64} onChange={event=>setPhone(event.target.value)}/></label>
    <label>{text("Email","דוא״ל")}<input type="email" dir="ltr" value={email} readOnly={Boolean(contact||inquiry)} maxLength={254} onChange={event=>setEmail(event.target.value)}/></label>
    {!contact&&!inquiry&&<><p>{text("If the phone and email are unconfirmed, leave them blank and describe your conversation in Contact notes.","אם מספר הטלפון וכתובת הדוא״ל טרם אומתו, השאירו אותם ריקים ותעדו את השיחה בהערות לאיש הקשר.")}</p><label>{text("Relationship","קשר לאקדמיה")}<select value={relationship} onChange={event=>setRelationship(event.target.value as typeof relationship)}><option value="guardian">{text("Parent / guardian","הורה / אפוטרופוס")}</option><option value="adult_partner">{text("Adult / partner","מבוגר / שותף")}</option></select></label></>}
    <label>{text("Status","מצב")}<input required maxLength={120} value={fields.stage} onChange={event=>setFields({...fields,stage:event.target.value})}/></label>
+   <label>{text("Lead source","מקור הפנייה")}<select value={fields.leadSource??"unknown"} onChange={event=>setFields({...fields,leadSource:academyLeadSourceSchema.parse(event.target.value)})}>
+    {academyLeadSourceSchema.options.map(source=><option key={source} value={source}>{sourceLabels[source][locale==="he"?1:0]}</option>)}</select></label>
+   <label>{text("Conversation channel","ערוץ השיחה")}<select value={fields.conversationChannel??"unknown"} onChange={event=>setFields({...fields,conversationChannel:academyConversationChannelSchema.parse(event.target.value)})}>
+    {academyConversationChannelSchema.options.map(channel=><option key={channel} value={channel}>{channelLabels[channel][locale==="he"?1:0]}</option>)}</select></label>
    <label>{text("Next action","הפעולה הבאה")}<input maxLength={500} value={fields.nextAction??""} onChange={event=>setFields({...fields,nextAction:event.target.value||null})}/></label>
    <label>{text("Follow-up date","תאריך מעקב")}<input type="date" value={fields.followUpDate??""} onChange={event=>setFields({...fields,followUpDate:event.target.value||null})}/></label>
    <label>{text("Contact notes","הערות לאיש הקשר")}<textarea rows={4} maxLength={5000} value={fields.notes} onChange={event=>setFields({...fields,notes:event.target.value})}/></label>

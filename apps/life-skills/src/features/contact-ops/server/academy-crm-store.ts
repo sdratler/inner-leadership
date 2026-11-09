@@ -25,6 +25,11 @@ type ActivityRow={personId:string;actorId:string;kind:string;version:number;dige
 const activityAad=(workspace:string,operation:string)=>`ls_contact_ops/academy-activity/v1/${workspace}/${operation}`;
 const querySchema=z.object({search:z.string().max(200).default(""),page:z.number().int().min(1).max(100000).default(1)}).strict();
 const PAGE_SIZE=12;
+function adminFields(fields:AcademyContact["fields"]):AcademyContact["fields"] {
+ const {stage,nextAction,followUpDate,notes,leadSource,conversationChannel,confirmedPhone}=fields;
+ return academyAdminFieldsSchema.parse({stage,nextAction,followUpDate,notes,
+  ...(leadSource&&{leadSource}),...(conversationChannel&&{conversationChannel}),...(confirmedPhone&&{confirmedPhone})});
+}
 
 /** Academy admission precedes decryption. No workspace-wide phone/email/name
  * match, clinical join, legacy link, imported note or external provider call. */
@@ -58,7 +63,7 @@ export class AcademyCrmStore {
     origin.kind!==row.kind||origin.sourceApplicationId!==row.sourceApplicationId||origin.createdAt!==row.createdAt.toISOString())throw new AppError("UNAVAILABLE");
    const person=this.decode(z.object({displayName:z.string().min(1).max(120)}).strict(),row.personCiphertext,`person:${actor.workspaceId}:${row.personId}`);
    return {personId:row.personId,name:person.displayName,version:row.version,origin,
-    fields:academyAdminFieldsSchema.parse({stage:profile.stage,nextAction:profile.nextAction,followUpDate:profile.followUpDate,notes:profile.notes}),outboundEligible:false};
+    fields:adminFields(profile),outboundEligible:false};
   });
  }
  private async contact(tx:SqlSession,actor:Actor,state:Authority,personId:string){
@@ -69,7 +74,8 @@ export class AcademyCrmStore {
   if(current.phase!=="academy_native")return {state:"setup_required",authorityEpoch:current.epoch};
   return this.authority.withAcademy(actor,{intent:"read",expectedEpoch:current.epoch},async(tx,state)=>{
    const all=await this.contacts(tx,actor,state),search=query.search.trim().toLocaleLowerCase();
-   const rows=all.filter(row=>!search||[row.name,row.origin.phone??"",row.origin.email??"",row.fields.stage,
+   const rows=all.filter(row=>!search||[row.name,row.fields.confirmedPhone??row.origin.phone??"",row.origin.email??"",row.fields.stage,
+    row.fields.leadSource??"",row.fields.conversationChannel??"",
     row.fields.nextAction??"",row.fields.notes].some(value=>value.toLocaleLowerCase().includes(search)));
    return {state:"ready",authorityEpoch:state.epoch,items:rows.slice((query.page-1)*PAGE_SIZE,query.page*PAGE_SIZE),
     total:rows.length,page:query.page,pageSize:PAGE_SIZE};
@@ -138,8 +144,8 @@ export class AcademyCrmStore {
     // A shared endpoint never links accounts, guardians, cases or permissions.
     const existing=await this.contacts(tx,actor,state);
     if(existing.length>=MAX_NATIVE_CONTACTS)throw new AppError("UNAVAILABLE");
-    if(existing.some(row=>fields.phone!==null&&row.origin.phone===fields.phone||fields.email!==null&&row.origin.email===fields.email||
-     provisionalNameConflict(fields,{name:row.name,phone:row.origin.phone,email:row.origin.email})))throw new AppError("CONFLICT");
+    if(existing.some(row=>fields.phone!==null&&(row.fields.confirmedPhone??row.origin.phone)===fields.phone||fields.email!==null&&row.origin.email===fields.email||
+     provisionalNameConflict(fields,{name:row.name,phone:row.fields.confirmedPhone??row.origin.phone,email:row.origin.email})))throw new AppError("CONFLICT");
     if(observed){const used=await tx.query("SELECT person_id FROM ls_contact_ops.academy_crm_contacts WHERE workspace_id=$1 AND source_application_id=$2",[actor.workspaceId,observed.sourceApplicationId]);
      if(used.length)throw new AppError("CONFLICT");}
     personId=randomUUID();
@@ -148,8 +154,7 @@ export class AcademyCrmStore {
      sourceDigest:observed?.sourceDigest??null,language:fields.language,phone:fields.phone,email:fields.email,createdAt:now.toISOString()});
     await tx.query("INSERT INTO ls_identity.people(id,workspace_id,kind,profile_ciphertext,created_at) VALUES($1,$2,'adult',$3,$4)",
      [personId,actor.workspaceId,seal(JSON.stringify({displayName:fields.name}),`person:${actor.workspaceId}:${personId}`,this.ring),now]);
-    const profile:CrmProfile={personId,stage:fields.stage,nextAction:fields.nextAction,followUpDate:fields.followUpDate,
-     notes:fields.notes,legacyIds:[],academyOrigin:origin};
+    const profile:CrmProfile={personId,...adminFields(fields),legacyIds:[],academyOrigin:origin};
     const created=await this.profiles(tx).create(actor,profile,"academy-profile:"+command.operationId);version=created.version;
     const membership=nextFishingMembership(null,{action:"add",workspaceId:actor.workspaceId,personId,program:ACADEMY_CRM_PROGRAM,
      expectedVersion:0,relationship:fields.relationship,source:observed?{kind:"inquiry",id:observed.sourceApplicationId}:{kind:"person",id:personId},
@@ -171,6 +176,11 @@ export class AcademyCrmStore {
     personId=command.personId;const current=await this.contact(tx,actor,state,personId);
     if(current.version!==command.expectedVersion)throw new AppError("CONFLICT");
     if(command.action==="update"){
+     if(command.fields.confirmedPhone&&command.fields.confirmedPhone!==current.fields.confirmedPhone){
+      if(current.origin.kind!=="manual"||current.origin.phone||current.origin.email)throw new AppError("INVALID_REQUEST");
+      const contacts=await this.contacts(tx,actor,state);
+      if(contacts.some(row=>row.personId!==personId&&(row.fields.confirmedPhone??row.origin.phone)===command.fields.confirmedPhone))throw new AppError("CONFLICT");
+     }
      const saved=await this.profiles(tx).read(actor,personId);if(!saved)throw new AppError("NOT_FOUND");
      const updated=await this.profiles(tx).update(actor,{...saved.profile,...command.fields},command.expectedVersion,"academy-profile:"+command.operationId);
      version=updated.version;kind="updated";
@@ -178,8 +188,7 @@ export class AcademyCrmStore {
    }
    const result=academyCrmResultSchema.parse({personId,version,operationId:command.operationId,authorityEpoch:state.epoch,
     replayed:false,outboundEligible:false});
-   const fields=command.action==="note"?undefined:academyAdminFieldsSchema.parse({stage:command.fields.stage,
-    nextAction:command.fields.nextAction,followUpDate:command.fields.followUpDate,notes:command.fields.notes});
+   const fields=command.action==="note"?undefined:adminFields(command.fields);
    const event=academyActivitySchema.parse({operationId:command.operationId,kind,recordedAt:now.toISOString(),recordedBy:actor.id,text,result,fields});
    await tx.query(`INSERT INTO ls_contact_ops.academy_crm_activity(workspace_id,initialization_id,operation_id,person_id,
     actor_account_id,kind,result_version,payload_digest,payload_ciphertext,recorded_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,

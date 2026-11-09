@@ -41,6 +41,10 @@ it("admits an owner-entered conversation with pending contact details but preser
  expect(academyCrmCommandSchema.parse(input)).toMatchObject({fields:{phone:null,email:null,notes:person.notes}});
  expect(academyCrmCommandSchema.safeParse({...input,fields:{...person,notes:"   "}}).success).toBe(false);
  expect(academyCrmCommandSchema.safeParse({...input,fields:{...person,phone:"unconfirmed"}}).success).toBe(false);
+ expect(academyCrmCommandSchema.safeParse({...input,fields:{...person,phone:"+130555501234"}}).success).toBe(false);
+ expect(academyCrmCommandSchema.safeParse({...input,fields:{...person,confirmedPhone:"+13055550123"}}).success).toBe(false);
+ expect(academyCrmCommandSchema.safeParse({...input,fields:{...person,leadSource:"facebook",conversationChannel:"whatsapp"}}).success).toBe(true);
+ expect(academyCrmCommandSchema.safeParse({...input,fields:{...person,conversationChannel:"unreviewed"}}).success).toBe(false);
  const origin={kind:"manual",program:"sunday_fishing_academy",initializationId:operationId,language:"en",phone:null,email:null,
   sourceApplicationId:null,sourceDigest:null,createdAt:"2026-11-09T12:00:00.000Z"};
  expect(academyContactOriginSchema.safeParse(origin).success).toBe(true);

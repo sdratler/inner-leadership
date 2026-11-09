@@ -33,11 +33,20 @@ export const academyContactOriginSchema=z.object({kind:z.enum(["manual","inquiry
   hasEndpoint(value)&&value.sourceApplicationId!==null&&value.sourceDigest!==null:
   value.sourceApplicationId===null&&value.sourceDigest===null);
 export type AcademyContactOrigin=z.infer<typeof academyContactOriginSchema>;
+export const academyLeadSourceSchema=z.enum(["unknown","facebook","referral","website","other"]);
+export const academyConversationChannelSchema=z.enum(["unknown","whatsapp","messenger","phone","email","in_person","other"]);
+const reviewedPhone=z.string().refine(value=>normalizePhone(value)===value&&(!value.startsWith("+1")||/^\+1\d{10}$/.test(value)));
+// Owner labels describe a conversation. They do not establish a platform identity, permission or provider binding.
+export const academyTrackingShape={
+ leadSource:academyLeadSourceSchema.optional(),conversationChannel:academyConversationChannelSchema.optional(),
+ confirmedPhone:reviewedPhone.optional(),
+};
 export const academyAdminFieldsSchema=z.object({stage:z.string().trim().min(1).max(120),
  nextAction:z.string().max(500).nullable(),followUpDate:z.string().refine(dateOnly).nullable(),
- notes:z.string().max(5000)}).strict();
+ notes:z.string().max(5000),...academyTrackingShape}).strict();
 export const academyManualFieldsSchema=z.object({name:z.string().trim().min(1).max(120),
- language:z.enum(["en","he"]),relationship:z.enum(["guardian","adult_partner"]),...endpoint,...academyAdminFieldsSchema.shape}).strict()
+ language:z.enum(["en","he"]),relationship:z.enum(["guardian","adult_partner"]),phone:reviewedPhone.nullable(),email,...academyAdminFieldsSchema.shape}).strict()
+ .refine(value=>value.confirmedPhone===undefined)
  .refine(value=>hasEndpoint(value)||value.notes.trim().length>0,
   {message:"A manual contact without a confirmed phone or email needs a conversation note",path:["notes"]});
 

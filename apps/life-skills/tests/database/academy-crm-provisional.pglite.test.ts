@@ -41,7 +41,24 @@ it("saves, replays and reloads one provisional adult with private notes and no e
   const {contact,history}=await crm().read(actor,saved.personId,1);
   expect(contact).toMatchObject({origin:{kind:"manual",phone:null,email:null},fields:{notes:input.fields.notes,nextAction:"Verify phone"}});
   expect(history.map(entry=>entry.kind)).toEqual(["created"]);
+  expect(contact.fields.leadSource).toBeUndefined();
+  expect(contact.fields.conversationChannel).toBeUndefined();
   await expect(crm().execute(actor,{...input,operationId:randomUUID(),fields:{...input.fields,name:"  SYNTHETIC   adult  ",phone:"+13055550175"}})).rejects.toThrow("CONFLICT");
+  const update={action:"update" as const,personId:saved.personId,expectedVersion:saved.version,operationId:randomUUID(),expectedEpoch:1,
+   fields:{...contact.fields,conversationChannel:"whatsapp" as const,confirmedPhone:"+13055550175"}};
+  const changed=await crm().execute(actor,update);
+  const updated=await crm().read(actor,saved.personId,1);
+  expect(updated.contact).toMatchObject({origin:{phone:null,email:null},fields:{confirmedPhone:"+13055550175",conversationChannel:"whatsapp"},outboundEligible:false});
+  expect(updated.contact.fields.leadSource).toBeUndefined();
+  expect(updated.history.find(entry=>entry.kind==="updated")?.fields).toMatchObject(update.fields);
+  const oldClientEdit={...update,operationId:randomUUID(),expectedVersion:changed.version,fields:{...contact.fields,stage:"Follow up"}};
+  const revised=await crm().execute(actor,oldClientEdit);
+  expect((await crm().read(actor,saved.personId,1)).contact.fields).toMatchObject({confirmedPhone:"+13055550175",conversationChannel:"whatsapp",stage:"Follow up"});
+  const tagged=await crm().execute(actor,{...oldClientEdit,operationId:randomUUID(),expectedVersion:revised.version,fields:{...oldClientEdit.fields,leadSource:"facebook"}});
+  expect((await crm().list(actor,{search:"facebook"}))).toMatchObject({total:1,items:[{fields:{leadSource:"facebook",conversationChannel:"whatsapp"}}]});
+  await crm().execute(actor,{...oldClientEdit,operationId:randomUUID(),expectedVersion:tagged.version,fields:{...oldClientEdit.fields,leadSource:"unknown"}});
+  expect((await crm().list(actor,{search:"facebook"}))).toMatchObject({total:0});
+  await expect(crm().execute(actor,{...input,operationId:randomUUID(),fields:{...input.fields,name:"Different adult",phone:"+13055550175"}})).rejects.toThrow("CONFLICT");
   expect((await db.query("SELECT count(*)::int AS n FROM ls_contact_ops.academy_crm_contacts")).rows).toEqual([{n:1}]);
   expect((await db.query("SELECT count(*)::int AS n FROM ls_contact_ops.outbound_projections")).rows).toEqual([{n:0}]);
  } finally {await db.close();}
