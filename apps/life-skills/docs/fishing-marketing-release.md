@@ -1,5 +1,7 @@
 # Fishing marketing readback release
 
+For local personal Facebook Group operation, use the [existing paced poster entry point](fishing-facebook-local.md); its default is a read-only status check. A live due run is explicit and stays on the bound Windows desktop. The hosted snapshot below does not dispatch that worker.
+
 The local Windows scheduler prepares assisted Facebook Group posts and keeps its own delivery history. The hosted owner view receives only a bounded, encrypted Fishing snapshot; it creates no contacts, tasks, posts, or messages. A missing or old snapshot is not proof that the host is running. Older delivery records retain their recorded identity without inventing an account ID. The view verifies the already registered Academy image's exact SHA-256 and 1254×1254 dimensions before displaying it.
 
 1. Complete review and required CI for this candidate after the accepted acknowledgment release and migration 0146 are verified. Keep `LS_FISHING_MARKETING_ENABLED` and `LS_FISHING_MARKETING_SYNC_ENABLED` off; do not reconnect the retired Israeli feed.
