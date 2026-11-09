@@ -21,6 +21,8 @@ This dispatches only the reviewed `florida_browser.py run-due`. The command may 
 
 The workflow and maintenance instructions remain in `C:\Users\User\tools\fb-group-auto-poster\implementation\FLORIDA-OUTREACH.md`. A status check or this PR does not grant permission for a live run. Existing Codex scheduling remains with its current owner; this adapter creates or changes no automation.
 
+The currently reviewed worker successor applies the owner's per-group Florida calendar cadence after explicit visibility, completeness, permission and moderation review. Its status summary distinguishes rules admission from current holds, cooldowns and due groups. The worker retains the five-start daily cap, 5-15 minute spacing and designated-day priority. A large admitted pool can exceed that capacity; alternate-day eligibility does not guarantee alternate-day delivery. Consult the existing worker procedure and private live rule records for the actual schedule and qualifications. The app stores only the reviewed code/interpreter pins.
+
 ## Installation binding
 
 The reviewed installation is exactly `C:\Users\User\tools\fb-group-auto-poster`, resolved from both the current Windows home and OS user home. It must remain the original checkout at the commit pinned by `COMMIT` in `scripts/fishing-facebook-local.mjs`, with no unreviewed Git changes. The launcher verifies exact SHA-256 bytes for its five consumed Python modules, virtual-environment binding and interpreter files. Redirected paths, symlink/junction ancestors, alternate worktrees, other OS/home paths, hosted/CI/production/test environments and all extra arguments fail closed. There is no path, profile, media, group, force or headless override.
