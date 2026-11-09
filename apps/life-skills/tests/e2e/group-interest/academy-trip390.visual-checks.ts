@@ -62,14 +62,14 @@ export function contactRestorationFindings(s:ContactRestorationSnapshot):string[
  return findings;
 }
 export async function inspectContactRestoration(page:Page,expected:ElementHandle<HTMLElement|SVGElement>){
- const snapshot=await page.evaluate(expected=>{
+ const snapshot=await page.evaluate(({expected,reading})=>{
   const a=document.querySelector<HTMLAnchorElement>('a[class*="whatsapp"]')!,b=a.getBoundingClientRect(),s=getComputedStyle(a);
   let painted=true;for(let n:HTMLElement|null=a;n;n=n.parentElement){const c=getComputedStyle(n);if(c.display==='none'||c.visibility==='hidden'||c.opacity==='0'||n.hidden)painted=false;}
   const x=b.left+b.width/2,y=b.top+b.height/2,inset=6;
   // Cardinal points lie inside the circular dock; rectangle corners do not.
   const points=[[x,y],[b.left+inset,y],[b.right-inset,y],[x,b.top+inset],[x,b.bottom-inset]];
-  return {box:{left:b.left,right:b.right,top:b.top,bottom:b.bottom,width:b.width,height:b.height},viewport:{width:innerWidth,height:innerHeight},headerBottom:document.querySelector('header')!.getBoundingClientRect().bottom,heroBottom:document.querySelector('section[aria-labelledby="trip390-title"]')!.getBoundingClientRect().bottom,scrollY,lift:parseFloat(s.getPropertyValue('--contact-lift'))||0,painted,ready:a.getAttribute('data-contact-ready'),ariaHidden:a.getAttribute('aria-hidden'),tabIndex:a.tabIndex,hidden:a.hidden,position:s.position,sameNode:a===expected,destinationValid:a.href.startsWith('https://wa.me/13054916674?'),pointsClear:points.every(([px,py])=>{const hit=document.elementFromPoint(px!,py!);return hit!==null&&a.contains(hit);})};
- },expected);
+  return {box:{left:b.left,right:b.right,top:b.top,bottom:b.bottom,width:b.width,height:b.height},viewport:{width:innerWidth,height:innerHeight},headerBottom:document.querySelector('header')!.getBoundingClientRect().bottom,heroBottom:document.querySelector('section[aria-labelledby="trip390-title"]')!.getBoundingClientRect().bottom,scrollY:reading.scrollTop,lift:parseFloat(s.getPropertyValue('--contact-lift'))||0,painted,ready:a.getAttribute('data-contact-ready'),ariaHidden:a.getAttribute('aria-hidden'),tabIndex:a.tabIndex,hidden:a.hidden,position:s.position,sameNode:a===expected,destinationValid:a.href.startsWith('https://wa.me/13054916674?'),pointsClear:points.every(([px,py])=>{const hit=document.elementFromPoint(px!,py!);return hit!==null&&a.contains(hit);})};
+ },{expected,reading:await readingViewport(page)});
  return {...snapshot,findings:contactRestorationFindings(snapshot)};
 }
 
@@ -97,14 +97,15 @@ export function matchesCurrentHeroContent(observed:HeroContentSnapshot,copy:type
 
 /** Scoped measurable checks, not a visual score or substitute for image review. */
 export async function inspectLanding(page:Page,options:{declaredShortCase?:string;declaredEnlargedText?:boolean}={}){
- const observed=await page.evaluate(({expectedFaqIds,declaredShortCase,declaredEnlargedText,registeredOriginals})=>{
+ const reading=await readingViewport(page);
+ const observed=await page.evaluate(({expectedFaqIds,declaredShortCase,declaredEnlargedText,registeredOriginals,reading})=>{
   const findings:string[]=[];
   const box=(node:Element)=>node.getBoundingClientRect();
   const heading=document.querySelector('#trip390-title')!;
   const hero=heading.closest('section')!,photo=hero.querySelector('img')!;
   const hb=box(hero),ib=box(photo),header=box(document.querySelector('header')!);
   const width=document.documentElement.clientWidth;
-  if(document.documentElement.scrollWidth>innerWidth+1)findings.push('page-horizontal-overflow');
+  if(document.documentElement.scrollWidth>innerWidth+1||reading.scrollWidth>width+1)findings.push('page-horizontal-overflow');
   if(Math.abs(hb.left)>1||Math.abs(hb.right-width)>1)findings.push('hero-boxed');
   if(!photo.complete||!photo.naturalWidth)findings.push('hero-image-unloaded');
   const headingBlocks=hero.querySelectorAll('[data-hero-heading]'),actions=hero.querySelectorAll('[data-hero-action]');
@@ -118,13 +119,15 @@ export async function inspectLanding(page:Page,options:{declaredShortCase?:strin
    const walker=document.createTreeWalker(span,NodeFilter.SHOW_TEXT);
    for(let text=walker.nextNode();text;text=walker.nextNode())for(const match of (text.textContent??'').matchAll(/\S+/g)){
     const range=document.createRange();range.setStart(text,match.index!);range.setEnd(text,match.index!+match[0].length);
-    if([...range.getClientRects()].filter(r=>r.width>0&&r.height>0).length>1)findings.push('hero-word-fragment');
+     const boxes=[...range.getClientRects()].filter(r=>r.width>0&&r.height>0);
+     if(boxes.length>1)findings.push('hero-word-fragment');
+     if(boxes.some(r=>r.left< -1||r.right>width+1))findings.push('hero-word-outside-reading-width');
    }
   }
-  if(innerHeight>600&&hero.getAttribute('data-reflow')!=='true'&&Math.abs(hb.bottom-innerHeight)>3)findings.push('hero-first-screen-height');
+  if(innerHeight>600&&hero.getAttribute('data-reflow')!=='true'&&Math.abs(hb.bottom-reading.bottom)>3)findings.push('hero-first-screen-height');
   if(getComputedStyle(document.querySelector('header')!).position!=='sticky')findings.push('header-not-sticky');
   const primary=[...document.querySelectorAll<HTMLAnchorElement>('[data-hero-action] a,header a[href="#interest"]')];
-  const initialPrimaryVisible=primary.some(node=>{const b=box(node),s=getComputedStyle(node);return s.display!=='none'&&s.visibility!=='hidden'&&b.width>=48&&b.height>=48&&b.top>=0&&b.bottom<=innerHeight&&b.left>=0&&b.right<=innerWidth;});
+  const initialPrimaryVisible=primary.some(node=>{const b=box(node),s=getComputedStyle(node);return s.display!=='none'&&s.visibility!=='hidden'&&b.width>=48&&b.height>=48&&b.top>=0&&b.bottom<=reading.bottom&&b.left>=0&&b.right<=innerWidth;});
   const rect=(b:DOMRect)=>({left:b.left,right:b.right,top:b.top,bottom:b.bottom,width:b.width,height:b.height});
   const action=hero.querySelector<HTMLElement>('[data-hero-action]')!,cta=action.querySelector<HTMLAnchorElement>('a')!;
   let actionPainted=true;for(let n:HTMLElement|null=cta;n;n=n.parentElement){const s=getComputedStyle(n);if(s.display==='none'||s.visibility==='hidden'||s.opacity==='0'||n.hidden||n.getAttribute('aria-hidden')==='true')actionPainted=false;}
@@ -168,18 +171,19 @@ export async function inspectLanding(page:Page,options:{declaredShortCase?:strin
    // Bounded local collision avoidance: three controls, four for protected photo.
    const inlineEndDistance=style.direction==='rtl'?b.left:width-b.right;
    if(style.position!=='fixed'||b.width<48||b.height<48||b.left<0||b.right>width||inlineEndDistance>40||lift<0||lift>224||innerHeight-b.bottom>242||b.bottom>innerHeight)findings.push('whatsapp-placement');
-   if(style.visibility==='visible'&&style.display!=='none'&&b.left<subject.right&&b.right>subject.left&&b.top<subject.bottom&&b.bottom>subject.top)findings.push('whatsapp-over-subject');
+   if(width<=999&&(!reading.separate||reading.bottom>b.top))findings.push('mobile-contact-covers-reading-viewport');
+   if(style.visibility==='visible'&&style.display!=='none'&&b.left<subject.right&&b.right>subject.left&&b.top<Math.min(subject.bottom,reading.bottom)&&b.bottom>subject.top)findings.push('whatsapp-over-subject');
    if(!wa.href.startsWith('https://wa.me/13054916674?'))findings.push('whatsapp-destination');
    for(const control of document.querySelectorAll('a,button,summary')){
     if(control===wa||control.closest('dialog')||control.getClientRects().length===0)continue;
     const c=box(control);
-    if(style.visibility==='visible'&&style.display!=='none'&&c.left<b.right&&c.right>b.left&&c.top<b.bottom&&c.bottom>b.top)findings.push('whatsapp-obscures-control');
+    if(style.visibility==='visible'&&style.display!=='none'&&c.left<b.right&&c.right>b.left&&c.top<b.bottom&&Math.min(c.bottom,reading.bottom)>b.top)findings.push('whatsapp-obscures-control');
    }
   }
   // Public layout evidence only: no form values, session data or API payloads.
   const heroStyle=getComputedStyle(hero),photoStyle=getComputedStyle(photo);
   const layoutDiagnostics={
-   scroll:{x:scrollX,y:scrollY},clientViewport:{width:document.documentElement.clientWidth,height:document.documentElement.clientHeight},
+   scroll:{x:scrollX,y:reading.scrollTop},clientViewport:{width:document.documentElement.clientWidth,height:document.documentElement.clientHeight},
    visualViewport:visualViewport?{width:visualViewport.width,height:visualViewport.height,offsetTop:visualViewport.offsetTop,offsetLeft:visualViewport.offsetLeft,scale:visualViewport.scale}:null,
    header:rect(header),picture:rect(box(photo.parentElement!)),
    flags:{reflow:hero.getAttribute('data-reflow'),desktopBands:hero.getAttribute('data-desktop-bands'),photoFit:hero.getAttribute('data-photo-fit')},
@@ -189,7 +193,7 @@ export async function inspectLanding(page:Page,options:{declaredShortCase?:strin
    heading:rect(box(heading)),fonts:{status:document.fonts.status,heading:getComputedStyle(heading).font,page:getComputedStyle(hero.closest('div[lang]')!).font},
   };
   return {findings,heroContent,primaryAction,contactSnapshot,layoutDiagnostics,viewport:{width:innerWidth,height:innerHeight},headerHeight:header.height,hero:{left:hb.left,width:hb.width,height:hb.height,bottom:hb.bottom},image:{src:photo.currentSrc,fit,subject},faqCount:faq.querySelectorAll('[data-trip390-faq]').length};
- },{expectedFaqIds:trip390Copy.en.faqs.map(item=>item.id).filter(id=>id!=='cancellation'&&id!=='conduct'),declaredShortCase:options.declaredShortCase??null,declaredEnlargedText:options.declaredEnlargedText===true,registeredOriginals});
+ },{expectedFaqIds:trip390Copy.en.faqs.map(item=>item.id).filter(id=>id!=='cancellation'&&id!=='conduct'),declaredShortCase:options.declaredShortCase??null,declaredEnlargedText:options.declaredEnlargedText===true,registeredOriginals,reading});
  const actionMode=primaryActionMode(observed.primaryAction);
  let contactMode:'visible'|'blocked'|'invalid'='invalid';
  if(observed.contactSnapshot){
@@ -222,24 +226,41 @@ export async function inspectDialog(page:Page){
  });
 }
 
+/** A sticky overlay cannot pass for a clipped reading viewport. */
+async function readingViewport(page:Page){
+ return page.evaluate(()=>{
+  const pane=document.querySelector<HTMLElement>('[data-academy-reading-pane]');
+  if(pane&&pane.clientHeight&&getComputedStyle(pane).overflowY==='auto')
+   return {bottom:pane.getBoundingClientRect().bottom,scrollTop:pane.scrollTop,scrollWidth:pane.scrollWidth,separate:true};
+  return {bottom:innerHeight,scrollTop:window.scrollY,scrollWidth:document.documentElement.scrollWidth,separate:false};
+ });
+}
+export async function scrollLandingToTop(page:Page){
+ await page.evaluate(()=>{
+  const pane=document.querySelector<HTMLElement>('[data-academy-reading-pane]');
+  (pane?.clientHeight?pane:document.documentElement).scrollTo({top:0,behavior:'instant'});
+ });
+}
+
 /** A floating action may overlap empty row padding, never the question/glyph. */
 export async function inspectFaqContact(page:Page){
- return page.evaluate(()=>{
+ return page.evaluate(reading=>{
   const findings:string[]=[],wa=document.querySelector<HTMLAnchorElement>('a[class*="whatsapp"]')!;
   if(getComputedStyle(wa).visibility!=='visible'||wa.getAttribute('aria-hidden')==='true')findings.push('faq-contact-hidden');
   const b=wa.getBoundingClientRect();
-  const wrongCorner=getComputedStyle(wa).direction==='rtl'?b.right>100:b.left<innerWidth-100;
+  const icon=wa.querySelector('svg')!.getBoundingClientRect();
+  const wrongCorner=getComputedStyle(wa).direction==='rtl'?icon.right>100:icon.left<innerWidth-100;
   if(b.width<48||b.height<48||b.left<0||b.right>innerWidth||wrongCorner||b.top<0||b.bottom>innerHeight)findings.push('faq-contact-placement');
   for(const summary of document.querySelectorAll('[data-trip390-faq] summary')){
    const walker=document.createTreeWalker(summary,NodeFilter.SHOW_TEXT);
    for(let text=walker.nextNode();text;text=walker.nextNode()){
     if(!text.textContent?.trim())continue;
     const range=document.createRange();range.selectNodeContents(text);
-    for(const r of range.getClientRects())if(r.left<b.right&&r.right>b.left&&r.top<b.bottom&&r.bottom>b.top)findings.push('faq-contact-over-text-or-glyph');
+    for(const r of range.getClientRects())if(r.left<b.right&&r.right>b.left&&r.top<b.bottom&&Math.min(r.bottom,reading.bottom)>b.top)findings.push('faq-contact-over-text-or-glyph');
    }
   }
   return {findings,lang:document.querySelector('[class*="trip390"][lang]')?.getAttribute('lang'),position:{x:b.x,y:b.y,width:b.width,height:b.height}};
- });
+ },await readingViewport(page));
 }
 
 /** Approved discretionary/hyphen breaks are readable; orphan letters are not.
@@ -271,7 +292,7 @@ export async function inspectBodyHeadings(page:Page){
 
 /** Actual text ranges, not paragraph boxes, distinguish whitespace from copy. */
 export async function inspectBodyContact(page:Page){
- return page.evaluate(()=>{
+ return page.evaluate(reading=>{
   const wa=document.querySelector<HTMLAnchorElement>('a[class*="whatsapp"]')!,b=wa.getBoundingClientRect(),findings:string[]=[];
   if(getComputedStyle(wa).visibility!=='visible'||getComputedStyle(wa).display==='none')findings.push('body-contact-hidden');
   for(const node of document.querySelectorAll('main p,main li,main h2,main h3,main summary')){
@@ -283,13 +304,13 @@ export async function inspectBodyContact(page:Page){
    for(let text=walker.nextNode();text;text=walker.nextNode()){
     if(!text.textContent?.trim())continue;
     const range=document.createRange();range.selectNodeContents(text);
-    for(const r of range.getClientRects())if(r.width>0&&r.height>0&&r.left<b.right&&r.right>b.left&&r.top<b.bottom&&r.bottom>b.top)findings.push('body-contact-over-text');
+    for(const r of range.getClientRects())if(r.width>0&&r.height>0&&r.left<b.right&&r.right>b.left&&r.top<b.bottom&&Math.min(r.bottom,reading.bottom)>b.top)findings.push('body-contact-over-text');
    }
   }
   for(const icon of document.querySelectorAll('[data-jlfa-values] article svg')){
    const r=icon.getBoundingClientRect();
-   if(r.width>0&&r.height>0&&r.left<b.right&&r.right>b.left&&r.top<b.bottom&&r.bottom>b.top)findings.push('body-contact-over-value-icon');
+   if(r.width>0&&r.height>0&&r.left<b.right&&r.right>b.left&&r.top<b.bottom&&Math.min(r.bottom,reading.bottom)>b.top)findings.push('body-contact-over-value-icon');
   }
   return {findings,position:{left:b.left,top:b.top,width:b.width,height:b.height}};
- });
+ },await readingViewport(page));
 }

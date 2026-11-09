@@ -32,7 +32,7 @@
 .page .mobileNav .action{display:flex;margin-block:12px 4px;inline-size:100%;padding:12px 20px}
 
 /* First-screen composition. Short/enlarged states use natural-image reflow. */
-.hero{position:relative;inline-size:100%;block-size:calc(100svh - var(--header-height));color:white;background:#092668;isolation:isolate}
+.hero{position:relative;inline-size:100%;block-size:calc(100svh - var(--header-height) - var(--contact-row,0px));color:white;background:#092668;isolation:isolate}
 .hero picture,.hero img{display:block;inline-size:100%;block-size:100%}
 .hero img{object-fit:cover;object-position:50% 50%}
 .hero[data-photo-fit=width] img{block-size:auto}
@@ -228,12 +228,23 @@
 .whatsapp svg{inline-size:34px;block-size:34px}
 .page .whatsapp:not([data-contact-ready=true]){visibility:hidden}
 .page .whatsapp[hidden]{display:none}
+.contactBar,.readingPane{display:contents}
+.contactLabel,.page .contactBar[hidden]{display:none}
+@media(max-width:999px){
+ .page{--contact-row:calc(58px + env(safe-area-inset-bottom));display:grid;grid-template-rows:minmax(0,1fr) var(--contact-row);block-size:100dvh}
+ .readingPane{display:block;min-block-size:0;overflow-y:auto;scroll-padding-block-end:8px}
+ .contactBar{display:block;z-index:12;background:white;border-block-start:1px solid var(--line)}
+ .page .mobileNav{max-block-size:calc(100dvh - var(--header-height) - var(--contact-row))}
+ .contactBar .whatsapp{display:flex;align-items:center;gap:8px;inline-size:auto;block-size:48px;min-inline-size:48px;padding:0 12px;bottom:calc(5px + env(safe-area-inset-bottom));border:0;border-radius:24px;box-shadow:none;text-decoration:none}
+ .contactBar .whatsapp svg{inline-size:26px;block-size:26px;flex:none}
+ .contactLabel{display:inline;font-size:1em;line-height:1.2;font-weight:700}
+}
 @media(max-width:1099px){.headerInner{gap:12px}.desktopNav{gap:14px}.desktopNav a{font-size:14px}.page .headerAction{display:none}.languages{margin-inline-start:auto}.packageInner{gap:36px}.faqLayout{gap:32px}}
 @media(max-width:999px){.desktopNav{display:none}.menuButton{display:flex}.headerInner{max-inline-size:none}.skills{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:767px){
  .page{font-size:17px;--header-height:74px}
  .headerInner{min-block-size:74px;padding:7px 20px;gap:10px}.logo img{inline-size:58px;block-size:58px}.languages button{font-size:14px;padding-inline:7px}
- .heroText{inset-inline:16px}.page .heroText h1{font-size:clamp(28px,8.1vw,42px);line-height:1.12}.heroAction{inset-block-end:calc(90px + env(safe-area-inset-bottom));inset-inline:20px}
+ .heroText{inset-inline:16px}.page .heroText h1{font-size:clamp(28px,8.1vw,42px);line-height:1.12}.heroAction{inset-block-end:32px;inset-inline:20px}
  .page .heroEyebrow{font-size:18px}.heroEyebrow>span{inline-size:28px}.page .heroPillars{font-size:21px}.valuesGrid{grid-template-columns:1fr}
  .section,.packageInner,.footer{padding-inline:20px}.section{padding-block:48px}
  .page .sectionHeading h2,.page .packageIntro h2,.page .founder h2,.page .finalInterest h2{font-size:32px}
@@ -256,6 +267,13 @@
 }
 @media(max-width:639px){.skills,.introInclusions{grid-template-columns:1fr}}
 @media(max-width:359px){.headerInner,.section,.packageInner,.footer{padding-inline:16px}.headerInner{gap:6px}.logo img{inline-size:50px;block-size:50px}.dialogHeader,.dialogBody{padding-inline:16px}.heroAction{inset-inline:16px}.page .heroText h1{font-size:28px}.heroText{inset-inline:12px}}
+@media(max-width:359px){
+ /* Keep long English and Hebrew words whole at enlarged type on narrow phones. */
+ .page[data-text-reflow=true] .hero[data-reflow=true] .heroText{padding-inline:0}
+ .page[data-text-reflow=true] .heroText h1{letter-spacing:-.03em}
+ .page[data-text-reflow=true] .introduction .sectionHeading h2,.page[data-text-reflow=true] .valuesGrid h3{margin-inline:-12px;letter-spacing:-.035em}
+ .page[data-text-reflow=true] .headerInner{padding-inline:6px;gap:4px}
+}
 /* Short mobile viewports scroll rather than placing an action over people. */
 @media(max-width:767px) and (max-height:600px){
  .hero{display:flex;flex-direction:column;block-size:auto}
