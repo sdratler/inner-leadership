@@ -4,8 +4,11 @@ import {execFileSync} from 'node:child_process';
 import {expect,it} from 'vitest';
 import {bnaOptionalCalendarSchemaPlan,BNA_OPTIONAL_CALENDAR_MIGRATION,readBnaOptionalCalendarSchemaStage} from '../../src/db/bna-optional-calendar-schema-release.ts';
 const manifest=JSON.parse(readFileSync('migrations/manifest.json','utf8')) as {name:string;sha256:string}[];
-const files=manifest.map(m=>({name:m.name,checksum:m.sha256,sql:readFileSync('migrations/'+m.name,'utf8')}));
+// Historical positive proofs keep the exact source inventory used for that release.
+const files=manifest.slice(0,72).map(m=>({name:m.name,checksum:m.sha256,sql:readFileSync('migrations/'+m.name,'utf8')}));
 it('freezes the full accepted68 prefix and admits only exact0149 after0148',()=>{
+ expect(manifest).toHaveLength(73);
+ expect(createHash('sha256').update(JSON.stringify(manifest.slice(0,72))).digest('hex')).toBe('e09c4a9d43608609aaf83ca391168b60d4d7604a816c9744e50d73371134d3af');
  expect(files).toHaveLength(72);expect(manifest[68]).toEqual({name:BNA_OPTIONAL_CALENDAR_MIGRATION.name,sha256:BNA_OPTIONAL_CALENDAR_MIGRATION.sha256});
  expect(createHash('sha256').update(readFileSync('migrations/'+BNA_OPTIONAL_CALENDAR_MIGRATION.name)).digest('hex')).toBe(BNA_OPTIONAL_CALENDAR_MIGRATION.sha256);
  const before=files.slice(0,68);expect(bnaOptionalCalendarSchemaPlan(files,before,0).pending.map(m=>m.name)).toEqual([BNA_OPTIONAL_CALENDAR_MIGRATION.name]);

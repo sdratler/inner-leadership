@@ -25,7 +25,7 @@ it('native reply proposal is atomic/additive; concurrent receipts/reviews preser
  const db=await historicalPracticeDatabase('0118_ls_contact_delta_history.sql'),client=await db.pool.connect(),pool=new pg.Pool({connectionString:db.url,ssl:false,max:6});
  const query=(sql:string,values?:readonly unknown[])=>client.query(sql,values?[...values]:undefined);
  try{
-  expect(db.inventory).toHaveLength(72);const index=db.inventory.findIndex(m=>m.name==='0150_ls_bna_mailbox_replies.sql');expect(index).toBe(69);
+  expect(db.inventory).toHaveLength(73);const index=db.inventory.findIndex(m=>m.name==='0150_ls_bna_mailbox_replies.sql');expect(index).toBe(69);
   const beforeFiles=db.inventory.slice(0,index),proposal=db.inventory[index]!;await migrate({query},beforeFiles,false);
   const baseline=(await query('SELECT name,checksum FROM ls_control.migrations ORDER BY name')).rows;
   expect(await readBnaMailboxRepliesSchemaStage({query})).toBe(0);
@@ -58,7 +58,7 @@ it('native reply proposal is atomic/additive; concurrent receipts/reviews preser
   await expect(migrate({query},[...beforeFiles,{...proposal,sql:proposal.sql+'\nSELECT 1/0;'}],false)).rejects.toThrow('MIGRATION_FAILED');
   expect((await query("SELECT to_regclass('ls_service_interest.bna_mailbox_reply_receipts') AS relation")).rows[0].relation).toBeNull();
   expect((await query('SELECT name,checksum FROM ls_control.migrations ORDER BY name')).rows).toEqual(baseline);
-  expect(await migrate({query},db.inventory,false)).toEqual({applied:3,pending:0});expect(await migrate({query},db.inventory,false)).toEqual({applied:0,pending:0});
+  expect(await migrate({query},db.inventory,false)).toEqual({applied:4,pending:0});expect(await migrate({query},db.inventory,false)).toEqual({applied:0,pending:0});
   expect(await bnaMailboxRepliesCatalogFingerprint({query})).toBe(BNA_MAILBOX_REPLIES_CATALOG_SHA256);expect(await readBnaMailboxRepliesSchemaStage({query})).toBe(1);
   expect(bnaMailboxRepliesSchemaPlan(db.inventory,baseline,0).pending.map(p=>p.name)).toEqual([proposal.name]);
   for(const change of [

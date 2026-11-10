@@ -51,10 +51,10 @@ it("upgrades only0147 after0146 and preserves a queued acknowledgment through fa
   expect(await mail.readForInquiry(f.owner.actor,saved.reference)).toEqual(before);
   expect(await migrate({query},target,false)).toEqual({applied:1,pending:0});expect(await readFishingMarketingSchemaStage({query})).toBe(1);
   expect(await mail.readForInquiry(f.owner.actor,saved.reference)).toEqual(before);expect(await migrate({query},target,true)).toEqual({applied:0,pending:0});
-  expect(history.inventory.slice(index+1).map(file=>file.name)).toEqual(['0148_ls_bna_email_preferences.sql','0149_ls_bna_optional_calendar.sql','0150_ls_bna_mailbox_replies.sql','0151_ls_academy_inquiry_email_verification.sql','0152_ls_inquiry_email_control_outbox.sql']);
+  expect(history.inventory.slice(index+1).map(file=>file.name)).toEqual(['0148_ls_bna_email_preferences.sql','0149_ls_bna_optional_calendar.sql','0150_ls_bna_mailbox_replies.sql','0151_ls_academy_inquiry_email_verification.sql','0152_ls_inquiry_email_control_outbox.sql','0153_ls_fishing_group_preparations.sql']);
   expect(await migrate({query},history.inventory.slice(0,index+2),false)).toEqual({applied:1,pending:0});
   expect(await mail.readForInquiry(f.owner.actor,saved.reference)).toEqual(before);
-  expect(await migrate({query},history.inventory,false)).toEqual({applied:4,pending:0});
+  expect(await migrate({query},history.inventory,false)).toEqual({applied:5,pending:0});
   expect(await mail.readForInquiry(f.owner.actor,saved.reference)).toEqual(before);
   expect(await migrate({query},history.inventory,true)).toEqual({applied:0,pending:0});
   expect((await query('SELECT count(*)::int AS n FROM ls_service_interest.fishing_marketing_snapshot')).rows).toEqual([{n:0}]);
