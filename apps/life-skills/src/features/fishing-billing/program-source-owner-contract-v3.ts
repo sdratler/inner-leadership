@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { PROGRAM_SOURCE_V3, programSourceRecordV3Schema } from './program-source-contract-v3.ts';
+import { PROGRAM_SOURCE_V3, programSourceCommandV3Schema, programSourceRecordV3Schema } from './program-source-contract-v3.ts';
 
 export const PROGRAM_SOURCE_OWNER_PATH = '/api/private/fishing-program-sources';
 const stored = z.object({ record: programSourceRecordV3Schema, digest: z.string().regex(/^[a-f0-9]{64}$/) }).strict();
@@ -20,3 +20,13 @@ export const programSourceRecordedDataV3Schema = stored.extend({
 }).strict();
 export type ProgramSourceGroupDataV3 = z.infer<typeof programSourceGroupDataV3Schema>;
 export type ProgramSourceRecordedDataV3 = z.infer<typeof programSourceRecordedDataV3Schema>;
+const rejectedCode = z.enum(['CONFLICT', 'FORBIDDEN', 'NOT_FOUND', 'UNAUTHENTICATED', 'INVALID_REQUEST']);
+const correlation = { version: z.literal(PROGRAM_SOURCE_V3), workspaceId: z.uuid(), actorId: z.uuid(), command: programSourceCommandV3Schema };
+/** This validates a trusted native return value, never a browser assertion of rollback. */
+export const programSourceNativeOutcomeV3Schema = z.discriminatedUnion('state', [
+  z.object({ ...correlation, state: z.literal('recorded'), receipt: stored.extend({ replayed: z.boolean() }).strict() }).strict(),
+  z.object({ ...correlation, state: z.literal('rejected'), code: rejectedCode }).strict(),
+]);
+export const programSourceRejectedDataV3Schema = z.object({ ...correlation, kind: z.literal('rejected_source'), code: rejectedCode }).strict();
+export const programSourceSaveDataV3Schema = z.discriminatedUnion('kind', [programSourceRecordedDataV3Schema, programSourceRejectedDataV3Schema]);
+export type ProgramSourceSaveDataV3 = z.infer<typeof programSourceSaveDataV3Schema>;

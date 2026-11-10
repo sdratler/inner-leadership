@@ -10,12 +10,12 @@ import type { IdentitySessions } from '../features/identity/session-adapter.ts';
 import { canonicalForwardedRequest } from '../features/integration/canonical-forwarded-request.ts';
 import { billingId } from '../features/fishing-billing/contracts.ts';
 import { PROGRAM_SOURCE_V3, programSourceCommandV3Schema } from '../features/fishing-billing/program-source-contract-v3.ts';
-import { PROGRAM_SOURCE_OWNER_PATH, programSourceGroupDataV3Schema, programSourceRecordedDataV3Schema } from '../features/fishing-billing/program-source-owner-contract-v3.ts';
+import { PROGRAM_SOURCE_OWNER_PATH, programSourceGroupDataV3Schema, programSourceRecordedDataV3Schema, programSourceNativeOutcomeV3Schema, programSourceRejectedDataV3Schema, type ProgramSourceSaveDataV3 } from '../features/fishing-billing/program-source-owner-contract-v3.ts';
 import type { FishingProgramSourceNativeV3 } from '../features/fishing-billing/program-source-native-v3.ts';
 
 export type FishingProgramSourceOwnerHttpDependencies = {
   origin: string; sessions: Pick<IdentitySessions, 'actor' | 'csrf'>; limits: RateLimitStore; rateLimitKey: string;
-  store: Pick<FishingProgramSourceNativeV3, 'readGroup' | 'record'>;
+  store: Pick<FishingProgramSourceNativeV3, 'readGroup' | 'record'> & Partial<Pick<FishingProgramSourceNativeV3, 'recordOutcome'>>;
 };
 
 /** Scheduling facts only; never a group activation, paid seat, readiness or send. */
@@ -46,8 +46,17 @@ export async function fishingProgramSourceOwnerHttp(request: Request, load: () =
       await enforceRateLimit(d.limits, rateKey, 20, 60_000);
       const command = await readJson(request, programSourceCommandV3Schema);
       invoked = true;
-      const data = programSourceRecordedDataV3Schema.parse({ ...await d.store.record(actor, command), version: PROGRAM_SOURCE_V3, kind: 'recorded_source' });
-      if (data.record.workspaceId !== actor.workspaceId || data.record.recordedBy !== actor.id || JSON.stringify(data.record.command) !== JSON.stringify(command)) throw new AppError('UNAVAILABLE');
+      let data: ProgramSourceSaveDataV3;
+      if (d.store.recordOutcome) {
+        const outcome = programSourceNativeOutcomeV3Schema.parse(await d.store.recordOutcome(actor, command));
+        if (outcome.workspaceId !== actor.workspaceId || outcome.actorId !== actor.id || JSON.stringify(outcome.command) !== JSON.stringify(command)) throw new AppError('UNAVAILABLE');
+        if (outcome.state === 'rejected') {
+          // Explicit known rollback from the native provenance boundary only.
+          // Keep it distinct from ordinary HTTP errors/uncertain transport.
+          data = programSourceRejectedDataV3Schema.parse({ version: outcome.version, kind: 'rejected_source', workspaceId: outcome.workspaceId, actorId: outcome.actorId, command: outcome.command, code: outcome.code });
+        } else data = programSourceRecordedDataV3Schema.parse({ ...outcome.receipt, version: PROGRAM_SOURCE_V3, kind: 'recorded_source' });
+      } else data = programSourceRecordedDataV3Schema.parse({ ...await d.store.record(actor, command), version: PROGRAM_SOURCE_V3, kind: 'recorded_source' });
+      if (data.kind === 'recorded_source' && (data.record.workspaceId !== actor.workspaceId || data.record.recordedBy !== actor.id || JSON.stringify(data.record.command) !== JSON.stringify(command))) throw new AppError('UNAVAILABLE');
       response = successResponse(data, requestId);
     }
   } catch (error) {
