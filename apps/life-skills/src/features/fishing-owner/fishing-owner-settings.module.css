@@ -1,0 +1,12 @@
+.root{min-inline-size:0;max-inline-size:920px}
+.section{display:grid;gap:16px;min-inline-size:0;padding:24px}
+.section :is(p,a,bdi,dd){overflow-wrap:anywhere}
+.section a{display:inline-flex;align-items:center;min-block-size:44px;padding:8px 12px;border:1px solid var(--ls-line);border-radius:8px;color:var(--ls-deep);text-decoration:none}
+.section a[aria-current=page]{background:var(--ls-sand-100);font-weight:650;border-color:var(--ls-teal)}
+.section :is(a,button):focus-visible{outline:3px solid var(--ls-teal);outline-offset:3px}
+.contacts{display:grid;gap:0;margin:0}
+.contacts>div{display:grid;grid-template-columns:minmax(100px,1fr) minmax(0,2fr);gap:12px;padding-block:12px;border-block-end:1px solid var(--ls-line)}
+.contacts dt{color:var(--ls-muted)}
+.contacts dd{min-inline-size:0;margin:0}
+.verification{display:block;margin-block-start:4px;color:var(--ls-muted);font-size:.875rem}
+@media(max-width:600px){.section{padding:16px}.contacts>div{grid-template-columns:minmax(0,1fr);gap:4px}.section :is(a,button){min-block-size:48px}}
