@@ -35,7 +35,13 @@ it.each(['session_revoked','role_changed','empty_snapshot_revoked'] as const)('w
 });
 
 it('denies a valid demo-origin owner before querying the private snapshot',async()=>{
- const f=await academyWorkspace(database.pool),demo=await f.account('practitioner',{batchId:'ls-owner-20261110',createdBy:f.owner.actor.id});
+ const f=await academyWorkspace(database.pool);
+ // The registered schema permits only one practitioner in a workspace.
+ // Retain the original synthetic account but release its role before creating
+ // the deliberately demo-origin configured owner in this disposable fixture.
+ await database.pool.query("UPDATE ls_identity.accounts SET role='parent' WHERE workspace_id=$1 AND id=$2",[f.workspace,f.owner.actor.id]);
+ const demo=await f.account('practitioner',{batchId:'ls-owner-20261110',createdBy:f.owner.actor.id});
+ expect((await database.pool.query("SELECT id FROM ls_identity.accounts WHERE workspace_id=$1 AND role='practitioner'",[f.workspace])).rows).toEqual([{id:demo.actor.id}]);
  const actor=await f.runtime.sessions.actor(demo.token),base=poolStore(database.pool);let privateReads=0,nativeOwnerChecks=0;
  const store:IdentityStore={transaction:work=>base.transaction(tx=>work({query:async<T extends object>(sql:string,values:readonly unknown[]=[])=>{
   if(sql.includes('FROM ls_service_interest.fishing_marketing_snapshot'))privateReads++;
