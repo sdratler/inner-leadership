@@ -3,6 +3,7 @@ import { billingId, billingInstant, publishedOfferSchema, servicePeriodSchema, s
 import { calendarDateSchema, newYorkDate } from './contracts-v2.ts';
 
 export const GROUP_PREPARATION_VERSION = 'JLFA-FISHING-GROUP-PREPARATION-v1' as const;
+export const GROUP_PREPARATION_LIST_VERSION = 'JLFA-FISHING-GROUP-PREPARATION-LIST-v1' as const;
 export const GROUP_PREPARATION_CLASS = 'preparation_only_not_authority' as const;
 export const GROUP_PREPARATION_PROGRAM = publishedOfferSchema.shape.programKey.value;
 const id = billingId.refine(value => value === value.toLowerCase(), 'CANONICAL_UUID_REQUIRED');
@@ -93,3 +94,17 @@ export const groupPreparationRecord = z.object({
 export type GroupPreparationFields = z.infer<typeof groupPreparationFields>;
 export type GroupPreparationCommand = z.infer<typeof groupPreparationCommand>;
 export type GroupPreparationRecord = z.infer<typeof groupPreparationRecord>;
+
+const maxPageSize = 50;
+const listVersion = z.literal(GROUP_PREPARATION_LIST_VERSION);
+const listCursor = z.string().max(2048).regex(/^[A-Za-z0-9_-]+\.[a-f0-9]{64}$/);
+export const groupPreparationListQuery = z.object({
+  version: listVersion, limit: z.number().int().min(1).max(maxPageSize).default(25),
+  cursor: listCursor.nullable().default(null),
+}).strict();
+
+/** Each page reflects current records in ascending group UUID order. There is no cross-page snapshot. */
+export const groupPreparationListPage = z.object({
+  version: listVersion, items: z.array(groupPreparationRecord).max(maxPageSize), nextCursor: listCursor.nullable(),
+}).strict();
+export type GroupPreparationListPage = z.infer<typeof groupPreparationListPage>;

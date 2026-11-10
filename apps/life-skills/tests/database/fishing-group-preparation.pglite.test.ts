@@ -5,9 +5,10 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import { AppError, type ErrorCode } from '../../src/lib/errors.ts';
 import { asId } from '../../src/lib/ids.ts';
 import type { Actor, WorkspaceId } from '../../src/features/identity/types.ts';
-import type { IdentityStore } from '../../src/features/identity/store.ts';
+import type { IdentityStore, SqlSession } from '../../src/features/identity/store.ts';
 import {
-  GROUP_PREPARATION_CLASS, GROUP_PREPARATION_VERSION, type GroupPreparationCommand, type GroupPreparationFields,
+  GROUP_PREPARATION_CLASS, GROUP_PREPARATION_LIST_VERSION, GROUP_PREPARATION_VERSION,
+  groupPreparationListPage, type GroupPreparationCommand, type GroupPreparationFields,
 } from '../../src/features/fishing-billing/group-preparation-contract.ts';
 import { FishingGroupPreparationStore, type GroupPreparationOwnerAuthority } from '../../src/features/fishing-billing/group-preparation-store.ts';
 import { requirePgliteMemoryEnvironment } from '../fixtures/pglite-memory-environment.ts';
@@ -26,12 +27,14 @@ const binder: IdentityStore = {
   })),
 };
 // Synthetic substitute for the still-unmounted current-owner authority. Identity/session/demo checks in the actual store run unchanged.
+async function hasSyntheticOwnerGrant(tx: SqlSession, scope: { workspaceId: string; accountId: string; programKey: string }) {
+  const rows = await tx.query('SELECT 1 FROM synthetic_group_preparation.owner_grant WHERE workspace_id=$1 AND account_id=$2 FOR SHARE',
+    [scope.workspaceId, scope.accountId]);
+  return rows.length === 1 && scope.programKey === 'fishing_monthly_club';
+}
 const syntheticAuthority: GroupPreparationOwnerAuthority = {
-  async isCurrentOwner(tx, scope) {
-    const rows = await tx.query('SELECT 1 FROM synthetic_group_preparation.owner_grant WHERE workspace_id=$1 AND account_id=$2 FOR SHARE',
-      [scope.workspaceId, scope.accountId]);
-    return rows.length === 1 && scope.programKey === 'fishing_monthly_club';
-  },
+  isCurrentOwner: hasSyntheticOwnerGrant,
+  canListPreparations: (tx, scope) => hasSyntheticOwnerGrant(tx, scope),
 };
 
 beforeAll(async () => {
@@ -69,6 +72,7 @@ function fields(): GroupPreparationFields {
     firstClassLocalDate: null, venueSource: null, proposedCapacity: null };
 }
 const version = GROUP_PREPARATION_VERSION;
+const listVersion = GROUP_PREPARATION_LIST_VERSION;
 function create(groupId = randomUUID() as string) {
   return { version, action: 'create' as const, expectedRevision: 0 as const, operationId: randomUUID(), groupId, fields: fields() };
 }
@@ -363,6 +367,7 @@ describe('owner group preparation in isolated PGlite', () => {
       const broken = makeStore(ws, syntheticAuthority, db);
       await expect(broken.read(owner, cmd.groupId)).rejects.toMatchObject({ code: 'UNAVAILABLE' });
       await expect(broken.save(owner, cmd)).rejects.toMatchObject({ code: 'UNAVAILABLE' });
+      await expect(broken.list(owner, { version: listVersion })).rejects.toMatchObject({ code: 'UNAVAILABLE' });
     }
     const corruptHead: IdentityStore = { transaction: work => binder.transaction(real => work({
       async query<T extends object>(sql: string, args?: readonly unknown[]) {
@@ -373,5 +378,164 @@ describe('owner group preparation in isolated PGlite', () => {
     const broken = makeStore(ws, syntheticAuthority, corruptHead);
     await expect(broken.read(owner, cmd.groupId)).rejects.toMatchObject({ code: 'UNAVAILABLE' });
     await expect(broken.save(owner, cmd)).rejects.toMatchObject({ code: 'UNAVAILABLE' });
+    await expect(broken.list(owner, { version: listVersion })).rejects.toMatchObject({ code: 'UNAVAILABLE' });
+  });
+});
+
+describe('owner group draft listing', () => {
+  const firstPage = { version: listVersion, limit: 1 };
+
+  it('pages through current drafts and cancellations in a fresh owner session without changing any saved rows', async () => {
+    const { ws, owner, store } = await fixture();
+    expect(await store.list(owner, { version: listVersion })).toEqual({ version: listVersion, items: [], nextCursor: null });
+    const ids = Array.from({ length: 5 }, () => randomUUID()).sort();
+    for (const id of [...ids].reverse()) await store.save(owner, create(id));
+    await store.save(owner, edit(ids[1]!, 1, { label: 'Edited synthetic draft' }));
+    await store.save(owner, { version, action: 'cancel', groupId: ids[2], expectedRevision: 1, operationId: randomUUID() });
+    async function storedRows() {
+      const heads = await engine.query('SELECT * FROM ls_fishing_billing.group_preparation_heads WHERE workspace_id=$1 ORDER BY group_id', [ws]);
+      const history = await engine.query('SELECT * FROM ls_fishing_billing.group_preparation_versions WHERE workspace_id=$1 ORDER BY group_id,revision', [ws]);
+      return { heads: heads.rows, historyAndOperations: history.rows };
+    }
+    const before = await storedRows();
+    const query = { version: listVersion, limit: 2 };
+    const start = await store.list(owner, query);
+    expect(start.items.map(item => item.groupId)).toEqual(ids.slice(0, 2));
+    expect(start.items[1]).toMatchObject({ revision: 2, fields: { label: 'Edited synthetic draft' } });
+    expect(start.nextCursor).toBeTypeOf('string');
+    expect(start.nextCursor).not.toContain(ids[1]!);
+    expect(groupPreparationListPage.safeParse(start).success).toBe(true);
+    expect([start, start.items, start.items[1], start.items[1]?.fields].every(Object.isFrozen)).toBe(true);
+    expect(Reflect.set(start.items[1]!.fields, 'label', 'changed')).toBe(false);
+
+    const sessionDigest = createHash('sha256').update(randomUUID()).digest('hex');
+    await engine.query('INSERT INTO ls_identity.sessions(token_digest,workspace_id,account_id,created_at,expires_at) VALUES($1,$2,$3,$4,$5)',
+      [sessionDigest, ws, owner.id, now, new Date(owner.expiresAt)]);
+    await engine.query('UPDATE ls_identity.sessions SET revoked_at=$2 WHERE token_digest=$1', [owner.sessionDigest, now]);
+    const reopened = makeStore(ws), fresh = { ...owner, sessionDigest };
+    await expect(reopened.list(owner, { ...query, cursor: start.nextCursor })).rejects.toMatchObject({ code: 'UNAUTHENTICATED' });
+    expect((await reopened.list(fresh, query)).items).toEqual(start.items);
+    const second = await reopened.list(fresh, { ...query, cursor: start.nextCursor });
+    expect(second.items[0]).toMatchObject({ groupId: ids[2], revision: 2, state: 'cancelled', classification: GROUP_PREPARATION_CLASS });
+    expect(second.nextCursor).toBeTypeOf('string');
+    const last = await reopened.list(fresh, { ...query, cursor: second.nextCursor });
+    expect([...start.items, ...second.items, ...last.items].map(item => item.groupId)).toEqual(ids);
+    expect(last.nextCursor).toBeNull();
+    expect(await storedRows()).toEqual(before);
+  });
+
+  it('uses a live UUID keyset when drafts are created or edited between pages', async () => {
+    const { owner, store } = await fixture();
+    const ids = Array.from({ length: 4 }, () => randomUUID()).sort();
+    await store.save(owner, create(ids[1])); await store.save(owner, create(ids[3]));
+    const start = await store.list(owner, firstPage);
+    expect(start.items.map(item => item.groupId)).toEqual([ids[1]]);
+    await store.save(owner, create(ids[0])); await store.save(owner, create(ids[2]));
+    await store.save(owner, edit(ids[3]!, 1, { label: 'Current revision' }));
+    const next = await store.list(owner, { ...firstPage, cursor: start.nextCursor });
+    const last = await store.list(owner, { ...firstPage, cursor: next.nextCursor });
+    expect(next.items.map(item => item.groupId)).toEqual([ids[2]]);
+    expect(last).toMatchObject({ items: [{ groupId: ids[3], revision: 2, fields: { label: 'Current revision' } }], nextCursor: null });
+    expect((await store.list(owner, firstPage)).items[0]?.groupId).toBe(ids[0]);
+  });
+
+  it('requires explicit listing and per-group read permissions, including for the lookahead', async () => {
+    const { ws, owner, store } = await fixture();
+    const [first, last] = [randomUUID(), randomUUID()].sort() as [string, string];
+    await store.save(owner, create(first)); await store.save(owner, create(last));
+    const onlyGroup = { isCurrentOwner: syntheticAuthority.isCurrentOwner };
+    await expect(makeStore(ws, onlyGroup).list(owner, firstPage)).rejects.toMatchObject({ code: 'UNAVAILABLE' });
+    const denied = makeStore(ws, { ...onlyGroup, canListPreparations: async () => false });
+    await expect(denied.read(owner, first)).resolves.toMatchObject({ groupId: first });
+    await expect(denied.list(owner, firstPage)).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    const limited = makeStore(ws, { ...syntheticAuthority, isCurrentOwner: (tx, scope) =>
+      scope.groupId === last ? Promise.resolve(false) : hasSyntheticOwnerGrant(tx, scope) });
+    await expect(limited.list(owner, firstPage)).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    let lastGroupChecks = 0;
+    const losesGroupAccess = makeStore(ws, { ...syntheticAuthority, async isCurrentOwner(tx, scope) {
+      if (scope.groupId === last && ++lastGroupChecks === 2) return false;
+      return hasSyntheticOwnerGrant(tx, scope);
+    } });
+    await expect(losesGroupAccess.list(owner, firstPage)).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    expect(lastGroupChecks).toBe(2);
+    await engine.query('DELETE FROM synthetic_group_preparation.owner_grant WHERE workspace_id=$1', [ws]);
+    await expect(store.list(owner, firstPage)).rejects.toMatchObject({ code: 'FORBIDDEN' });
+  });
+
+  it('binds a cursor to the workspace, owner, query and exact ciphertext, and rejects unsafe inputs', async () => {
+    const { ws, owner, store, cmd } = await fixture(), other = await fixture();
+    await store.save(owner, cmd); await store.save(owner, create());
+    const cursor = (await store.list(owner, firstPage)).nextCursor!;
+    const [encoded, signature] = cursor.split('.');
+    const equivalentEnvelope = Buffer.from(Buffer.from(encoded!, 'base64url').toString() + ' ').toString('base64url');
+    for (const bad of ['x', cursor + 'x', cursor.slice(0, -1) + (cursor.endsWith('a') ? 'b' : 'a'), equivalentEnvelope + '.' + signature]) {
+      await expect(store.list(owner, { ...firstPage, cursor: bad })).rejects.toMatchObject({ code: 'INVALID_REQUEST' });
+    }
+    for (const limit of [0, -1, 51, 1.5, '2', null, NaN, Infinity, Number.MAX_SAFE_INTEGER]) {
+      await expect(store.list(owner, { ...firstPage, limit })).rejects.toMatchObject({ code: 'INVALID_REQUEST' });
+    }
+    for (const invalid of [{ ...firstPage, limit: 2, cursor }, { ...firstPage, version }, { ...firstPage, workspaceId: other.ws }, { ...firstPage, state: 'draft' }]) {
+      await expect(store.list(owner, invalid)).rejects.toMatchObject({ code: 'INVALID_REQUEST' });
+    }
+    await expect(other.store.list(owner, { ...firstPage, cursor })).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    await expect(other.store.list(other.owner, { ...firstPage, cursor })).rejects.toMatchObject({ code: 'INVALID_REQUEST' });
+    await engine.query("UPDATE ls_identity.accounts SET role='adult_client' WHERE id=$1", [owner.id]);
+    const successor = await actor(ws);
+    await engine.query('UPDATE synthetic_group_preparation.owner_grant SET account_id=$2 WHERE workspace_id=$1', [ws, successor.id]);
+    await expect(store.list(successor, { ...firstPage, cursor })).rejects.toMatchObject({ code: 'INVALID_REQUEST' });
+    await expect(store.list(owner, firstPage)).rejects.toMatchObject({ code: 'FORBIDDEN' });
+  });
+
+  it('rechecks the explicit list and actual session after reading rows and before releasing any page', async () => {
+    const { ws, owner, cmd, store } = await fixture();
+    await store.save(owner, cmd); await store.save(owner, create());
+    for (const revoked of ['list', 'session']) {
+      let checks = 0, groupReads = 0;
+      const authority: GroupPreparationOwnerAuthority = {
+        async isCurrentOwner(tx, scope) { groupReads++; return hasSyntheticOwnerGrant(tx, scope); },
+        async canListPreparations(tx, scope) {
+          expect(scope).toEqual({ workspaceId: ws, accountId: owner.id, programKey: 'fishing_monthly_club', action: 'list', groupId: null });
+          if (++checks === 2) {
+            expect(groupReads).toBe(4);
+            if (revoked === 'list') return false;
+            await tx.query('UPDATE ls_identity.sessions SET revoked_at=$2 WHERE token_digest=$1', [owner.sessionDigest, now]);
+          }
+          return hasSyntheticOwnerGrant(tx, scope);
+        },
+      };
+      await expect(makeStore(ws, authority).list(owner, firstPage)).rejects.toMatchObject({ code: 'FORBIDDEN' });
+      expect(checks).toBe(2);
+    }
+  });
+
+  it('denies revoked, disabled and demo principals before looking up any group', async () => {
+    const { ws, owner, cmd, store } = await fixture(); await store.save(owner, cmd);
+    const groupRead = vi.fn(hasSyntheticOwnerGrant), restricted = makeStore(ws, { ...syntheticAuthority, isCurrentOwner: groupRead });
+    await expect(restricted.list({ ...owner, expiresAt: now.getTime() }, firstPage)).rejects.toMatchObject({ code: 'UNAUTHENTICATED' });
+    await engine.query("UPDATE ls_identity.accounts SET state='revoked' WHERE id=$1", [owner.id]);
+    await expect(restricted.list(owner, firstPage)).rejects.toMatchObject({ code: 'UNAUTHENTICATED' });
+    await engine.query("UPDATE ls_identity.accounts SET state='active' WHERE id=$1", [owner.id]);
+    await engine.query("INSERT INTO ls_demo.batches(workspace_id,batch_id,created_by) VALUES($1,'ls-owner-20350110',$2)", [ws, owner.id]);
+    await engine.query("INSERT INTO ls_demo.accounts(workspace_id,account_id,batch_id,source_key) VALUES($1,$2,'ls-owner-20350110','test-only')", [ws, owner.id]);
+    await expect(restricted.list(owner, firstPage)).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    expect(groupRead).not.toHaveBeenCalled();
+  });
+
+  it.each(['damaged history', 'missing head'] as const)('rejects a page with %s in the lookahead or selection', async fault => {
+    const { ws, owner, store } = await fixture();
+    const [first, last] = [randomUUID(), randomUUID()].sort() as [string, string];
+    await store.save(owner, create(first)); await store.save(owner, create(last)); await store.save(owner, edit(last, 1));
+    await engine.transaction(async tx => {
+      if (fault === 'damaged history') {
+        await tx.exec('ALTER TABLE ls_fishing_billing.group_preparation_versions DISABLE TRIGGER immutable_group_preparation_version');
+        await tx.query("UPDATE ls_fishing_billing.group_preparation_versions SET payload_ciphertext='damaged' WHERE workspace_id=$1 AND group_id=$2 AND revision=1", [ws, last]);
+        await tx.exec('ALTER TABLE ls_fishing_billing.group_preparation_versions ENABLE TRIGGER immutable_group_preparation_version');
+      } else {
+        await tx.exec('ALTER TABLE ls_fishing_billing.group_preparation_heads DISABLE TRIGGER no_group_preparation_head_delete');
+        await tx.query('DELETE FROM ls_fishing_billing.group_preparation_heads WHERE workspace_id=$1 AND group_id=$2', [ws, last]);
+        await tx.exec('ALTER TABLE ls_fishing_billing.group_preparation_heads ENABLE TRIGGER no_group_preparation_head_delete');
+      }
+    });
+    for (const limit of [1, 2]) await expect(store.list(owner, { version: listVersion, limit })).rejects.toMatchObject({ code: 'UNAVAILABLE' });
   });
 });

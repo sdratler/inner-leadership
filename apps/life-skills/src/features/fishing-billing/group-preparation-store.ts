@@ -1,4 +1,5 @@
 import 'server-only';
+import { timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { AppError, type ErrorCode } from '../../lib/errors.ts';
 import { requirePractitioner } from '../cases/policy.ts';
@@ -10,21 +11,23 @@ import { freshActor, lockWorkspace } from '../identity/data.ts';
 import { one, type IdentityStore, type SqlSession } from '../identity/store.ts';
 import { systemClock, type AccountId, type Actor, type IdentityClock, type WorkspaceId } from '../identity/types.ts';
 import {
-  GROUP_PREPARATION_CLASS, GROUP_PREPARATION_PROGRAM, GROUP_PREPARATION_VERSION,
-  groupPreparationCommand, groupPreparationFields, groupPreparationId, groupPreparationRecord, groupPreparationRevision,
-  type GroupPreparationCommand, type GroupPreparationRecord,
+  GROUP_PREPARATION_CLASS, GROUP_PREPARATION_LIST_VERSION, GROUP_PREPARATION_PROGRAM, GROUP_PREPARATION_VERSION,
+  groupPreparationCommand, groupPreparationFields, groupPreparationId, groupPreparationListPage, groupPreparationListQuery,
+  groupPreparationRecord, groupPreparationRevision, type GroupPreparationCommand, type GroupPreparationListPage, type GroupPreparationRecord,
 } from './group-preparation-contract.ts';
 
 type Action = GroupPreparationCommand['action'] | 'read';
-type OwnerScope = Readonly<{
-  workspaceId: WorkspaceId; accountId: AccountId; groupId: string;
-  programKey: typeof GROUP_PREPARATION_PROGRAM; action: Action;
-}>;
+type GroupTarget = Readonly<{ groupId: string; action: Action }>;
+type ListTarget = Readonly<{ groupId: null; action: 'list' }>;
+type OwnerContext = Readonly<{ workspaceId: WorkspaceId; accountId: AccountId; programKey: typeof GROUP_PREPARATION_PROGRAM }>;
+type OwnerScope = OwnerContext & (GroupTarget | ListTarget);
 
 /** Supplied by trusted server composition. Check the current owner in the supplied transaction
  * and lock the evidence that grants access through commit. No default owner or request-body grant. */
 export interface GroupPreparationOwnerAuthority {
-  isCurrentOwner(tx: SqlSession, scope: OwnerScope): Promise<boolean>;
+  isCurrentOwner(tx: SqlSession, scope: OwnerContext & GroupTarget): Promise<boolean>;
+  /** Explicit permission to discover drafts in this workspace. Each group's read grant also applies. */
+  canListPreparations?(tx: SqlSession, scope: OwnerContext & ListTarget): Promise<boolean>;
 }
 
 type Frozen<T> = T extends object ? { readonly [K in keyof T]: Frozen<T[K]> } : T;
@@ -56,6 +59,7 @@ const envelope = z.object({ record: groupPreparationRecord, command: groupPrepar
 
 export class FishingGroupPreparationStore {
   private readonly checkOwner: GroupPreparationOwnerAuthority['isCurrentOwner'] | undefined;
+  private readonly checkListOwner: GroupPreparationOwnerAuthority['canListPreparations'];
 
   constructor(
     private readonly db: IdentityStore, private readonly workspaceId: WorkspaceId, private readonly keyring: Keyring,
@@ -64,6 +68,7 @@ export class FishingGroupPreparationStore {
   ) {
     if (!groupPreparationId.safeParse(workspaceId).success || integrityKey.length < 32) fail('UNAVAILABLE');
     this.checkOwner = authority?.isCurrentOwner?.bind(authority);
+    this.checkListOwner = authority?.canListPreparations?.bind(authority);
   }
 
   private now(): Date {
@@ -83,7 +88,8 @@ export class FishingGroupPreparationStore {
     requirePractitioner(current);
     if (current.workspaceId !== this.workspaceId || current.id !== actor.id || current.personId !== actor.personId ||
         await demoAccountBatch(tx, this.workspaceId, current.id) !== null) fail('FORBIDDEN');
-    if (await this.checkOwner(tx, scope) !== true) fail('FORBIDDEN');
+    const allowed = scope.action === 'list' ? await this.checkListOwner?.(tx, scope) : await this.checkOwner(tx, scope);
+    if (allowed !== true) fail('FORBIDDEN');
 
     // Recheck after the authority callback, including database time. The account lock also
     // conflicts with inserting a demo marker that references this account. Pin this session and subject.
@@ -99,18 +105,18 @@ export class FishingGroupPreparationStore {
     if (!valid) fail('FORBIDDEN');
   }
 
-  private async transaction<T>(actor: Actor, groupId: string, action: Action, work: (tx: SqlSession, actorId: AccountId) => Promise<T>): Promise<T> {
+  private async transaction<T>(actor: Actor, target: GroupTarget | ListTarget, work: (tx: SqlSession, actorId: AccountId) => Promise<T>): Promise<T> {
     const principal = Object.freeze({ ...actor });
     if (principal.workspaceId !== this.workspaceId) fail('FORBIDDEN');
-    if (!this.checkOwner) fail('UNAVAILABLE');
-    const scope = Object.freeze({ workspaceId: this.workspaceId, accountId: principal.id, groupId, programKey: GROUP_PREPARATION_PROGRAM, action });
+    if (!this.checkOwner || (target.action === 'list' && !this.checkListOwner)) fail('UNAVAILABLE');
+    const scope = Object.freeze({ ...target, workspaceId: this.workspaceId, accountId: principal.id, programKey: GROUP_PREPARATION_PROGRAM });
     let callbackFailure: unknown;
     try {
       return await this.db.transaction(async session => {
         callbackFailure = undefined;
         try {
           const tx: SqlSession = Object.freeze({ query: session.query.bind(session) });
-          if (action !== 'read') await lockWorkspace(tx, this.workspaceId);
+          if (target.action !== 'read' && target.action !== 'list') await lockWorkspace(tx, this.workspaceId);
           await this.authorize(tx, principal, scope);
           let result: T;
           try { result = await work(tx, principal.id); }
@@ -182,10 +188,70 @@ export class FishingGroupPreparationStore {
 
   async read(actor: Actor, groupId: string, revision?: number): Promise<Frozen<GroupPreparationRecord>> {
     if (!groupPreparationId.safeParse(groupId).success || (revision !== undefined && !groupPreparationRevision.safeParse(revision).success)) fail('INVALID_REQUEST');
-    return this.transaction(actor, groupId, 'read', async tx => {
+    return this.transaction(actor, { groupId, action: 'read' }, async tx => {
       const history = await this.history(tx, groupId, revision);
       const item = revision === undefined ? history.latest : history.selected;
       return item ? freeze(item.record) : fail('NOT_FOUND');
+    });
+  }
+
+  private cursorSignature(binding: string, encoded: string) {
+    // Bind the exact wire representation as well as the encrypted anchor.
+    return privateDigest({ domain: 'fishing-group-preparation-list-cursor/v1', binding, encoded }, this.integrityKey);
+  }
+
+  private cursorAnchor(cursor: string, binding: string) {
+    try {
+      const [encoded, signature] = cursor.split('.');
+      if (!encoded || !signature || !timingSafeEqual(Buffer.from(signature), Buffer.from(this.cursorSignature(binding, encoded)))) {
+        fail('INVALID_REQUEST');
+      }
+      const bytes = Buffer.from(encoded, 'base64url');
+      if (bytes.toString('base64url') !== encoded) fail('INVALID_REQUEST');
+      return groupPreparationId.parse(unseal(bytes.toString('utf8'), binding, this.keyring));
+    } catch { return fail('INVALID_REQUEST'); }
+  }
+
+  async list(actor: Actor, raw: unknown): Promise<Frozen<GroupPreparationListPage>> {
+    const parsed = groupPreparationListQuery.safeParse(raw);
+    if (!parsed.success) fail('INVALID_REQUEST');
+    const { limit, cursor } = parsed.data;
+    return this.transaction(actor, { action: 'list', groupId: null }, async (tx, accountId) => {
+      const binding = [GROUP_PREPARATION_LIST_VERSION, this.workspaceId, accountId, GROUP_PREPARATION_PROGRAM, limit].join('/');
+      const anchor = cursor === null ? null : this.cursorAnchor(cursor, binding);
+      // Include identifiers from both indexes so an orphaned history or head cannot disappear from a page.
+      const range = ' WHERE workspace_id=$1 AND ($2::uuid IS NULL OR group_id>$2::uuid) ORDER BY group_id LIMIT $3';
+      const ids = await tx.query<{ groupId: string }>(
+        'WITH heads AS (SELECT group_id FROM ls_fishing_billing.group_preparation_heads' + range + '), ' +
+        'versions AS (SELECT DISTINCT group_id FROM ls_fishing_billing.group_preparation_versions' + range + ') ' +
+        'SELECT group_id AS "groupId" FROM (SELECT group_id FROM heads UNION SELECT group_id FROM versions) groups ORDER BY group_id LIMIT $3',
+        [this.workspaceId, anchor, limit + 1]);
+      if (ids.length > limit + 1) fail('UNAVAILABLE');
+
+      const items: GroupPreparationRecord[] = [];
+      const readScopes: (OwnerContext & GroupTarget)[] = [];
+      let previous = anchor;
+      for (const { groupId } of ids) {
+        if (!groupPreparationId.safeParse(groupId).success || (previous !== null && groupId <= previous)) fail('UNAVAILABLE');
+        const scope = Object.freeze({ workspaceId: this.workspaceId, accountId, programKey: GROUP_PREPARATION_PROGRAM, groupId, action: 'read' as const });
+        if (await this.checkOwner?.(tx, scope) !== true) fail('FORBIDDEN');
+        readScopes.push(scope);
+        const { latest } = await this.history(tx, groupId);
+        if (!latest) fail('UNAVAILABLE');
+        if (items.length < limit) items.push(latest.record);
+        previous = groupId;
+      }
+      let nextCursor: string | null = null;
+      const last = items.at(-1);
+      if (ids.length > limit && last) {
+        const encoded = Buffer.from(seal(last.groupId, binding, this.keyring)).toString('base64url');
+        nextCursor = encoded + '.' + this.cursorSignature(binding, encoded);
+      }
+      // A list grant may outlive one group's read permission. Recheck both visible rows and lookahead.
+      for (const scope of readScopes) {
+        if (await this.checkOwner?.(tx, scope) !== true) fail('FORBIDDEN');
+      }
+      return freeze(groupPreparationListPage.parse({ version: GROUP_PREPARATION_LIST_VERSION, items, nextCursor }));
     });
   }
 
@@ -193,7 +259,7 @@ export class FishingGroupPreparationStore {
     const parsed = groupPreparationCommand.safeParse(raw);
     if (!parsed.success) fail('INVALID_REQUEST');
     const command = parsed.data;
-    return this.transaction(actor, command.groupId, command.action, async (tx, actorId) => {
+    return this.transaction(actor, { groupId: command.groupId, action: command.action }, async (tx, actorId) => {
       const requestDigest = this.requestDigest(actorId, command);
       const oldOperation = await one<RevisionRow>(tx, selectVersions + 'WHERE workspace_id=$1 AND operation_id=$2', [this.workspaceId, command.operationId]);
       if (oldOperation) {
