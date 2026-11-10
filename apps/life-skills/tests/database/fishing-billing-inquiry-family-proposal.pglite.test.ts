@@ -696,3 +696,27 @@ it('native-family-source: a native association read failure is unavailable rathe
  const h=await composedOwnerHarness(f,{LS_PROVIDER_INDEX_OWNER_ACCOUNT_ID:f.owner.id},unavailable),response=await h.call(null,'?'+new URLSearchParams({kind:'source',reference:f.saved.item.id}));
  expect(response.status).toBe(503);expect(await response.json()).toMatchObject({ok:false,error:{code:'UNAVAILABLE'}});expect(await f.count()).toBe(0);
 });
+it.each(['demo','revoked']as const)('native-family-source-terminal: %s after optional absence cannot return earlier private data',async kind=>{
+ const f=await fixture(true,runtimeLookupKey.toString('hex'));let changed=false,digest='';
+ const barrier:IdentityStore={transaction:async work=>{
+  let associationRead=false;
+  try{return await db.transaction(tx=>work({query:async<T extends object>(sql:string,values:readonly unknown[]=[])=>{
+   if(sql.includes('FROM ls_fishing_billing.inquiry_family_proposals'))associationRead=true;return tx.query<T>(sql,values);
+  }}));}catch(error){
+   // Change actual committed state AFTER the optional read rolled back. No
+   // write is injected into its genuine READ ONLY transaction.
+   if(!changed&&associationRead&&error instanceof AppError&&error.code==='NOT_FOUND'){
+    changed=true;
+    if(kind==='demo')await db.transaction(tx=>markDemo(tx,f));
+    if(kind==='revoked')await engine.query('UPDATE ls_identity.sessions SET revoked_at=$2 WHERE token_digest=$1',[digest,now]);
+   }
+   throw error;
+  }
+ }};
+ const h=await composedOwnerHarness(f,{LS_PROVIDER_INDEX_OWNER_ACCOUNT_ID:f.owner.id},barrier);digest=tokenDigest(h.token);
+ const response=await h.call(null,'?'+new URLSearchParams({kind:'source',reference:f.saved.item.id}));expect(changed).toBe(true);
+ expect(response.status).toBe(kind==='demo'?403:401);
+ if(kind==='demo')expect((await engine.query('SELECT account_id FROM ls_demo.accounts WHERE workspace_id=$1',[f.workspace])).rows).toEqual([{account_id:f.owner.id}]);
+ if(kind==='revoked')expect((await engine.query<{revoked_at:Date|null}>('SELECT revoked_at FROM ls_identity.sessions WHERE token_digest=$1',[digest])).rows[0]!.revoked_at).not.toBeNull();
+ const body=JSON.stringify(await response.json());expect(body).not.toContain(f.fields.guardianName);expect(body).not.toContain(f.fields.children[0]!.name);expect(await f.count()).toBe(0);
+});
