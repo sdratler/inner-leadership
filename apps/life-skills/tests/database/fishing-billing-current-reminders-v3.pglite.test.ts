@@ -224,7 +224,13 @@ it('denies unanswered offers and missing current ports or approved plan without 
 });
 it.each(['owner','service'] as const)('reserves only the due child remainder through actual %s authority after real date cash',async mode=>{
  const f=await queued('guest_successor',true);await cash(f);
- const due=f.intents.find(i=>i.dueAt==='2035-01-05T22:00:00.000Z')??f.intents.find(i=>Date.parse(i.dueAt)===Date.parse('2035-01-05T22:00:00Z'))!;
+ // Native intents are ordered by random UUID, not by reminder sequence.
+ // Put the future offset first so a dueAt-only selection cannot pass by luck.
+ const sameDue=f.intents.filter(i=>Date.parse(i.dueAt)===Date.parse(f.cmd.children[0]!.dueAt!)).sort((a,b)=>Date.parse(b.scheduledAt)-Date.parse(a.scheduledAt));
+ const future=sameDue[0]!,due=sameDue.find(i=>Date.parse(i.scheduledAt)<=clock.now().valueOf())!;
+ expect(Date.parse(future.scheduledAt)).toBeGreaterThan(clock.now().valueOf());expect(due.sequence).toBe(0);
+ expect(await native().reserveCurrentReminderV3(owner,future.id,randomUUID())).toMatchObject({state:'deferred',reason:'not_due'});
+ expect(await outboxRows()).toHaveLength(0);
  if(mode==='owner')expect(await native().reserveCurrentReminderV3(owner,due.id,randomUUID())).toMatchObject({state:'reserved',remainingMinor:45000});
  else expect((await native().reserveCurrentReminderServiceBatchV3({limit:1})).results[0]).toMatchObject({state:'reserved',remainingMinor:45000});
  const rows=await outboxRows();expect(rows).toHaveLength(1);expect(rows[0]!.payload.amount).toMatchObject({remainingMinor:45000,revision:4});expect(rows[0]!.payload.amount.lines).toHaveLength(1);
