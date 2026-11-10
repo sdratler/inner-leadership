@@ -21,8 +21,10 @@ import {readServiceAcceptanceDataV4} from './guest-service-acceptance-data-v4.ts
 import {serviceGuestAadV4} from './guest-service-aad-v4.ts';
 import {serviceFamilyOfferV4Schema} from './guest-service-contract-v4.ts';
 import {serviceOwnerMoneyCommandV4Schema,serviceOwnerMoneyReceiptV4Schema,serviceOwnerMoneyOutcomeV4Schema,serviceMoneySnapshotV4,type ServiceOwnerMoneyCommandV4} from './guest-service-owner-money-contract-v4.ts';
+import {serviceStateCommandV4Schema,serviceStateReceiptV4Schema,serviceStateOutcomeV4Schema,type ServiceStateCommandV4} from './guest-service-owner-state-contract-v4.ts';
+import {serviceStateColumnsV4,decodeServiceStateJournalV4,serviceStateCommandDigestV4,serviceStateResultDigestV4,serviceStateJournalV4Schema,type ServiceStateRowV4} from './guest-service-state-data-v4.ts';
 
-export type ServiceOwnerFinancialScopeV4=Readonly<{action:'read'|'cash_date'|'reverse_cash';programKey:'fishing_monthly_club';quoteId:string;familyId:string;childIds:readonly string[];offerSha256:string}>;
+export type ServiceOwnerFinancialScopeV4=Readonly<{action:'read'|'cash_date'|'reverse_cash'|'state';programKey:'fishing_monthly_club';quoteId:string;familyId:string;childIds:readonly string[];offerSha256:string}>;
 export interface ServiceOwnerFinancialAuthorityV4{
  /** Actual current Academy/schema/read admission before ANY private lookup.
   * The programme component separately enforces the genuine configured owner,
@@ -185,4 +187,33 @@ export class FishingServiceBillingOwnerV4{
  }
  recordCashDate(actor:Actor,raw:unknown){return this.mutateMoney(actor,{action:'cash_date',command:raw});}
  reverseCash(actor:Actor,raw:unknown){return this.mutateMoney(actor,{action:'reverse_cash',command:raw});}
+ private parseState(raw:unknown){const parsed=serviceStateCommandV4Schema.safeParse(raw);if(!parsed.success)throw new AppError('INVALID_REQUEST');return parsed.data;}
+ private async previousState(c:Readonly<BillingContext>,command:ServiceStateCommandV4,q:ServiceFamilyOfferV4){
+  const row=await one<ServiceStateRowV4>(c.tx,'SELECT '+serviceStateColumnsV4+' FROM ls_fishing_billing.commands WHERE workspace_id=$1 AND operation_id=$2 FOR SHARE',[this.workspaceId,command.operationId]);if(!row)return null;
+  if(row.actorId!==c.actor.id||row.action!=='service_state_v4'||row.quoteId!==command.quoteId||row.digest!==serviceStateCommandDigestV4(this.workspaceId,c.actor.id,command,this.sourceKey))throw new AppError('CONFLICT');
+  const j=decodeServiceStateJournalV4(row,this.workspaceId,this.ring,this.sourceKey),r=j.receipt;
+  stored(canonical(j.command)===canonical(command)&&r.familyId===q.familyId&&r.offerSha256===q.offer.sha256&&r.after.revision<=q.revision&&Date.parse(r.recordedAt)<=c.now.valueOf()&&(r.acceptanceId===null||r.acceptanceId===q.acceptance?.id));
+  return serviceStateReceiptV4Schema.parse({...r,replayed:true});
+ }
+ /** Read only this original owner-state operation. NULL is unresolved, never
+  * a rejected or successful different operation. Current uses readSnapshot. */
+ async readStateOperation(actor:Actor,raw:unknown){const command=this.parseState(raw);return this.withCurrent(actor,command.quoteId,(c,data)=>this.previousState(c,command,data.quote));}
+ async setState(actor:Actor,raw:unknown){
+  const command=this.parseState(raw),principal=Object.freeze({...actor});
+  const outcome=await this.programme.withOwnerTransactionOutcome(principal,base=>this.inCurrent(base,command.quoteId,'state',async(c,data)=>{
+   const q=data.quote;await this.snapshot(c,q);const prior=await this.previousState(c,command,q);if(prior)return {result:prior,quote:q};
+   if(q.revision!==command.expectedQuoteRevision||q.state==='cancelled')throw new AppError('CONFLICT');
+   const after=serviceFamilyOfferV4Schema.parse({...q,revision:q.revision+1,paused:command.paused??q.paused,state:command.cancel?'cancelled':q.state}),recordedAt=c.now.toISOString();
+   const receipt=serviceStateReceiptV4Schema.parse({version:BILLING_SERVICE_V4,action:command.action,workspaceId:this.workspaceId,actorId:c.actor.id,operationId:command.operationId,quoteId:q.id,familyId:q.familyId,offerSha256:q.offer.sha256,acceptanceId:q.acceptance?.id??null,recordedAt,replayed:false,
+    before:{revision:q.revision,state:q.state,paused:q.paused},after:{revision:after.revision,state:after.state,paused:after.paused}});
+   const {row,quote:actual}=await readIssuedServiceQuoteWithRowV4(c,this.workspaceId,q.id,this.ring,this.sourceKey);stored(canonical(actual)===canonical(q));
+   const changed=await one(c.tx,'UPDATE ls_fishing_billing.quotes SET revision=$3,payload_ciphertext=$4 WHERE workspace_id=$1 AND id=$2 AND revision=$5 AND payload_ciphertext=$6 AND family_id=$7 AND definition_id=$8 AND created_at=$9 AND material_version=$10 RETURNING id',
+    [this.workspaceId,q.id,after.revision,seal(JSON.stringify(after),serviceGuestAadV4('quote',this.workspaceId,q.id),this.ring),row.revision,row.ciphertext,row.familyId,row.definitionId,row.createdAt,BILLING_SERVICE_V4]);if(!changed)throw new AppError('CONFLICT');
+   const commandDigest=serviceStateCommandDigestV4(this.workspaceId,c.actor.id,command,this.sourceKey),journal=serviceStateJournalV4Schema.parse({version:BILLING_SERVICE_V4,kind:'owner_service_state',workspaceId:this.workspaceId,actorId:c.actor.id,command,commandDigest,resultDigest:serviceStateResultDigestV4(this.workspaceId,commandDigest,receipt,this.sourceKey),receipt});
+   await c.tx.query('INSERT INTO ls_fishing_billing.commands(workspace_id,operation_id,actor_id,action,quote_id,request_digest,result_ciphertext,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',[this.workspaceId,command.operationId,c.actor.id,'service_state_v4',q.id,commandDigest,seal(JSON.stringify(journal),serviceGuestAadV4('owner_state',this.workspaceId,command.operationId),this.ring),recordedAt]);
+   const current=await this.snapshot(c,after);await this.suppressQueued(c,after,current.balance);
+   stored(canonical(await this.previousState(c,command,after))===canonical({...receipt,replayed:true}));return {result:receipt,quote:after};
+  }));
+  return serviceStateOutcomeV4Schema.parse({...outcome,version:BILLING_SERVICE_V4,workspaceId:this.workspaceId,actorId:principal.id,command});
+ }
 }
