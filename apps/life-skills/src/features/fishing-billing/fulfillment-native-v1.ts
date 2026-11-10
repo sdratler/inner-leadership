@@ -3,7 +3,9 @@ import {AppError} from '../../lib/errors.ts';
 import type {Actor,WorkspaceId,IdentityClock} from '../identity/types.ts';
 import {one} from '../identity/store.ts';
 import {billingId} from './contracts.ts';
-import {seal,unseal,type Keyring} from '../identity/crypto.ts';
+import {seal,type Keyring} from '../identity/crypto.ts';
+import {fulfillmentCurrentSelectV1 as current,fulfillmentExactSelectV1 as exact,fulfillmentAadV1,fulfillmentRequestDigestV1,decodeFulfillmentRowV1,readFulfillmentInTransactionV1,
+ type FulfillmentKindV1 as Kind,type FulfillmentStoredV1 as Stored,type FulfillmentRowV1 as Row} from './fulfillment-readback-v1.ts';
 import {privateDigest} from '../contact-ops/server/digests.ts';
 import {newYorkDate} from './contracts-v2.ts';
 import type {BillingContext} from './native.ts';
@@ -12,17 +14,6 @@ import {FishingBillingGuestOwnerStore,type AnchoredPlanningDataV3} from '../../l
 import {FULFILLMENT_V1,fulfillmentCommandV1Schema,fulfillmentRecordV1Schema,fulfillmentPlanSnapshotV1Schema,
  type FulfillmentCommandV1,type FulfillmentRecordV1,type FulfillmentPlanSnapshotV1} from './fulfillment-contract-v1.ts';
 
-type Kind=FulfillmentRecordV1['kind'];
-type Stored={record:FulfillmentRecordV1;digest:string};
-type Row={kind:Kind;id:string;revision:number;headDigest:string;workspaceId:string;recordKind:Kind;recordId:string;recordRevision:number;
- groupId:string|null;quoteId:string|null;operationId:string;actorId:string;recordedAt:Date;requestDigest:string;digest:string;previousDigest:string|null;ciphertext:string};
-const columns=`v.workspace_id AS "workspaceId",v.kind AS "recordKind",v.entity_id AS "recordId",v.revision AS "recordRevision",v.group_id AS "groupId",v.quote_id AS "quoteId",
- v.operation_id AS "operationId",v.recorded_by AS "actorId",v.recorded_at AS "recordedAt",v.request_digest AS "requestDigest",v.record_digest AS digest,
- v.previous_digest AS "previousDigest",v.payload_ciphertext AS ciphertext`;
-const current=`SELECT h.kind,h.entity_id AS id,h.revision,h.record_digest AS "headDigest",${columns}
- FROM ls_fishing_billing.fulfillment_heads h LEFT JOIN ls_fishing_billing.fulfillment_versions v
- ON v.workspace_id=h.workspace_id AND v.kind=h.kind AND v.entity_id=h.entity_id AND v.revision=h.revision`;
-const exact=`SELECT v.kind,v.entity_id AS id,v.revision,v.record_digest AS "headDigest",${columns} FROM ls_fishing_billing.fulfillment_versions v`;
 function fail(code:'UNAVAILABLE'|'CONFLICT'|'FORBIDDEN'|'NOT_FOUND'='UNAVAILABLE'):never{throw new AppError(code);}
 
 /** Native owner calendar/planning facts only. No paid entitlement, seat hold,
@@ -35,23 +26,14 @@ export class FishingFulfillmentNativeV1{
   if(key.length<32||!billingId.safeParse(workspaceId).success)fail();
  }
  private hash(value:unknown){return privateDigest(value,this.key);}
- private request(actorId:string,command:FulfillmentCommandV1){return this.hash({domain:FULFILLMENT_V1,workspaceId:this.workspaceId,actorId,command});}
- private aad(kind:Kind,id:string,revision:number){return `ls_fishing_billing/fulfillment/v1/${this.workspaceId}/${kind}/${id}/${revision}`;}
+ private request(actorId:string,command:FulfillmentCommandV1){return fulfillmentRequestDigestV1(this.workspaceId,actorId,command,this.key);}
+ private aad(kind:Kind,id:string,revision:number){return fulfillmentAadV1(this.workspaceId,kind,id,revision);}
  private context(c:Readonly<BillingContext>){if(c.workspaceId!==this.workspaceId||c.actor.workspaceId!==this.workspaceId)fail('FORBIDDEN');}
  private decode(row:Row):Stored{
-  try{
-   const record=fulfillmentRecordV1Schema.parse(JSON.parse(unseal(row.ciphertext,this.aad(row.kind,row.id,row.revision),this.ring))),command=record.command;
-   const id=command.action==='record_departure'?command.id:command.quoteId;
-   if(record.workspaceId!==this.workspaceId||row.workspaceId!==this.workspaceId||record.kind!==row.kind||row.recordKind!==row.kind||id!==row.id||row.recordId!==row.id||
-    record.revision!==row.revision||row.recordRevision!==row.revision||record.recordedBy!==row.actorId||command.operationId!==row.operationId||record.recordedAt!==row.recordedAt.toISOString()||
-    record.previousDigest!==row.previousDigest||row.requestDigest!==this.request(record.recordedBy,command)||row.digest!==row.headDigest||row.digest!==this.hash({domain:'fulfillment-record/v1',record})||
-    (command.action==='record_departure'?(row.groupId!==command.groupId||row.quoteId!==null):(row.groupId!==null||row.quoteId!==command.quoteId)))fail();
-   return {record,digest:row.digest};
-  }catch{fail();}
+  return decodeFulfillmentRowV1(row,this.workspaceId,this.ring,this.key);
  }
  private async get(c:Readonly<BillingContext>,kind:Kind,id:string){
-  this.context(c);const rows=await c.tx.query<Row>(current+' WHERE h.workspace_id=$1 AND h.kind=$2 AND h.entity_id=$3 LIMIT 2 FOR SHARE OF h',[this.workspaceId,kind,id]);
-  if(rows.length>1)fail();return rows[0]?this.decode(rows[0]):null;
+  this.context(c);return readFulfillmentInTransactionV1(c,this.workspaceId,kind,id,this.ring,this.key);
  }
  private async version(c:Readonly<BillingContext>,kind:Kind,id:string,revision:number){
   this.context(c);
