@@ -22,7 +22,7 @@ import type {IdentityStore,SqlSession} from '../../src/features/identity/store.t
 vi.mock('server-only',()=>({}));
 let engine:PGlite;const network=vi.fn(async()=>{throw Error('NO_NETWORK');});
 beforeAll(async()=>{requirePgliteMemoryEnvironment(process.env);vi.stubGlobal('fetch',network);engine=new PGlite();await initializeProgramSchema(engine);
- for(const name of ['UNNUMBERED_ls_fishing_fulfillment_v1.sql','UNNUMBERED_ls_fishing_service_material_v4.sql','UNNUMBERED_ls_fishing_quote_service_v4.sql'])await engine.exec(await readFile('migrations/proposals/'+name,'utf8'));},20000);
+ for(const name of ['UNNUMBERED_ls_fishing_fulfillment_v1.sql','UNNUMBERED_ls_fishing_service_material_v4.sql','UNNUMBERED_ls_fishing_quote_service_v4.sql','UNNUMBERED_ls_fishing_service_money_v4.sql'])await engine.exec(await readFile('migrations/proposals/'+name,'utf8'));},20000);
 afterEach(()=>{expect(network).not.toHaveBeenCalled();});afterAll(async()=>{try{await engine?.close();}finally{vi.unstubAllGlobals();}});
 // Genuine configured-owner/session/native family/source/issuer/consumer/SQL and
 // crypto. Grants and money/attempt/intent examples are RAW SEEDED synthetic
@@ -112,8 +112,12 @@ it('service-owner-v4 keeps actual unresolved card and unknown reminder rows visi
  const hash=(v:unknown)=>createHmac('sha256',f.ledgerKey).update(canonical(v)).digest('hex');
  await engine.query('INSERT INTO ls_fishing_billing.reminders VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',[f.workspace,i.id,f.quote.id,hash({key:i.key}),'unknown',seal(JSON.stringify(i),'ls_fishing_billing/v1/reminder/'+f.workspace+'/'+i.id,programRing),'SYNTHETIC-NOT-A-POLICY',i.scheduledAt,hash({quoteId:f.quote.id,guardianId:i.guardianId})]);
  const view=await f.store().readSnapshot(f.owner,f.quote.id);expect(view.balance.pendingAttemptIds).toEqual([id]);expect(view.balance.reminders).toEqual([{id:i.id,state:'unknown'}]);expect(view.balance.paidMinor).toBe(0);
+ const originalCard=(await engine.query('SELECT * FROM ls_fishing_billing.card_attempts WHERE workspace_id=$1',[f.workspace])).rows;
+ expect((await f.store().recordCashDate(f.owner,cash(f))).state).toBe('committed');
+ const afterCash=await f.store().readSnapshot(f.owner,f.quote.id);expect(afterCash.balance.pendingAttemptIds).toEqual([id]);expect(afterCash.balance.reminders).toEqual([{id:i.id,state:'unknown'}]);expect(afterCash.balance.paidMinor).toBe(30000);
+ expect((await engine.query('SELECT * FROM ls_fishing_billing.card_attempts WHERE workspace_id=$1',[f.workspace])).rows).toEqual(originalCard);
  const claimedPaid={...a,state:'paid'};await engine.query("UPDATE ls_fishing_billing.card_attempts SET state='paid',payload_ciphertext=$3 WHERE workspace_id=$1 AND id=$2",[f.workspace,id,seal(JSON.stringify(claimedPaid),'ls_fishing_billing/card/v1/attempt/'+f.workspace+'/'+id,programRing)]);
- expect((await f.store().readSnapshot(f.owner,f.quote.id)).balance).toMatchObject({state:'review_required',paidMinor:0});
+ expect((await f.store().readSnapshot(f.owner,f.quote.id)).balance).toMatchObject({state:'review_required',paidMinor:30000});
 });
 it('service-owner-v4 authenticates failed/nonselected rows and rejects truncated data instead of silently dropping uncertainty',async()=>{
  const f=await ready();await rawCash(f);
@@ -140,4 +144,135 @@ it.each(['query','clock','workspace'] as const)('service-owner-v4 shared origina
   };
   await expect(readServiceAcceptanceDataV4(c,f.workspace,f.quote.id,programRing,programKey,f.commandKey)).rejects.toThrow('UNAVAILABLE');expect(foreignCalls).toBe(0);
  });
+});
+
+function cash(f:Fixture,amount=30000,expectedVersion=3){return {version:BILLING_SERVICE_V4,operationId:randomUUID(),quoteId:f.quote.id,expectedVersion,currency:'USD' as const,amountMinor:amount,receivedPrecision:'date' as const,receivedDate:'2035-01-02',timeZone:'America/New_York' as const,allocations:[{lineId:f.quote.lines[0]!.id,amountMinor:amount}]};}
+async function facts(f:Fixture){return {
+ receipts:(await engine.query('SELECT * FROM ls_fishing_billing.receipts WHERE workspace_id=$1 ORDER BY id',[f.workspace])).rows,
+ quote:(await engine.query('SELECT * FROM ls_fishing_billing.quotes WHERE workspace_id=$1',[f.workspace])).rows,
+ commands:(await engine.query('SELECT * FROM ls_fishing_billing.commands WHERE workspace_id=$1 ORDER BY operation_id',[f.workspace])).rows,
+ acceptance:(await engine.query('SELECT * FROM ls_fishing_billing.guest_financial_acceptances WHERE workspace_id=$1',[f.workspace])).rows,
+ grants:(await engine.query('SELECT * FROM ls_fishing_billing.guest_grants WHERE workspace_id=$1',[f.workspace])).rows,
+};}
+it('service-owner-v4 records actual command date cash in the same immutable ledger without changing original grant or acceptance',async()=>{
+ const f=await ready(),before=await facts(f),command=cash(f),outcome=await f.store().recordCashDate(f.owner,command);
+ expect(outcome.state).toBe('committed');if(outcome.state!=='committed')throw Error('EXPECTED_COMMIT');
+ expect(outcome.result).toMatchObject({operationId:command.operationId,entityVersion:4,replayed:false,actorId:f.owner.id,result:{kind:'operation_snapshot',balance:{paidMinor:30000,remainingMinor:100000},receipt:{receivedPrecision:'date',receivedDate:'2035-01-02',provider:null}}});
+ expect('receivedAt' in outcome.result.result.receipt).toBe(false);
+ const view=await f.store().readSnapshot(f.owner,f.quote.id);expect(view.balance.lines.map(l=>l.paidMinor)).toEqual([30000,0]);expect(view.balance.receipts).toHaveLength(1);
+ const after=await facts(f);expect(after.acceptance).toEqual(before.acceptance);expect(after.grants).toEqual(before.grants);expect(after.commands).toHaveLength(before.commands.length+1);
+});
+it('service-owner-v4 replays exact original cash after a correction and later money without relabelling its original balance as current',async()=>{
+ const f=await ready(),command=cash(f),first=await f.store().recordCashDate(f.owner,command);if(first.state!=='committed')throw Error('EXPECTED_COMMIT');
+ const receipt=first.result.result.receipt,correction={version:BILLING_SERVICE_V4,operationId:randomUUID(),quoteId:f.quote.id,expectedVersion:4,originalReceiptId:receipt.id,amountMinor:10000,allocations:[{lineId:f.quote.lines[0]!.id,amountMinor:10000}],reason:'Synthetic duplicate cash entry correction'};
+ const corrected=await f.store().reverseCash(f.owner,correction);expect(corrected.state).toBe('committed');if(corrected.state!=='committed')throw Error('EXPECTED_COMMIT');
+ expect(corrected.result.result).toMatchObject({balance:{paidMinor:20000},originalCashReceipt:receipt,receipt:{kind:'cash_reversal',originalReceiptId:receipt.id,provider:null}});
+ await f.store().recordCashDate(f.owner,cash(f,5000,5));
+ const count=(await facts(f)).receipts.length,replay=await f.store().recordCashDate(f.owner,command);expect(replay).toEqual({...first,result:{...first.result,replayed:true}});
+ expect(await f.store().readMoneyOperation(f.owner,{action:'cash_date',command})).toEqual({...first.result,replayed:true});
+ expect((await f.store().readSnapshot(f.owner,f.quote.id)).balance.paidMinor).toBe(25000);expect((await facts(f)).receipts.length).toBe(count);
+ expect(await f.store().readMoneyOperation(f.owner,{action:'cash_date',command:{...command,operationId:randomUUID()}})).toBeNull();
+});
+it('service-owner-v4 refuses changed exact-operation input and collisions with the immutable issuer without another receipt',async()=>{
+ const f=await ready(),command=cash(f);await f.store().recordCashDate(f.owner,command);const before=await facts(f);
+ expect(await f.store().recordCashDate(f.owner,{...command,amountMinor:40000})).toMatchObject({state:'rejected_current_attempt',code:'CONFLICT'});
+ const original=(await engine.query<{id:string}>("SELECT operation_id AS id FROM ls_fishing_billing.commands WHERE workspace_id=$1 AND action='guest_service_issue_v4'",[f.workspace])).rows[0]!;
+ expect(await f.store().recordCashDate(f.owner,{...command,operationId:original.id})).toMatchObject({state:'rejected_current_attempt',code:'CONFLICT'});
+ await expect(f.store().readMoneyOperation(f.owner,{action:'cash_date',command:{...command,receivedDate:'2035-01-01'}})).rejects.toThrow('CONFLICT');
+ expect(await facts(f)).toEqual(before);
+});
+it('service-owner-v4 refuses stale unaccepted future pre-acceptance and sibling-overallocated cash without writing',async()=>{
+ const f=await ready(),before=await facts(f),command=cash(f);
+ for(const [change,code] of [[{expectedVersion:2},'CONFLICT'],[{receivedDate:'2035-01-03'},'INVALID_REQUEST'],[{receivedDate:'2035-01-01'},'INVALID_REQUEST'],[{amountMinor:65001,allocations:[{lineId:f.quote.lines[0]!.id,amountMinor:65001}]},'INVALID_REQUEST']] as const){
+  expect(await f.store().recordCashDate(f.owner,{...command,...change})).toMatchObject({state:'rejected_current_attempt',code});expect(await facts(f)).toEqual(before);
+ }
+ const unaccepted=await ready(false),original=await facts(unaccepted);expect(await unaccepted.store().recordCashDate(unaccepted.owner,cash(unaccepted,100,2))).toMatchObject({state:'rejected_current_attempt',code:'CONFLICT'});expect(await facts(unaccepted)).toEqual(original);
+});
+it('service-owner-v4 preserves explicit unallocated excess and enforces original cash correction ceilings with the one calculator',async()=>{
+ const f=await ready(),command={...cash(f,35000),allocations:[{lineId:f.quote.lines[0]!.id,amountMinor:30000}]},out=await f.store().recordCashDate(f.owner,command);if(out.state!=='committed')throw Error('EXPECTED_COMMIT');
+ expect(out.result.result.balance).toMatchObject({paidMinor:30000,unallocatedMinor:5000,excessMinor:5000});
+ const reversal={version:BILLING_SERVICE_V4,operationId:randomUUID(),quoteId:f.quote.id,expectedVersion:4,originalReceiptId:out.result.result.receipt.id,amountMinor:6000,allocations:[],reason:'Synthetic correction'},before=await facts(f);
+ expect(await f.store().reverseCash(f.owner,reversal)).toMatchObject({state:'rejected_current_attempt',code:'INVALID_REQUEST'});expect(await facts(f)).toEqual(before);
+ const corrected=await f.store().reverseCash(f.owner,{...reversal,amountMinor:5000});expect(corrected.state).toBe('committed');
+ const after=await facts(f);expect(await f.store().reverseCash(f.owner,{...reversal,operationId:randomUUID(),expectedVersion:5,amountMinor:1})).toMatchObject({state:'rejected_current_attempt',code:'INVALID_REQUEST'});expect(await facts(f)).toEqual(after);
+});
+it('service-owner-v4 requires separate actual cash authority and real current owner rather than read permission or guest acceptance',async()=>{
+ const f=await ready(),command=cash(f),before=await facts(f),permission:ServiceOwnerFinancialAuthorityV4={...f.authority,authorize:async(c,scope)=>{await f.authority.authorize(c,scope);if(scope.action!=='read')throw new AppError('FORBIDDEN');}};
+ expect((await f.store(f.db,f.commandKey,permission).readSnapshot(f.owner,f.quote.id)).balance.state).toBe('unpaid');
+ expect(await f.store(f.db,f.commandKey,permission).recordCashDate(f.owner,command)).toMatchObject({state:'rejected_current_attempt',code:'FORBIDDEN'});
+ expect(await f.store().recordCashDate(f.parent,command)).toMatchObject({state:'rejected_current_attempt',code:'FORBIDDEN'});
+ expect(await facts(f)).toEqual(before);
+});
+it('service-owner-v4 rolls back receipt quote and journal together on a genuine callback failure after all writes',async()=>{
+ const f=await ready(),before=await facts(f),command=cash(f);let reached=false;
+ const db:IdentityStore={transaction:work=>f.db.transaction(tx=>work({query:async<R extends object>(sql:string,v:readonly unknown[]=[])=>{
+  const rows=await tx.query<R>(sql,v);if(sql.startsWith('INSERT INTO ls_fishing_billing.commands')){reached=true;throw new AppError('FORBIDDEN');}return rows;
+ }}))};
+ expect(await f.store(db).recordCashDate(f.owner,command)).toMatchObject({state:'rejected_current_attempt',code:'FORBIDDEN'});expect(reached).toBe(true);expect(await facts(f)).toEqual(before);
+});
+it('service-owner-v4 keeps a post-COMMIT typed driver error UNKNOWN and recovers only the committed exact operation',async()=>{
+ const f=await ready(),command=cash(f);let once=true;
+ const db:IdentityStore={transaction:async work=>{const result=await f.db.transaction(work);if(once){once=false;throw new AppError('CONFLICT');}return result;}};
+ await expect(f.store(db).recordCashDate(f.owner,command)).rejects.toThrow('UNAVAILABLE');expect((await facts(f)).receipts).toHaveLength(1);
+ const recovered=await f.store().readMoneyOperation(f.owner,{action:'cash_date',command});expect(recovered).toMatchObject({operationId:command.operationId,replayed:true});
+ f.ownerFlags.denyRead=true;expect(await f.store().recordCashDate(f.owner,command)).toMatchObject({state:'rejected_current_attempt',code:'FORBIDDEN'});f.ownerFlags.denyRead=false;
+ expect(await f.store().readMoneyOperation(f.owner,{action:'cash_date',command})).toEqual(recovered);expect((await facts(f)).receipts).toHaveLength(1);
+});
+it('service-owner-v4 rolls back on terminal owner session revocation and terminal authority Date mutation',async()=>{
+ const f=await ready(),command=cash(f),before=await facts(f);f.ownerFlags.terminalRevoke=true;
+ expect(await f.store().recordCashDate(f.owner,command)).toMatchObject({state:'rejected_current_attempt',code:'UNAUTHENTICATED'});expect(await facts(f)).toEqual(before);
+ f.ownerFlags.terminalRevoke=false;f.ownerFlags.reads=0;let calls=0;
+ const permission:ServiceOwnerFinancialAuthorityV4={...f.authority,authorize:async c=>{if(++calls===2)c.now.setTime(c.now.valueOf()+1);}};
+ await expect(f.store(f.db,f.commandKey,permission).recordCashDate(f.owner,command)).rejects.toThrow('UNAVAILABLE');expect(await facts(f)).toEqual(before);
+});
+it('service-owner-v4 guards new money journals against UPDATE DELETE and TRUNCATE',async()=>{
+ const f=await ready(),command=cash(f);await f.store().recordCashDate(f.owner,command);const before=await facts(f);
+ await expect(engine.query('UPDATE ls_fishing_billing.commands SET request_digest=$3 WHERE workspace_id=$1 AND operation_id=$2',[f.workspace,command.operationId,'f'.repeat(64)])).rejects.toThrow('FISHING_SERVICE_MONEY_IMMUTABLE');
+ await expect(engine.query('DELETE FROM ls_fishing_billing.commands WHERE workspace_id=$1 AND operation_id=$2',[f.workspace,command.operationId])).rejects.toThrow('FISHING_SERVICE_MONEY_IMMUTABLE');
+ await expect(engine.exec('TRUNCATE ls_fishing_billing.commands')).rejects.toThrow('IMMUTABLE');expect(await facts(f)).toEqual(before);
+});
+it('service-owner-v4 authenticates immutable operation results independently of valid AEAD and rejects hidden index time precision',async()=>{
+ const f=await ready(),command=cash(f);await f.store().recordCashDate(f.owner,command);
+ for(const kind of ['result','precision','actor'] as const){
+  const db:IdentityStore={transaction:work=>f.db.transaction(tx=>work({query:async<R extends object>(sql:string,v:readonly unknown[]=[])=>{
+   const rows=await tx.query<R>(sql,v);if(!sql.includes('request_digest AS digest')||v[1]!==command.operationId)return rows;
+   return rows.map(r=>{const row=r as R&{ciphertext:string};
+    if(kind==='precision')return {...row,exactTime:false};if(kind==='actor')return {...row,actorId:randomUUID()};
+    const j=JSON.parse(unseal(row.ciphertext,serviceGuestAadV4('owner_money',f.workspace,command.operationId),programRing));j.receipt.result.balance.paidMinor++;
+    return {...row,ciphertext:seal(JSON.stringify(j),serviceGuestAadV4('owner_money',f.workspace,command.operationId),programRing)};
+   });
+  }}))};
+  await expect(f.store(db).readMoneyOperation(f.owner,{action:'cash_date',command})).rejects.toThrow(kind==='actor'?'CONFLICT':'UNAVAILABLE');
+ }
+});
+it('service-owner-v4 suppresses queued reminders on actual full cash only, preserves UNKNOWN delivery and never requeues a correction',async()=>{
+ const f=await ready(),unknownBefore:unknown[]=[];
+ for(const state of ['queued','unknown'] as const){
+  const i=reminderIntentSchema.parse({version:BILLING_DTO_VERSION,id:randomUUID(),key:'SYNTHETIC-MONEY-'+state,quoteId:f.quote.id,familyId:f.quote.familyId,guardianId:randomUUID(),channel:'email',audience:'individual',locale:'en',policyId:'SYNTHETIC',policyRevision:1,sequence:0,dueAt:f.quote.lines[0]!.dueAt,scheduledAt:f.clock.now().toISOString(),state,dispatchId:state==='unknown'?randomUUID():null,providerId:null,reason:null});
+  const hash=(v:unknown)=>createHmac('sha256',f.ledgerKey).update(canonical(v)).digest('hex');
+  await engine.query('INSERT INTO ls_fishing_billing.reminders VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',[f.workspace,i.id,f.quote.id,hash({key:i.key}),state,seal(JSON.stringify(i),'ls_fishing_billing/v1/reminder/'+f.workspace+'/'+i.id,programRing),'SYNTHETIC',i.scheduledAt,hash({quoteId:f.quote.id,guardianId:i.guardianId})]);
+  if(state==='unknown')unknownBefore.push(...(await engine.query('SELECT * FROM ls_fishing_billing.reminders WHERE workspace_id=$1 AND id=$2',[f.workspace,i.id])).rows);
+ }
+ const command={...cash(f,130000),allocations:f.quote.lines.map(l=>({lineId:l.id,amountMinor:65000}))},out=await f.store().recordCashDate(f.owner,command);if(out.state!=='committed')throw Error('EXPECTED_COMMIT');
+ expect(out.result.result.balance).toMatchObject({paidMinor:130000,remainingMinor:0,reminderCounts:{queued:0,unknown:1,suppressed:1}});
+ expect((await engine.query("SELECT * FROM ls_fishing_billing.reminders WHERE workspace_id=$1 AND state='unknown'",[f.workspace])).rows).toEqual(unknownBefore);
+ const correction={version:BILLING_SERVICE_V4,operationId:randomUUID(),quoteId:f.quote.id,expectedVersion:4,originalReceiptId:out.result.result.receipt.id,amountMinor:1000,allocations:[{lineId:f.quote.lines[0]!.id,amountMinor:1000}],reason:'Synthetic manual correction'};
+ const reversed=await f.store().reverseCash(f.owner,correction);expect(reversed.state).toBe('committed');
+ const view=await f.store().readSnapshot(f.owner,f.quote.id);expect(view.balance).toMatchObject({remainingMinor:1000});expect(view.balance.reminders.map(i=>i.state).sort()).toEqual(['suppressed','unknown']);
+});
+it('service-owner-v4 corrects historical cash on a cancelled accepted agreement without resuming or changing its consent',async()=>{
+ const f=await ready(),out=await f.store().recordCashDate(f.owner,cash(f));if(out.state!=='committed')throw Error('EXPECTED_COMMIT');
+ const current=(await f.store().readSnapshot(f.owner,f.quote.id)).quote,cancelled={...current,state:'cancelled',revision:5};
+ // RAW SEEDED cancellation state: this test makes NO V4 state-writer claim.
+ await engine.query('UPDATE ls_fishing_billing.quotes SET revision=5,payload_ciphertext=$3 WHERE workspace_id=$1 AND id=$2',[f.workspace,current.id,seal(JSON.stringify(cancelled),serviceGuestAadV4('quote',f.workspace,current.id),programRing)]);
+ const before=await facts(f);expect(await f.store().recordCashDate(f.owner,cash(f,1000,5))).toMatchObject({state:'rejected_current_attempt',code:'CONFLICT'});expect(await facts(f)).toEqual(before);
+ const result=await f.store().reverseCash(f.owner,{version:BILLING_SERVICE_V4,operationId:randomUUID(),quoteId:f.quote.id,expectedVersion:5,originalReceiptId:out.result.result.receipt.id,amountMinor:30000,allocations:cash(f).allocations,reason:'Synthetic duplicate cash record correction'});
+ expect(result.state).toBe('committed');expect((await f.store().readSnapshot(f.owner,f.quote.id)).quote).toMatchObject({state:'cancelled',revision:6,acceptance:current.acceptance});
+ expect((await facts(f)).acceptance).toEqual(before.acceptance);
+});
+it('service-owner-v4 revokes borrowed financial transaction context after successful cash commit',async()=>{
+ const f=await ready();let retained:Readonly<Parameters<ServiceOwnerFinancialAuthorityV4['target']>[0]>|undefined;
+ const permission:ServiceOwnerFinancialAuthorityV4={...f.authority,target:async c=>{retained=c;}};
+ expect((await f.store(f.db,f.commandKey,permission).recordCashDate(f.owner,cash(f))).state).toBe('committed');expect(retained).toBeDefined();
+ await expect(retained!.tx.query('SELECT 1')).rejects.toThrow('UNAVAILABLE');
 });
