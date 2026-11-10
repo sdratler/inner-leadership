@@ -6,7 +6,7 @@ import {canonical} from '../contact-ops/core/validation.ts';
 import {seal,unseal,type Keyring} from '../identity/crypto.ts';
 import type {Actor,AccountFacts,WorkspaceId,IdentityClock} from '../identity/types.ts';
 import {one,type SqlSession} from '../identity/store.ts';
-import type {BillingContext} from './native.ts';
+import type {BillingContext,BillingLedgerContext} from './native.ts';
 import {billingId,reminderIntentSchema} from './contracts.ts';
 import {ledgerReceiptV2Schema,dateCashReceiptSchema,newYorkDate,type LedgerReceiptV2} from './contracts-v2.ts';
 import {BILLING_SERVICE_V4,type ServiceFamilyOfferV4} from './guest-service-contract-v4.ts';
@@ -60,7 +60,7 @@ export class FishingServiceBillingOwnerV4{
  private async withCurrent<T>(actor:Actor,id:string,work:(c:Readonly<BillingContext>,data:Awaited<ReturnType<typeof readServiceAcceptanceDataV4>>)=>Promise<T>){
   billingId.parse(id);return this.programme.withOwnerTransaction(actor,base=>this.inCurrent(base,id,'read',async(c,data)=>({result:await work(c,data),quote:data.quote})));
  }
- private async inCurrent<T>(base:Readonly<BillingContext>,id:string,action:ServiceOwnerFinancialScopeV4['action'],work:(c:Readonly<BillingContext>,data:Awaited<ReturnType<typeof readServiceAcceptanceDataV4>>)=>Promise<{result:T;quote:ServiceFamilyOfferV4}>){
+ private async inCurrent<T>(base:Readonly<BillingContext>,id:string,action:ServiceOwnerFinancialScopeV4['action'],work:(c:Readonly<BillingContext>,data:Awaited<ReturnType<typeof readServiceAcceptanceDataV4>>)=>Promise<{result:T;quote:ServiceFamilyOfferV4;terminal?:()=>Promise<void>}>){
    const tx=base.tx,physical=tx.query,time=base.now,at=time.valueOf(),query=physical.bind(tx);let open=true;
    const guard=()=>stored(open&&base.workspaceId===this.workspaceId&&base.actor.workspaceId===this.workspaceId&&base.tx===tx&&tx.query===physical&&base.now===time&&time.valueOf()===at&&c.now.valueOf()===currentAt);
    const now=this.now();stored(now instanceof Date&&Number.isFinite(now.valueOf()));
@@ -71,9 +71,12 @@ export class FishingServiceBillingOwnerV4{
     guard();await this.permission(c);const q=await readIssuedServiceQuoteV4(c,this.workspaceId,id,this.ring,this.sourceKey);
     await this.permission(c,q,action);await this.currentFamily(c,q);
     const data=await readServiceAcceptanceDataV4(Object.freeze({...c,now:this.now()}),this.workspaceId,id,this.ring,this.sourceKey,this.commandKey);stored(canonical(data.quote)===canonical(q));
-    const {result,quote:after}=await work(c,data);
+    const {result,quote:after,terminal}=await work(c,data);
     await this.permission(c,after,action);await this.currentFamily(c,after);
     stored(canonical(await readServiceAcceptanceDataV4(Object.freeze({...c,now:this.now()}),this.workspaceId,id,this.ring,this.sourceKey,this.commandKey).then(d=>d.quote))===canonical(after));
+    // Independent terminal decisions follow ALL mutable owner hooks and data
+    // guards. No more awaited financial/native authority IO on the success path.
+    if(terminal)await terminal();
     guard();return result;
    }finally{open=false;}
  }
@@ -91,7 +94,7 @@ export class FishingServiceBillingOwnerV4{
   * Current owner card permission is mandatory, including original recovery.
   * This port advances only the quote revision; it CANNOT append any money.
   * SDK/provider/network work is forbidden inside the borrowed callback. */
- async withCurrentCardActorV4<T>(actor:Actor,id:string,work:(ledger:ServiceCurrentCardLedgerV4&{actor:Readonly<AccountFacts>})=>Promise<T>):Promise<T>{
+ async withCurrentCardActorV4<T>(actor:Actor,id:string,work:(ledger:ServiceCurrentCardLedgerV4&{actor:Readonly<AccountFacts>})=>Promise<T>,terminal?:(context:Readonly<BillingLedgerContext>,snapshot:ServiceOwnerSnapshotV4)=>Promise<void>):Promise<T>{
   billingId.parse(id);let callbackFailure:unknown,rejected=false;
   try{return await this.programme.withOwnerTransaction(actor,async base=>{
    callbackFailure=undefined;rejected=false;
@@ -116,7 +119,10 @@ export class FishingServiceBillingOwnerV4{
     try{
      await stable();const result=await work(ledger);active=false;if(failed||pending.size||claimed&&!completed)throw new AppError('CONFLICT');
      const current=await stable();await this.suppressQueued(c,expected,current.balance);await this.permission(c,expected,'card');await stable();
-     if(failed||claimed&&!completed)throw new AppError('CONFLICT');return {result,quote:expected};
+     if(failed||claimed&&!completed)throw new AppError('CONFLICT');return {result,quote:expected,...(terminal?{terminal:async()=>{
+      const snapshot=await stable(),now=this.now();stored(now instanceof Date&&Number.isFinite(now.valueOf()));
+      await terminal(Object.freeze({workspaceId:this.workspaceId,tx:c.tx,now:new Date(now)}),freezeCardView(structuredClone(snapshot)));
+     }}:{})};
     }finally{active=false;await Promise.allSettled([...pending]);}
    });}catch(error){callbackFailure=error;rejected=true;throw error;}
   });}catch(error){if(rejected&&error===callbackFailure&&error instanceof AppError)throw error;throw new AppError('UNAVAILABLE');}

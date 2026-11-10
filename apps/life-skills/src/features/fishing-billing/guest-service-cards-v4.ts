@@ -1,5 +1,6 @@
 import 'server-only';
 import {randomUUID,randomInt} from 'node:crypto';
+import {AppError} from '../../lib/errors.ts';
 import {one,type IdentityStore} from '../identity/store.ts';
 import {seal,type Keyring} from '../identity/crypto.ts';
 import type {Actor,WorkspaceId} from '../identity/types.ts';
@@ -16,6 +17,13 @@ import {FishingServiceCurrentCardV4} from './guest-service-current-card-v4.ts';
 import {FishingServiceBillingOwnerV4} from './guest-service-owner-financial-v4.ts';
 import type {ServiceCurrentCardLedgerV4} from './guest-service-current-card-contract-v4.ts';
 import type {AccountFacts} from '../identity/types.ts';
+import type {BillingLedgerContext} from './native.ts';
+import type {ServiceOwnerSnapshotV4} from './guest-service-owner-financial-contract-v4.ts';
+import {BILLING_SERVICE_V4} from './guest-service-contract-v4.ts';
+import type {ServiceCardReservationAuthorityV4,ServiceCardReservationV4} from './guest-service-card-reservation-v4.ts';
+import {cardRecordCanonical as canonical} from './card-event-processor.ts';
+
+function freezeReservation<T>(v:T):T{if(v&&typeof v==='object'){for(const x of Object.values(v))freezeReservation(x);Object.freeze(v);}return v;}
 
 /** Existing card storage/protocol with actual V4 owner preparation and durable
  * reservation, plus the shared event reconciler. No SDK creation/transport is
@@ -23,13 +31,27 @@ import type {AccountFacts} from '../identity/types.ts';
  * charge; future provider execution needs Root's actual effect admission.
  * Repeated reservation cannot emit a second dispatch or idempotency key. */
 export class FishingServiceBillingCardsV4 extends FishingServiceCardEventsV4{
- constructor(db:IdentityStore,private readonly workspaceId:WorkspaceId,private readonly current:FishingServiceCurrentCardV4,private readonly owner:FishingServiceBillingOwnerV4,
+ private readonly reservationAuthority:ServiceCardReservationAuthorityV4|null;
+ constructor(db:IdentityStore,private readonly workspaceId:WorkspaceId,current:FishingServiceCurrentCardV4,private readonly owner:FishingServiceBillingOwnerV4,
   ring:Keyring,digestKey:Buffer,private readonly configuration:{binding:BillingStripeBinding;cardOnlyConfigurationId:string;approvedProductLabel:string},inbox:BillingStripeInboxAuthority,
-  provider:BillingStripeTestProvider|null=null,refund:ServiceRefundAllocationAuthorityV4|null=null){
+  provider:BillingStripeTestProvider|null=null,refund:ServiceRefundAllocationAuthorityV4|null=null,reservationAuthority:ServiceCardReservationAuthorityV4|null=null){
   super(db,workspaceId,current,ring,digestKey,configuration.binding,inbox,provider,refund);
+  requireBilling(!reservationAuthority||typeof reservationAuthority.target==='function'&&typeof reservationAuthority.authorize==='function','UNAVAILABLE');
+  this.reservationAuthority=reservationAuthority?Object.freeze({target:reservationAuthority.target.bind(reservationAuthority),authorize:reservationAuthority.authorize.bind(reservationAuthority)}):null;
  }
- private withOwner<T>(actor:Actor,id:string,work:(ledger:ServiceCurrentCardLedgerV4&{actor:Readonly<AccountFacts>})=>Promise<T>){
-  return this.owner.withCurrentCardActorV4(actor,id,l=>{requireBilling(l.context.workspaceId===this.workspaceId,'FORBIDDEN');return work(l);});
+ private withOwner<T>(actor:Actor,id:string,work:(ledger:ServiceCurrentCardLedgerV4&{actor:Readonly<AccountFacts>})=>Promise<T>,terminal?:(context:Readonly<BillingLedgerContext>,snapshot:ServiceOwnerSnapshotV4)=>Promise<void>){
+  return this.owner.withCurrentCardActorV4(actor,id,l=>{requireBilling(l.context.workspaceId===this.workspaceId,'FORBIDDEN');return work(l);},terminal);
+ }
+ private async reservationPermission(c:Readonly<BillingLedgerContext>,reservation:ServiceCardReservationV4|null){
+  const authority=this.reservationAuthority;if(!authority)throw new AppError('UNAVAILABLE');const physical=c.tx,original=physical.query,query=original.bind(physical),time=c.now,at=time.valueOf();let active=true,failed=false;
+  const pending=new Set<Promise<unknown>>(),guard=()=>requireBilling(active&&c.workspaceId===this.workspaceId&&c.tx===physical&&physical.query===original&&c.now===time&&time.valueOf()===at&&view.now.valueOf()===at,'UNAVAILABLE');
+  const tx=Object.freeze({query:<R extends object>(sql:string,v:readonly unknown[]=[])=>{const p=(async()=>{guard();const rows=await query<R>(sql,v);guard();return rows;})().catch(error=>{failed=true;throw error;});pending.add(p);void p.then(()=>pending.delete(p),()=>pending.delete(p));return p;}});
+  const view=Object.freeze({workspaceId:this.workspaceId,tx,now:new Date(at)}),binding=Object.freeze({...this.binding});
+  try{
+   guard();await authority.target(view,binding);guard();
+   if(reservation)await authority.authorize(view,binding,freezeReservation(structuredClone(reservation)));
+   guard();requireBilling(!failed&&pending.size===0,'UNAVAILABLE');
+  }finally{active=false;if(pending.size)await Promise.allSettled([...pending]);}
  }
  private async original(l:ServiceCurrentCardLedgerV4&{actor:Readonly<AccountFacts>},cmd:PrepareCardCommand){
   const exists=await one(l.context.tx,'SELECT id FROM ls_fishing_billing.card_attempts WHERE workspace_id=$1 AND id=$2',[l.context.workspaceId,cmd.operationId]);if(!exists)return null;
@@ -63,10 +85,11 @@ export class FishingServiceBillingCardsV4 extends FishingServiceCardEventsV4{
  }
  async reserveCheckout(actor:Actor,quoteId:string,attemptId:string){
   billingId.parse(quoteId);billingId.parse(attemptId);
-  requireBilling(this.provider,'UNAVAILABLE');
-  // Existing independent service gate, not owner impersonation or SDK access.
-  await this.current.withCurrentCardServiceV4(this.binding,quoteId,async()=>undefined);
+  requireBilling(this.provider&&this.reservationAuthority,'UNAVAILABLE');
+  let reserved:ServiceCardReservationV4|null=null;
   return this.withOwner(actor,quoteId,async l=>{
+   reserved=null;
+   await this.reservationPermission(l.context,null);
    const a=await this.attempt(l.context,attemptId,quoteId);requireBilling(a.actorId===l.actor.id,'FORBIDDEN');
    if(a.state!=='prepared')return {dispatch:false as const,attempt:a};
    const q=l.frame.quote;
@@ -75,8 +98,16 @@ export class FishingServiceBillingCardsV4 extends FishingServiceCardEventsV4{
    }
    const request=await this.frozenRequest(l.context,a);
    requireBilling(request.allocations.every(x=>x.amountMinor<=(l.frame.balance.lines.find(line=>line.lineId===x.lineId)?.remainingMinor??0)),'CONFLICT');
+   await this.reservationPermission(l.context,{version:BILLING_SERVICE_V4,purpose:'reserve_checkout',phase:'before_reservation',snapshot:l.frame,attempt:a,request});
    const unknown={...a,state:'unknown' as const,dispatchId:randomUUID(),revision:a.revision+1,balanceVersion:q.revision+1};
-   await this.save(l.context,a,unknown);await l.advance();return {dispatch:true as const,attempt:unknown,request};
+   await this.save(l.context,a,unknown);const snapshot=await l.advance();reserved=freezeReservation(structuredClone({version:BILLING_SERVICE_V4,purpose:'reserve_checkout',phase:'terminal',snapshot,attempt:unknown,request}));return {dispatch:true as const,attempt:unknown,request};
+  },async(c,snapshot)=>{
+   if(!reserved)return;
+   const a=await this.attempt(c,attemptId,quoteId),request=await this.frozenRequest(c,a),q=snapshot.quote;
+   requireBilling(canonical(a)===canonical(reserved.attempt)&&canonical(request)===canonical(reserved.request)&&a.state==='unknown'&&a.dispatchId&&a.balanceVersion===q.revision&&q.id===a.quoteId&&q.familyId===a.familyId&&q.state==='accepted'&&!q.paused&&snapshot.balance.pendingAttemptIds.every(id=>id===a.id)&&!['review_required','overpaid'].includes(snapshot.balance.state),'CONFLICT');
+   requireBilling(request.allocations.every(x=>x.amountMinor<=(snapshot.balance.lines.find(line=>line.lineId===x.lineId)?.remainingMinor??0)),'CONFLICT');
+   await this.reservationPermission(c,{...reserved,snapshot,attempt:a,request});
+   // No further awaited native financial IO after actual terminal admission.
   });
  }
 }

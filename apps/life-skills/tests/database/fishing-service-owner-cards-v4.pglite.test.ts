@@ -22,10 +22,13 @@ import {ledgerReceiptSchema} from '../../src/features/fishing-billing/contracts.
 import {AppError} from '../../src/lib/errors.ts';
 import type {IdentityStore} from '../../src/features/identity/store.ts';
 import type {PrepareCardCommand,ProviderPaymentSnapshot} from '../../src/features/fishing-billing/card-contracts.ts';
+import type {ServiceCardReservationAuthorityV4} from '../../src/features/fishing-billing/guest-service-card-reservation-v4.ts';
+import {serviceGuestAadV4} from '../../src/features/fishing-billing/guest-service-aad-v4.ts';
 vi.mock('server-only',()=>({}));
 let engine:PGlite;const network=vi.fn(async()=>{throw Error('NO_NETWORK');});
 beforeAll(async()=>{requirePgliteMemoryEnvironment(process.env);vi.stubGlobal('fetch',network);engine=new PGlite();await initializeProgramSchema(engine);
  for(const name of ['UNNUMBERED_ls_fishing_fulfillment_v1.sql','UNNUMBERED_ls_fishing_service_material_v4.sql','UNNUMBERED_ls_fishing_quote_service_v4.sql','UNNUMBERED_ls_fishing_service_money_v4.sql','UNNUMBERED_ls_fishing_service_state_v4.sql'])await engine.exec(await readFile('migrations/proposals/'+name,'utf8'));
+ await engine.exec('CREATE SCHEMA synthetic_owner_card4; CREATE TABLE synthetic_owner_card4.service(workspace_id uuid PRIMARY KEY,active boolean NOT NULL DEFAULT true)');
 },20000);
 afterEach(()=>expect(network).not.toHaveBeenCalled());afterAll(async()=>{try{await engine?.close();}finally{vi.unstubAllGlobals();}});
 // Actual configured-owner/session/native family/source/issuer/V4 acceptance,
@@ -36,9 +39,11 @@ afterEach(()=>expect(network).not.toHaveBeenCalled());afterAll(async()=>{try{awa
 // runtime, real payment or PostgreSQL multi-connection competition proof.
 async function ready(accept=true){
  const f=await serviceGuestFixtureV4(engine);if(accept)await new FishingServiceGuestNativeV4(f.db,f.workspace,programRing,programKey,f.commandKey,f.clock,f.resolver()).acceptFinancialOffer(f.token,f.command);
- const controls={denyTarget:false,denyCard:false,denyService:false,clock:false,failRequest:false,failCAS:false,postCommit:false,retry:false,retryGate:false,privateBeforeTarget:0,holdQuery:null as Promise<void>|null,queryEntered:()=>{}};
+ await engine.query('INSERT INTO synthetic_owner_card4.service(workspace_id) VALUES($1)',[f.workspace]);
+ const controls={denyTarget:false,denyCard:false,denyService:false,clock:false,failRequest:false,failCAS:false,postCommit:false,retry:false,retryGate:false,privateBeforeTarget:0,holdQuery:null as Promise<void>|null,queryEntered:()=>{},revokeAtOwnerTarget:false,revokeAtOwnerTerminal:false,afterReserveOwnerChecks:0,terminalDone:false,terminalAuthorizations:0,reservationClock:false};
  const originalError=new AppError('CONFLICT'),ledgerKey=Buffer.from(programKey);
- const db:IdentityStore={transaction:async work=>{let writes=false;const once=()=>f.db.transaction(tx=>work({query:async<R extends object>(sql:string,v:readonly unknown[]=[])=>{
+ const db:IdentityStore={transaction:async work=>{controls.terminalDone=false;let writes=false;const once=()=>f.db.transaction(tx=>work({query:async<R extends object>(sql:string,v:readonly unknown[]=[])=>{
+  if(controls.terminalDone&&(sql.includes('ls_fishing_billing')||sql.includes('synthetic_owner_card4')))throw Error('NATIVE_FINANCIAL_IO_AFTER_TERMINAL_SERVICE');
   if(controls.denyTarget&&sql.includes('FROM ls_fishing_billing'))controls.privateBeforeTarget++;
   if(sql==='SELECT 42 AS owner_held'){controls.queryEntered();await controls.holdQuery;}
   if(controls.failRequest&&sql.startsWith('INSERT INTO ls_fishing_billing.card_attempt_requests'))throw new AppError('UNAVAILABLE');
@@ -48,18 +53,33 @@ async function ready(accept=true){
  if(controls.retry){controls.retry=false;await expect(once()).rejects.toBe(originalError);await once();throw originalError;}
  const result=await once();if(writes&&controls.postCommit){controls.postCommit=false;throw new AppError('FORBIDDEN');}return result;
  }};
- const authority:ServiceOwnerFinancialAuthorityV4={target:async()=>{if(controls.denyTarget)throw new AppError('FORBIDDEN');},authorize:async(c,s)=>{
+ const authority:ServiceOwnerFinancialAuthorityV4={target:async c=>{if(controls.denyTarget)throw new AppError('FORBIDDEN');if(controls.revokeAtOwnerTarget){controls.revokeAtOwnerTarget=false;await c.tx.query('UPDATE synthetic_owner_card4.service SET active=false WHERE workspace_id=$1',[f.workspace]);}},authorize:async(c,s)=>{
   expect(c.actor.id).toBe(f.owner.id);if(s.familyId!==f.quote.familyId||s.quoteId!==f.quote.id||s.offerSha256!==f.quote.offer.sha256||s.action==='card'&&controls.denyCard)throw new AppError('FORBIDDEN');if(controls.clock)c.now.setTime(c.now.valueOf()+1);
   if(controls.retryGate&&s.action==='card'){const rows=await c.tx.query<{revision:number}>('SELECT revision FROM ls_fishing_billing.quotes WHERE workspace_id=$1 AND id=$2',[f.workspace,f.quote.id]);if(rows[0]!.revision>=4){controls.retryGate=false;throw originalError;}}
+  if(controls.revokeAtOwnerTerminal&&s.action==='card'){const rows=await c.tx.query<{revision:number}>('SELECT revision FROM ls_fishing_billing.quotes WHERE workspace_id=$1 AND id=$2',[f.workspace,f.quote.id]);if(rows[0]!.revision>=5&&++controls.afterReserveOwnerChecks===3){controls.revokeAtOwnerTerminal=false;await c.tx.query('UPDATE synthetic_owner_card4.service SET active=false WHERE workspace_id=$1',[f.workspace]);}}
  }};
  const families=new FishingBillingInquiryFamilyProposals(f.db,f.workspace,programRing,programKey,f.clock),owner=new FishingServiceBillingOwnerV4(f.workspace,new FishingProgramSourceNativeV3(db,f.workspace,programRing,programKey,f.owner.id,f.clock),families,programRing,programKey,f.commandKey,ledgerKey,f.clock,authority);
  const binding={accountId:'acct_SYNTHETIC',livemode:false as const,apiVersion:'2026-09-30.endive' as const,verifiedBindingId:'SYNTHETIC-OWNER4-NO-SDK'},config={binding,cardOnlyConfigurationId:'pmc_SYNTHETIC',approvedProductLabel:'SYNTHETIC ONLY'};
- const current=new FishingServiceCurrentCardV4(f.db,f.workspace,families,programRing,programKey,f.commandKey,ledgerKey,f.clock,{target:async(c,b)=>{expect(c).not.toHaveProperty('actor');if(controls.denyService||canonical(b)!==canonical(binding))throw new AppError('FORBIDDEN');},authorize:async(_c,_b,s)=>{if(s.familyId!==f.quote.familyId)throw new AppError('FORBIDDEN');}});
+ const current=new FishingServiceCurrentCardV4(f.db,f.workspace,families,programRing,programKey,f.commandKey,ledgerKey,f.clock,{target:async(c,b)=>{expect(c).not.toHaveProperty('actor');const rows=await c.tx.query<{active:boolean}>('SELECT active FROM synthetic_owner_card4.service WHERE workspace_id=$1 FOR SHARE',[f.workspace]);if(controls.denyService||canonical(b)!==canonical(binding)||rows.length!==1||!rows[0]!.active)throw new AppError('FORBIDDEN');},authorize:async(_c,_b,s)=>{if(s.familyId!==f.quote.familyId)throw new AppError('FORBIDDEN');}});
  const snapshots=new Map<string,ProviderPaymentSnapshot>(),created=vi.fn(async()=>{throw Error('SDK_CREATE_FORBIDDEN');}),provider:BillingStripeTestProvider={createCheckout:created,readPayment:async r=>{const s=snapshots.get(r.eventId);if(!s)throw new AppError('UNAVAILABLE');return structuredClone(s);}};
  const inbox:BillingStripeInboxAuthority={authorize:async(_tx,ws,b)=>{if(ws!==f.workspace||canonical(b)!==canonical(binding)||controls.denyService)throw new AppError('FORBIDDEN');}};
- const cards=(transport:BillingStripeTestProvider|null=provider)=>new FishingServiceBillingCardsV4(f.db,f.workspace,current,owner,programRing,ledgerKey,config,inbox,transport);
+ const reservation:ServiceCardReservationAuthorityV4={target:async(c,b)=>{
+  expect(c).not.toHaveProperty('actor');expect(b).toEqual(binding);const rows=await c.tx.query<{active:boolean}>('SELECT active FROM synthetic_owner_card4.service WHERE workspace_id=$1 FOR SHARE',[f.workspace]);if(c.workspaceId!==f.workspace||controls.denyService||rows.length!==1||!rows[0]!.active)throw new AppError('FORBIDDEN');
+ },authorize:async(c,b,r)=>{
+  expect(c).not.toHaveProperty('actor');expect(b).toEqual(binding);expect(r.version).toBe(BILLING_SERVICE_V4);expect(r.purpose).toBe('reserve_checkout');expect(Object.isFrozen(r.request)).toBe(true);
+  const q=r.snapshot.quote,a=r.attempt;
+  // Actual SAME-TX native join sees the uncommitted UNKNOWN/current revision.
+  // This table is synthetic service admission, not real provider permission.
+  const rows=await c.tx.query<{quoteCipher:string;attemptCipher:string;requestCipher:string}>('SELECT q.payload_ciphertext AS "quoteCipher",a.payload_ciphertext AS "attemptCipher",r.payload_ciphertext AS "requestCipher" FROM synthetic_owner_card4.service s JOIN ls_fishing_billing.quotes q ON q.workspace_id=s.workspace_id JOIN ls_fishing_billing.card_attempts a ON a.workspace_id=q.workspace_id AND a.quote_id=q.id JOIN ls_fishing_billing.card_attempt_requests r ON r.workspace_id=a.workspace_id AND r.attempt_id=a.id AND r.quote_id=q.id WHERE s.workspace_id=$1 AND s.active AND q.id=$2 AND q.family_id=$3 AND q.revision=$4 AND a.id=$5 AND a.state=$6 AND a.revision=$7 FOR SHARE OF s,q,a,r',[f.workspace,q.id,q.familyId,q.revision,a.id,a.state,a.revision]);
+  if(rows.length!==1)throw new AppError('FORBIDDEN');const actual=rows[0]!;
+  expect(JSON.parse(unseal(actual.quoteCipher,serviceGuestAadV4('quote',f.workspace,q.id),programRing))).toEqual(q);expect(JSON.parse(unseal(actual.attemptCipher,'ls_fishing_billing/card/v1/attempt/'+f.workspace+'/'+a.id,programRing))).toEqual(a);expect(JSON.parse(unseal(actual.requestCipher,'ls_fishing_billing/card/v1/checkout_request/'+f.workspace+'/'+a.id,programRing)).request).toEqual(r.request);
+  const children=await c.tx.query<{id:string}>("SELECT person_id AS id FROM ls_cases.family_members WHERE workspace_id=$1 AND family_id=$2 AND role='child' FOR SHARE",[f.workspace,q.familyId]);expect(q.lines.every(l=>children.some(ch=>ch.id===l.childId))).toBe(true);
+  if(r.phase==='terminal'){expect(a.state).toBe('unknown');expect(a.dispatchId).toEqual(expect.any(String));expect(a.balanceVersion).toBe(q.revision);controls.terminalAuthorizations++;controls.terminalDone=true;}
+  else expect(a.state).toBe('prepared');if(controls.reservationClock)c.now.setTime(c.now.valueOf()+1);
+ }};
+ const cards=(transport:BillingStripeTestProvider|null=provider,permission:ServiceCardReservationAuthorityV4|null=reservation)=>new FishingServiceBillingCardsV4(f.db,f.workspace,current,owner,programRing,ledgerKey,config,inbox,transport,null,permission);
  const command:PrepareCardCommand={operationId:randomUUID(),quoteId:f.quote.id,expectedVersion:3,selection:f.quote.lines.map(l=>({lineId:l.id,amountMinor:65000}))};
- return {...f,billingOwner:owner,controls,current,cards,command,binding,created,snapshots,inbox};
+ return {...f,billingOwner:owner,controls,current,cards,command,binding,created,snapshots,inbox,reservation,provider};
 }
 type Fixture=Awaited<ReturnType<typeof ready>>;
 async function rows(f:Fixture){const result:Record<string,unknown>={};for(const table of ['quotes','receipts','card_attempts','card_attempt_requests','guest_financial_acceptances'])result[table]=(await engine.query('SELECT * FROM ls_fishing_billing.'+table+' WHERE workspace_id=$1 ORDER BY 2',[f.workspace])).rows;return result;}
@@ -87,7 +107,7 @@ it('owner-card-v4 reserves UNKNOWN once with the frozen original key and never i
  const saved=await rows(f);expect(await f.cards().reserveCheckout(f.owner,f.quote.id,f.command.operationId)).toEqual({dispatch:false,attempt:reserved.attempt});expect(await rows(f)).toEqual(saved);expect(await request(f)).toEqual(frozen);expect((await view(f)).balance.paidMinor).toBe(0);expect(f.created).not.toHaveBeenCalled();
 });
 it('owner-card-v4 missing provider or revoked independent service cannot reserve UNKNOWN',async()=>{
- const f=await ready();await f.cards().prepare(f.owner,f.command);const before=await rows(f);await expect(f.cards(null).reserveCheckout(f.owner,f.quote.id,f.command.operationId)).rejects.toThrow('UNAVAILABLE');f.controls.denyService=true;await expect(f.cards().reserveCheckout(f.owner,f.quote.id,f.command.operationId)).rejects.toThrow('FORBIDDEN');expect(await rows(f)).toEqual(before);
+ const f=await ready();await f.cards().prepare(f.owner,f.command);const before=await rows(f);await expect(f.cards(null).reserveCheckout(f.owner,f.quote.id,f.command.operationId)).rejects.toThrow('UNAVAILABLE');await expect(f.cards(f.provider,null).reserveCheckout(f.owner,f.quote.id,f.command.operationId)).rejects.toThrow('UNAVAILABLE');f.controls.denyService=true;await expect(f.cards().reserveCheckout(f.owner,f.quote.id,f.command.operationId)).rejects.toThrow('FORBIDDEN');expect(await rows(f)).toEqual(before);
 });
 it('owner-card-v4 retains original preparation after real cash and marks its old amount stale instead of dispatching it',async()=>{
  const f=await ready(),original=await f.cards().prepare(f.owner,f.command);await f.billingOwner.recordCashDate(f.owner,{version:BILLING_SERVICE_V4,operationId:randomUUID(),quoteId:f.quote.id,expectedVersion:4,amountMinor:30000,currency:'USD',receivedPrecision:'date',receivedDate:'2035-01-02',timeZone:'America/New_York',allocations:[{lineId:f.quote.lines[0]!.id,amountMinor:30000}]});
@@ -134,4 +154,28 @@ it('owner-card-v4 drains detached callback SQL before native rollback and preser
 it('owner-card-v4 two competing prepare commands produce one native attempt and one frozen request',async()=>{
  const f=await ready(),other={...f.command,operationId:randomUUID()},results=await Promise.allSettled([f.cards().prepare(f.owner,f.command),f.cards().prepare(f.owner,other)]);expect(results.filter(r=>r.status==='fulfilled')).toHaveLength(1);expect(results.filter(r=>r.status==='rejected')).toHaveLength(1);const stored=await rows(f);expect(stored.card_attempts).toHaveLength(1);expect(stored.card_attempt_requests).toHaveLength(1);expect((await view(f)).quote.revision).toBe(4);expect(f.created).not.toHaveBeenCalled();
  // PGlite serializes these transactions; not native PostgreSQL race evidence.
+});
+it.each(['target','terminal'] as const)('owner-card-v4 rolls back UNKNOWN when service is revoked at the late owner %s hook',async point=>{
+ const f=await ready();await f.cards().prepare(f.owner,f.command);const before=await rows(f);f.controls.revokeAtOwnerTarget=point==='target';f.controls.revokeAtOwnerTerminal=point==='terminal';let returned:Awaited<ReturnType<ReturnType<Fixture['cards']>['reserveCheckout']>>|undefined;
+ try{returned=await f.cards().reserveCheckout(f.owner,f.quote.id,f.command.operationId);}catch{/* Expected native rollback, never a dispatch result. */}
+ const after=await rows(f);expect(f.created).not.toHaveBeenCalled();expect((after.card_attempts as {state:string;revision:number}[]).map(a=>({state:a.state,revision:a.revision}))).toEqual((before.card_attempts as {state:string;revision:number}[]).map(a=>({state:a.state,revision:a.revision})));
+ expect(createHash('sha256').update(JSON.stringify(after)).digest('hex')).toBe(createHash('sha256').update(JSON.stringify(before)).digest('hex'));expect(returned?.dispatch).not.toBe(true);
+});
+it('owner-card-v4 authorizes actual uncommitted UNKNOWN in the owner TX after all mutable owner hooks',async()=>{
+ const f=await ready();await f.cards().prepare(f.owner,f.command);const result=await f.cards().reserveCheckout(f.owner,f.quote.id,f.command.operationId);expect(result.dispatch).toBe(true);expect(f.controls.terminalAuthorizations).toBe(1);expect(f.controls.terminalDone).toBe(true);expect(f.created).not.toHaveBeenCalled();
+ // The fixture rejects financial IO after the final decision, while allowing
+ // Source3's actual pure locked owner/session postlude. This passed that guard.
+});
+it('owner-card-v4 rejects a mutated independent authority clock without creating UNKNOWN',async()=>{
+ const f=await ready();await f.cards().prepare(f.owner,f.command);const before=await rows(f);f.controls.reservationClock=true;await expect(f.cards().reserveCheckout(f.owner,f.quote.id,f.command.operationId)).rejects.toThrow('UNAVAILABLE');expect(await rows(f)).toEqual(before);
+});
+it('owner-card-v4 drains detached terminal service SQL inside rollback and never returns dispatch',async()=>{
+ const f=await ready();await f.cards().prepare(f.owner,f.command);const before=await rows(f);let release=()=>{},entered=()=>{},detached:Promise<unknown>|undefined;f.controls.holdQuery=new Promise<void>(r=>{release=r;});const started=new Promise<void>(r=>{entered=r;});f.controls.queryEntered=entered;
+ const authority:ServiceCardReservationAuthorityV4={target:f.reservation.target,authorize:async(c,b,r)=>{await f.reservation.authorize(c,b,r);if(r.phase==='terminal'){detached=c.tx.query('SELECT 42 AS owner_held');void detached.catch(()=>{});}}};
+ const operation=f.cards(f.provider,authority).reserveCheckout(f.owner,f.quote.id,f.command.operationId),outcome=expect(operation).rejects.toThrow('UNAVAILABLE');await started;release();await outcome;await expect(detached).rejects.toThrow();expect(await rows(f)).toEqual(before);expect(f.created).not.toHaveBeenCalled();
+});
+it('owner-card-v4 preserves committed UNKNOWN after a terminal-admitted reservation error without returning another dispatch',async()=>{
+ const f=await ready();await f.cards().prepare(f.owner,f.command);f.controls.postCommit=true;
+ await expect(f.cards().reserveCheckout(f.owner,f.quote.id,f.command.operationId)).rejects.toThrow('UNAVAILABLE');const stored=await rows(f),attempt=await f.cards().readAttempt(f.owner,f.quote.id,f.command.operationId);expect(attempt.state).toBe('unknown');expect(attempt.dispatchId).toEqual(expect.any(String));expect(f.controls.terminalAuthorizations).toBe(1);
+ expect(await f.cards().reserveCheckout(f.owner,f.quote.id,f.command.operationId)).toEqual({dispatch:false,attempt});expect(await rows(f)).toEqual(stored);expect(f.controls.terminalAuthorizations).toBe(1);expect(f.created).not.toHaveBeenCalled();
 });
