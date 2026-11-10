@@ -13,6 +13,7 @@ import type { GroupPreparationIdentityRuntime } from '../../src/lib/fishing-grou
 import { fishingProgramSourceOwnerHttp } from '../../src/lib/fishing-program-source-owner-http.ts';
 import { composeFishingProgramSourceOwnerRuntime } from '../../src/lib/fishing-program-source-owner-runtime.ts';
 import { PROGRAM_SOURCE_OWNER_PATH, programSourceGroupDataV3Schema } from '../../src/features/fishing-billing/program-source-owner-contract-v3.ts';
+import { PROGRAM_SOURCE_V3, programSourceCommandV3Schema } from '../../src/features/fishing-billing/program-source-contract-v3.ts';
 import { GET, POST } from '../../src/app/api/private/fishing-program-sources/route.ts';
 
 vi.mock('server-only', () => ({}));
@@ -75,4 +76,22 @@ it('native owner program HTTP keeps a lost committed result unknown and replays 
   expect((await fresh.call(edit)).status).toBe(200);
   const retry = await fresh.call(command); expect(retry.status).toBe(200); expect((await retry.json()).data).toMatchObject({ replayed: true, record: { revision: 1, command } }); expect(await count(f)).toBe(2);
   const current = await fresh.call(undefined, '?groupId=' + f.groupId); expect(current.status).toBe(200); expect((await current.json()).data.group.record).toMatchObject({ revision: 2, command: { fields: { state: 'cancelled' } } });
+});
+it('native owner program HTTP exposes only correlated native-known CAS/overlap rejection and permits a fresh corrected edit', async () => {
+  const f = await fixture(), h = await harness(f), original = f.group();
+  expect((await h.call(original)).status).toBe(200);
+  const stale = { ...original, operationId: randomUUID() }, response = await h.call(stale); expect(response.status).toBe(200);
+  expect((await response.json()).data).toMatchObject({ kind: 'rejected_source', workspaceId: f.workspace, actorId: f.owner.id, command: stale, code: 'CONFLICT' }); expect(await count(f)).toBe(1);
+  const lesson = f.lesson(randomUUID(), 1, '2035-01-31T21:30:00Z'); expect((await h.call(lesson)).status).toBe(200);
+  const overlap = f.lesson(randomUUID(), 2, '2035-01-31T22:00:00Z'), rejected = await h.call(overlap);
+  expect(rejected.status).toBe(200); expect((await rejected.json()).data).toMatchObject({ kind: 'rejected_source', command: overlap, code: 'CONFLICT' }); expect(await count(f)).toBe(2);
+  const corrected = { ...overlap, operationId: randomUUID(), fields: { ...(overlap.fields as object), startsAt: '2035-02-07T21:30:00Z', endsAt: '2035-02-07T22:30:00Z' } };
+  expect((await h.call(corrected)).status).toBe(200); expect(await count(f)).toBe(3);
+});
+it('native owner program HTTP refuses a rejection token whose owner correlation does not match the actual request', async () => {
+  const f = await fixture(), other = await fixture(), h = await harness(f), command = programSourceCommandV3Schema.parse(f.group());
+  const deps = composeFishingProgramSourceOwnerRuntime(h.runtime, { LS_PROVIDER_INDEX_OWNER_ACCOUNT_ID: f.owner.id });
+  deps.store.recordOutcome = async () => ({ version: PROGRAM_SOURCE_V3, workspaceId: other.workspace, actorId: other.owner.id, command, state: 'rejected', code: 'CONFLICT' });
+  const response = await fishingProgramSourceOwnerHttp(h.request(command), async () => deps);
+  expect(response.status).toBe(503); expect((await response.json()).error.code).toBe('UNAVAILABLE'); expect(await count(f)).toBe(0);
 });

@@ -22,6 +22,12 @@ const select=`SELECT h.group_id AS "groupId",h.kind,h.source_id AS id,h.revision
  FROM ls_fishing_billing.program_source_heads h LEFT JOIN ls_fishing_billing.program_source_versions v
  ON v.workspace_id=h.workspace_id AND v.group_id=h.group_id AND v.kind=h.kind AND v.source_id=h.source_id AND v.revision=h.revision`;
 function fail(code:'UNAVAILABLE'|'CONFLICT'|'FORBIDDEN'|'NOT_FOUND'='UNAVAILABLE'):never{throw new AppError(code);}
+type RejectedCode='CONFLICT'|'FORBIDDEN'|'NOT_FOUND'|'UNAUTHENTICATED'|'INVALID_REQUEST';
+// Private provenance token: only the transaction's observed callback rejection
+// path can mint this. A driver/post-commit AppError never passes this boundary.
+class NativeRecordRejection extends Error{constructor(readonly code:RejectedCode){super(code);}}
+export type ProgramSourceRecordOutcomeV3=Readonly<{version:typeof PROGRAM_SOURCE_V3;workspaceId:WorkspaceId;actorId:AccountId;command:ProgramSourceCommandV3}&(
+ {state:'recorded';receipt:Stored&{replayed:boolean}}|{state:'rejected';code:RejectedCode})>;
 
 /** Actual native Florida scheduling/progression source in the existing app DB.
  * The trusted configured owner is required; no first-practitioner, demo or
@@ -70,7 +76,7 @@ export class FishingProgramSourceNativeV3 implements ChildPeriodNativeAuthorityV
   if(data.proposal.command.selection.familyId!==fields.familyId||!data.proposal.command.selection.children.some(child=>child.nativeChildId===command.id))fail('FORBIDDEN');
   return data;
  }
- private async transaction<T>(actor:Actor,work:(c:BillingContext)=>Promise<T>){
+ private async transaction<T>(actor:Actor,work:(c:BillingContext)=>Promise<T>,onRejected?:(error:AppError)=>never){
   const principal=Object.freeze({...actor});if(principal.workspaceId!==this.workspaceId)fail('FORBIDDEN');let callbackFailure:unknown;
   try{return await this.db.transaction(async session=>{
    callbackFailure=undefined;
@@ -84,7 +90,7 @@ export class FishingProgramSourceNativeV3 implements ChildPeriodNativeAuthorityV
     if(!pinned)throw new AppError('UNAUTHENTICATED');
     const result=await work(c);c.actor=await freshActor(tx,principal,this.now());await this.owner(c);return result;
    }catch(error){callbackFailure=error;throw error;}
-  });}catch(error){if(error===callbackFailure&&error instanceof AppError)throw error;fail();}
+  });}catch(error){if(error===callbackFailure&&error instanceof AppError){if(onRejected)onRejected(error);throw error;}fail();}
  }
  async read(actor:Actor,groupId:string,kind:Kind,id:string){
   billingId.parse(groupId);billingId.parse(id);
@@ -94,17 +100,45 @@ export class FishingProgramSourceNativeV3 implements ChildPeriodNativeAuthorityV
   * or unverifiable record set never becomes an apparently empty schedule. */
  async readGroup(actor:Actor,groupId:string){
   billingId.parse(groupId);
+  return this.transaction(actor,c=>this.readGroupDataInTransaction(c,groupId));
+ }
+ /** Trusted server composition only. Reuses the existing owner transaction,
+  * row locks and terminal session check; no nested DB or browser capability. */
+ async withOwnerTransaction<T>(actor:Actor,work:(c:Readonly<BillingContext>)=>Promise<T>){
   return this.transaction(actor,async c=>{
+   let open=true;const tx:SqlSession=Object.freeze({query:<R extends object>(sql:string,v:readonly unknown[]=[])=>{if(!open)fail();return c.tx.query<R>(sql,v);}});
+   try{return await work(Object.freeze({...c,tx,actor:Object.freeze({...c.actor}),now:new Date(c.now)}));}finally{open=false;}
+  });
+ }
+ /** Scheduling data in an already authenticated caller's real transaction.
+  * This does not supply financial/guardian/seat or operational authority. */
+ async readGroupDataInTransaction(c:Readonly<BillingContext>,groupId:string){
+   billingId.parse(groupId);if(c.workspaceId!==this.workspaceId)fail('FORBIDDEN');await lockWorkspace(c.tx,this.workspaceId);await this.owner(c);
    const group=await this.get(c.tx,groupId,'group',groupId);if(!group)fail('NOT_FOUND');
    const lessons=await this.lessons(c.tx,groupId);
    const rows=await c.tx.query<Row>(select+" WHERE h.workspace_id=$1 AND h.group_id=$2 AND h.kind='progression' ORDER BY h.source_id LIMIT 1001 FOR SHARE OF h",[this.workspaceId,groupId]);
    if(rows.length>1000)fail();const progressions=rows.map(row=>this.decode(row));
    for(const progress of progressions)await this.family(c.tx,progress.record);
+   await this.owner(c);
    return {version:PROGRAM_SOURCE_V3,classification:'scheduling_facts_only' as const,group,lessons,progressions};
-  });
  }
  async record(actor:Actor,raw:unknown){
   const command=programSourceCommandV3Schema.parse(raw);
+  return this.recordCommand(actor,command);
+ }
+ /** Trusted transport recovery result. Only a rejection observed from this
+  * exact real SQL callback and returned unchanged by the transaction adapter
+  * can be classified as rolled back. Same-coded driver/commit failures remain
+  * uncertain and require replay of the original operation, never a new op. */
+ async recordOutcome(actor:Actor,raw:unknown):Promise<ProgramSourceRecordOutcomeV3>{
+  const command=programSourceCommandV3Schema.parse(raw),principal=Object.freeze({...actor});
+  const correlation={version:PROGRAM_SOURCE_V3,workspaceId:this.workspaceId,actorId:principal.id,command};
+  try{return {...correlation,state:'recorded',receipt:await this.recordCommand(principal,command,error=>{
+   if(error.code==='CONFLICT'||error.code==='FORBIDDEN'||error.code==='NOT_FOUND'||error.code==='UNAUTHENTICATED'||error.code==='INVALID_REQUEST')throw new NativeRecordRejection(error.code);
+   throw error;
+  })};}catch(error){if(error instanceof NativeRecordRejection)return {...correlation,state:'rejected',code:error.code};throw error;}
+ }
+ private async recordCommand(actor:Actor,command:ProgramSourceCommandV3,onRejected?:(error:AppError)=>never){
   return this.transaction(actor,async c=>{
    const prior=await c.tx.query<{groupId:string;kind:Kind;id:string;revision:number}>('SELECT group_id AS "groupId",kind,source_id AS id,revision FROM ls_fishing_billing.program_source_versions WHERE workspace_id=$1 AND operation_id=$2',[this.workspaceId,command.operationId]);
    if(prior.length){
@@ -138,7 +172,7 @@ export class FishingProgramSourceNativeV3 implements ChildPeriodNativeAuthorityV
    else await c.tx.query('INSERT INTO ls_fishing_billing.program_source_heads(workspace_id,group_id,kind,source_id,revision,record_digest) VALUES($1,$2,$3,$4,$5,$6)',[this.workspaceId,command.groupId,command.kind,command.id,record.revision,digest]);
    if(command.kind==='progression')await this.family(c.tx,record);
    return {record,digest,replayed:false};
-  });
+  },onRejected);
  }
  /** Real SQL implementation of the prospective period resolver. The caller
   * owns its real authenticated billing transaction/session. This source locks
