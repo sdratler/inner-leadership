@@ -55,6 +55,20 @@ export const serviceAcceptCommandV4Schema=z.object({version:z.literal(BILLING_SE
  recurring:serviceRecurringChoiceV4Schema,
 }).strict();
 export type ServiceAcceptCommandV4=z.infer<typeof serviceAcceptCommandV4Schema>;
+/** Original acceptance result; subsequent payment/balance is a separate read. */
+export const serviceAcceptanceReceiptV4Schema=z.object({version:z.literal(BILLING_SERVICE_V4),action:z.literal(SERVICE_FINANCIAL_ACTION_V4),operationId:billingId,
+ acceptanceId:billingId,quoteId:billingId,acceptedRevision:revision,acceptedAt:billingInstant,replayed:z.boolean(),paymentStateAtAcceptance:z.literal('unpaid'),
+}).strict();
+export type ServiceAcceptanceReceiptV4=z.infer<typeof serviceAcceptanceReceiptV4Schema>;
+const serviceAcceptanceCorrelationV4={version:z.literal(BILLING_SERVICE_V4),action:z.literal(SERVICE_FINANCIAL_ACTION_V4),workspaceId:billingId,command:serviceAcceptCommandV4Schema};
+/** A rejected CURRENT attempt never resolves an earlier UNKNOWN invocation. */
+export const serviceAcceptanceOutcomeV4Schema=z.discriminatedUnion('state',[
+ z.object({...serviceAcceptanceCorrelationV4,state:z.literal('committed'),receipt:serviceAcceptanceReceiptV4Schema}).strict(),
+ z.object({...serviceAcceptanceCorrelationV4,state:z.literal('rejected_current_attempt'),code:z.enum(['UNAVAILABLE','CONFLICT','FORBIDDEN','NOT_FOUND','UNAUTHENTICATED','INVALID_REQUEST'])}).strict(),
+]).superRefine((o,c)=>{
+ if(o.state==='committed'&&(o.receipt.operationId!==o.command.operationId||o.receipt.acceptedRevision!==o.command.expectedQuoteRevision+1))c.addIssue({code:'custom',message:'SERVICE_ACCEPTANCE_OUTCOME_CORRELATION'});
+});
+export type ServiceAcceptanceOutcomeV4=z.infer<typeof serviceAcceptanceOutcomeV4Schema>;
 const statementText=z.string().min(1).max(4000).refine(v=>v.trim().length>0);
 export const servicePresentationV4Schema=z.object({version:z.literal(BILLING_SERVICE_V4),action:z.literal(SERVICE_FINANCIAL_ACTION_V4),grantId:billingId,
  displayBundleId:billingId,displayBundleSha256:sha,locale:z.enum(['en','he']),evidenceId:billingId,

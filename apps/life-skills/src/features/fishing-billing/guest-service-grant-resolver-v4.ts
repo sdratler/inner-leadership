@@ -37,18 +37,19 @@ export interface ServiceGuestGrantAuthorityV4{
  target(context:BillingLedgerContext):Promise<void>;
  /** Lock and recheck genuine current native family/children, original owner
   * issuance, guardian/recipient, exact financial terms release and actual
-  * global sibling reservation in context.tx. Fresh mode additionally verifies
-  * the complete current native service schedule. Replay checks current access
+  * global sibling reservation in context.tx. Fresh and terminal modes verify
+  * the complete current native service schedule; terminal admits this TX's
+  * own accepted quote/consumed grant without creating new authority. Replay checks current access
   * to the ORIGINAL agreement, not whether past activities remain future.
   * Locks/admission must remain valid through the caller's atomic commit. */
- current(context:BillingLedgerContext,grant:ServiceGrantRecordV4,mode:'fresh'|'replay'):Promise<CurrentEvidence>;
+ current(context:BillingLedgerContext,grant:ServiceGrantRecordV4,mode:'fresh'|'replay'|'terminal'):Promise<CurrentEvidence>;
  /** Resolve the genuine grant/bundle/purpose/challenge-bound texts actually
   * shown in the parent's selected language. Exact immutable replay skips this
   * hook and verifies retained private evidence instead. Read-only/repeatable
   * before the native atomic writer consumes the one-use grant. */
  display(context:BillingLedgerContext,grant:ServiceGrantRecordV4,challenge:string):Promise<DisplayEvidence>;
 }
-type Row={id:string;quoteId:string;action:string;materialVersion:string|null;digest:string;state:string;issuedAt:Date;expiresAt:Date;ciphertext:string};
+type Row={id:string;quoteId:string;action:string;materialVersion:string|null;digest:string;state:string;issuedAt:Date;expiresAt:Date;exactTimes:boolean;ciphertext:string};
 declare const capabilityBrand:unique symbol;
 export type ResolvedServiceGuestGrantV4={readonly [capabilityBrand]:true};
 type Facts=Readonly<{grant:ServiceGrantRecordV4;command:ServiceAcceptCommandV4;commandDigest:string;kind:'fresh'|'replay';originalReceiptId:string|null;
@@ -83,11 +84,11 @@ export class FishingServiceGuestGrantResolverV4{
  }
  private async load(c:BillingLedgerContext,digest:string){
   const tx=c.tx;this.context(c,tx);const data=Object.freeze({workspaceId:this.workspaceId,tx});
-  const rows=await tx.query<Row>('SELECT id,quote_id AS "quoteId",action,material_version AS "materialVersion",token_digest AS digest,state,issued_at AS "issuedAt",expires_at AS "expiresAt",payload_ciphertext AS ciphertext FROM ls_fishing_billing.guest_grants WHERE workspace_id=$1 AND token_digest=$2 LIMIT 2 FOR UPDATE',[this.workspaceId,digest]);
+  const rows=await tx.query<Row>('SELECT id,quote_id AS "quoteId",action,material_version AS "materialVersion",token_digest AS digest,state,issued_at AS "issuedAt",expires_at AS "expiresAt",(issued_at=date_trunc(\'milliseconds\',issued_at) AND expires_at=date_trunc(\'milliseconds\',expires_at)) AS "exactTimes",payload_ciphertext AS ciphertext FROM ls_fishing_billing.guest_grants WHERE workspace_id=$1 AND token_digest=$2 LIMIT 2 FOR UPDATE',[this.workspaceId,digest]);
   this.context(c,tx);
   stored(rows.length===1);const row=rows[0]!;
   // Purpose/version are selected BEFORE decryption, never a V3 fallback.
-  stored(row.action===action&&row.materialVersion===BILLING_SERVICE_V4);
+  stored(row.action===action&&row.materialVersion===BILLING_SERVICE_V4&&row.exactTimes===true);
   const lifecycle=serviceGrantLifecycleV4Schema.parse(JSON.parse(unseal(row.ciphertext,serviceGuestAadV4('grant',this.workspaceId,row.id),this.ring))),g=freeze(verifyServiceGrantRecordV4(lifecycle.grant)),m=g.offer.material.financial;
   stored(g.id===row.id&&m.workspaceId===this.workspaceId&&m.quoteId===row.quoteId&&g.tokenDigest===digest&&row.digest===digest&&row.state===lifecycle.state&&
    row.issuedAt instanceof Date&&row.expiresAt instanceof Date&&row.issuedAt.valueOf()===Date.parse(g.issuedAt)&&row.expiresAt.valueOf()===Date.parse(g.expiresAt)&&
@@ -97,9 +98,9 @@ export class FishingServiceGuestGrantResolverV4{
   stored(canonical(q.offer)===canonical(g.offer));
   if(lifecycle.state==='active')stored(q.state==='issued'&&!q.paused&&q.acceptance===null&&q.revision===m.issuedRevision);
   this.now(g);
-  return {g,lifecycle};
+  return {g,lifecycle,quote:q};
  }
- private async finalAdmission(c:BillingLedgerContext,tx:SqlSession,g:ServiceGrantRecordV4,kind:'fresh'|'replay',expected:CurrentEvidence){
+ private async finalAdmission(c:BillingLedgerContext,tx:SqlSession,g:ServiceGrantRecordV4,kind:'fresh'|'replay'|'terminal',expected:CurrentEvidence){
   await this.authority.target(c);this.context(c,tx);
   const e=this.evidence(await this.authority.current(c,g,kind),g);this.context(c,tx);this.now(g);stored(canonical(e)===canonical(expected));
  }
@@ -139,6 +140,24 @@ export class FishingServiceGuestGrantResolverV4{
    await this.finalAdmission(c,saved.tx,g,saved.facts.kind,e);
    const final=await this.load(c,g.tokenDigest);this.context(c,saved.tx);stored(canonical(final.lifecycle)===canonical(saved.lifecycle));
    return saved.facts;
+  }catch{throw new AppError('UNAVAILABLE');}
+ }
+ /** Final genuine admission AFTER this caller's atomic acceptance writes.
+  * Only the original same-TX fresh capability and its exact now-consumed use
+  * can pass. Terminal policy validates the original schedule/access under
+  * the caller's own accepted state; it never activates payment or sending. */
+ async confirmConsumption(c:BillingLedgerContext,capability:ResolvedServiceGuestGrantV4,expected:{receiptId:string;acceptedAt:string}):Promise<void>{
+  try{
+   const saved=this.capabilities.get(capability);stored(saved&&saved.context===c&&saved.facts.kind==='fresh');this.context(c,saved.tx);
+   stored(billingId.safeParse(expected.receiptId).success&&precise(expected.acceptedAt));
+   await this.authority.target(c);this.context(c,saved.tx);
+   const {g,lifecycle,quote}=await this.load(c,saved.facts.grant.tokenDigest);this.context(c,saved.tx);
+   const use=lifecycle.use,a=quote.acceptance;
+   stored(canonical(g)===canonical(saved.facts.grant)&&lifecycle.state==='consumed'&&use&&use.operationId===saved.facts.command.operationId&&use.commandDigest===saved.facts.commandDigest&&use.receiptId===expected.receiptId&&use.usedAt===expected.acceptedAt);
+   stored(quote.state==='accepted'&&!quote.paused&&quote.revision===g.offer.material.financial.issuedRevision+1&&a&&a.id===expected.receiptId&&a.grantId===g.id&&a.operationId===use.operationId&&a.acceptedAt===expected.acceptedAt);
+   await this.finalAdmission(c,saved.tx,g,'terminal',saved.facts.currentEvidence);
+   const final=await this.load(c,g.tokenDigest);this.context(c,saved.tx);stored(canonical(final.lifecycle)===canonical(lifecycle)&&canonical(final.quote)===canonical(quote));
+   this.capabilities.delete(capability);
   }catch{throw new AppError('UNAVAILABLE');}
  }
 }
