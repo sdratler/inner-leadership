@@ -91,6 +91,7 @@ export function FishingGroupPreparationWorkspace({locale,initialGroupId,initialR
  const [pending,setPending]=useState<PendingGroupOperation|null>(null),[busy,setBusy]=useState(false);
  const [created,setCreated]=useState<GroupDraftInputs>(emptyInputs),[editing,setEditing]=useState<GroupDraftInputs|null>(null),[cancelChecked,setCancelChecked]=useState(false);
  const [receipt,setReceipt]=useState<{record:GroupPreparationRecord;replayed:boolean}|null>(null),[notice,setNotice]=useState<''|'no_changes'|'unconfirmed'>('');
+ const [feedbackVersion,setFeedbackVersion]=useState(0);
  const [trail,setTrail]=useState<(string|null)[]>([null]),[historyInput,setHistoryInput]=useState('');
  const pendingRef=useRef<PendingGroupOperation|null>(null),busyRef=useRef(false),serial=useRef(0);
  const viewGeneration=useRef<ViewGeneration>({generation:0,key:selectionKey,active:false});
@@ -98,6 +99,14 @@ export function FishingGroupPreparationWorkspace({locale,initialGroupId,initialR
  const readAbort=useRef<AbortController|null>(null),saveAbort=useRef<AbortController|null>(null);
  const lastLoad=useRef<LoadSelection>({cursor:null,trail:[null]});
  const detailHeading=useRef<HTMLHeadingElement>(null);
+ const feedback=useRef<HTMLElement>(null);
+ const needsRecovery=!!pending?.uncertain;
+ const reportActionError=(code:ErrorCode)=>{setActionError(code);setFeedbackVersion(value=>value+1);};
+ useEffect(()=>{
+  if(!actionError&&!notice&&!needsRecovery)return;
+  feedback.current?.focus({preventScroll:true});
+  feedback.current?.scrollIntoView({block:'start'});
+ },[actionError,notice,needsRecovery,feedbackVersion]);
  const updatePending=(value:PendingGroupOperation|null)=>{pendingRef.current=value;setPending(value);};
  const currentView=(view:ViewGeneration)=>viewGeneration.current===view&&view.active;
  useLayoutEffect(()=>{
@@ -178,7 +187,7 @@ export function FishingGroupPreparationWorkspace({locale,initialGroupId,initialR
     await beginLoad({cursor:null,trail:[null],groupId:result.record.groupId});
     if(currentView(view)&&activeAttempt.current===attempt)detailHeading.current?.focus();
    }else{
-    setActionError(result.code);
+    reportActionError(result.code);
     if(result.code==='UNAUTHENTICATED'||result.code==='FORBIDDEN')loseAccess();
    }
   }finally{
@@ -198,7 +207,7 @@ export function FishingGroupPreparationWorkspace({locale,initialGroupId,initialR
     updatePending(null);setReceipt({record:read.value,replayed:true});if(read.value.action==='create')setCreated(emptyInputs());
     await beginLoad({cursor:null,trail:[null],groupId:read.value.groupId});
    }else{
-    const code=read.state==='failed'?read.code:'CONFLICT';setActionError(code);
+    const code=read.state==='failed'?read.code:'CONFLICT';reportActionError(code);
     setNotice('unconfirmed');
     if(code==='UNAUTHENTICATED'||code==='FORBIDDEN')loseAccess();
    }
@@ -209,23 +218,23 @@ export function FishingGroupPreparationWorkspace({locale,initialGroupId,initialR
  function create(event:FormEvent<HTMLFormElement>){
   event.preventDefault();if(pendingRef.current||busyRef.current)return;setActionError(null);setReceipt(null);setNotice('');
   try{void save({save:createGroupDraft(crypto.randomUUID(),crypto.randomUUID(),created),uncertain:false});}
-  catch{setActionError('INVALID_REQUEST');}
+  catch{reportActionError('INVALID_REQUEST');}
  }
  function edit(event:FormEvent<HTMLFormElement>){
   event.preventDefault();if(!selection||selection.historical||!editing||pendingRef.current||busyRef.current)return;
   setActionError(null);setReceipt(null);setNotice('');
   try{
    const command=editGroupDraft(selection.current,crypto.randomUUID(),editing);
-   if(!command){setNotice('no_changes');return;}
+   if(!command){setNotice('no_changes');setFeedbackVersion(value=>value+1);return;}
    void save({save:command,uncertain:false});
-  }catch{setActionError('INVALID_REQUEST');}
+  }catch{reportActionError('INVALID_REQUEST');}
  }
  function cancel(){
   if(!selection||selection.historical||!cancelChecked||pendingRef.current||busyRef.current)return;
   setReceipt(null);setNotice('');setActionError(null);
   try{void save({save:prepareGroupSave(groupPreparationCommand.parse({version:GROUP_PREPARATION_VERSION,action:'cancel',
    groupId:selection.current.groupId,operationId:crypto.randomUUID(),expectedRevision:selection.current.revision})),uncertain:false});}
-  catch{setActionError('INVALID_REQUEST');}
+  catch{reportActionError('INVALID_REQUEST');}
  }
  const waiting=loading||loadedSelection!==selectionKey;
  const locked=busy||pending!==null||waiting;
@@ -233,7 +242,7 @@ export function FishingGroupPreparationWorkspace({locale,initialGroupId,initialR
  function history(event:FormEvent<HTMLFormElement>){
   event.preventDefault();if(!selection||navigationLocked)return;
   const revision=/^[1-9]\d*$/.test(historyInput)?Number(historyInput):NaN;
-  if(!groupPreparationRevision.safeParse(revision).success||revision>selection.current.revision){setActionError('INVALID_REQUEST');return;}
+  if(!groupPreparationRevision.safeParse(revision).success||revision>selection.current.revision){reportActionError('INVALID_REQUEST');return;}
   setActionError(null);void beginLoad({...lastLoad.current,groupId:selection.current.groupId,revision});
  }
  return <main className={'lsw-main '+styles.workspace} lang={locale} dir={locale==='he'?'rtl':'ltr'}>
@@ -241,14 +250,16 @@ export function FishingGroupPreparationWorkspace({locale,initialGroupId,initialR
    <h1>{t('Group preparation','הכנת קבוצות')}</h1><p>{t('Plan a group and revisit its saved revisions.','תכנון קבוצה ועיון בגרסאות השמורות שלה.')}</p></div>
    <a href={groupPreparationHref(locale)}>{t('Group list','רשימת הקבוצות')}</a></header>
   <p className={styles.boundary}>{t('Drafts are planning records. They do not confirm a location, lesson, available seat, reservation or payment deadline.','טיוטות הן רשומות תכנון. הן אינן מאשרות מקום, שיעור, מקום פנוי, הזמנה או מועד לתשלום.')}</p>
-  {actionError&&<div role="alert" className="lsw-alert">{groupPreparationError(actionError,locale)}</div>}
-  {notice&&<p role="status">{notice==='no_changes'?t('There are no changes to save.','אין שינויים לשמירה.'):
-   t('The original save is still unconfirmed. Its operation and entered values have been retained.','השמירה המקורית עדיין לא אומתה. הפעולה והפרטים שהוזנו נשמרו.')}</p>}
+  {(actionError||notice||needsRecovery)&&<section ref={feedback} tabIndex={-1} aria-label={t('Save feedback','משוב על השמירה')} className={styles.feedback}>
+   {actionError&&<div role="alert" className="lsw-alert">{groupPreparationError(actionError,locale)}</div>}
+   {notice&&<p role="status">{notice==='no_changes'?t('There are no changes to save.','אין שינויים לשמירה.'):
+    t('The original save is still unconfirmed. Its operation and entered values have been retained.','השמירה המקורית עדיין לא אומתה. הפעולה והפרטים שהוזנו נשמרו.')}</p>}
+   {pending?.uncertain&&<GroupPreparationPendingNotice pending={pending} busy={busy} locale={locale} retry={()=>void save(pending)} check={()=>void checkPending()}/>}
+  </section>}
   {receipt&&initialValid&&loadedSelection===selectionKey&&<p role="status" className={styles.saved}>{t('Save confirmed','השמירה אומתה')} · {receipt.record.fields.label} · {t('revision','גרסה')} <bdi>{receipt.record.revision}</bdi>
    {receipt.replayed&&<> · {t('original operation result','תוצאת הפעולה המקורית')}</>}
    {receipt.record.action==='cancel'&&<> · {t('draft cancelled','הטיוטה בוטלה')}</>}
   </p>}
-  {pending?.uncertain&&<GroupPreparationPendingNotice pending={pending} busy={busy} locale={locale} retry={()=>void save(pending)} check={()=>void checkPending()}/>}
   {(!initialValid||(loadError&&loadedSelection===selectionKey))&&<section className="lsw-alert" role="alert"><p>{!initialValid?
    t('This group link is invalid. Open the group list.','קישור הקבוצה אינו תקין. יש לפתוח את רשימת הקבוצות.'):groupPreparationError(loadError!,locale)}</p>
    <p>{t('No saved list or detail is being shown from an earlier response.','לא מוצגים רשימה או פרטים שמורים מתשובה קודמת.')}</p>
