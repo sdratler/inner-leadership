@@ -110,7 +110,7 @@ export const fishingMarketingLocalSnapshotSchema=z.strictObject({
   if(c.rulesUrl!==`https://www.facebook.com/groups/${target.id}/about`)invalid([...path,'rulesUrl']);
   notFuture(c.rulesCheckedAt,[...path,'rulesCheckedAt']);notFuture(c.lastAttemptAt,[...path,'lastAttemptAt']);
   if(new Set(c.advertisingDays).size!==c.advertisingDays.length||new Set(c.closedDays).size!==c.closedDays.length)invalid(path);
-  if(target.eligible&&(!c.complete||target.hold!==null||c.placement==='hold'||c.visibility!=='public'||!['explicit','public_no_restrictions'].includes(c.permission)||c.moderation!=='not_observed'||c.interval==='unknown'))invalid(['targets',i,'eligible']);
+  if(target.eligible&&(!c.complete||target.hold!==null||c.placement==='hold'||!['public','private'].includes(c.visibility)||!['explicit','public_no_restrictions'].includes(c.permission)||c.permission==='public_no_restrictions'&&c.visibility!=='public'||c.moderation!=='not_observed'||c.interval==='unknown'))invalid(['targets',i,'eligible']);
   if(c.status==='due'&&(!target.eligible||!value.schedule.enabled||!value.schedule.funnelReady||!['clear','cleared'].includes(w.account.state)))invalid([...path,'status']);
   if(c.nextEligibleAt&&(!target.eligible||!['due','cooldown','outside_window','closed_weekday','other_weekday'].includes(c.status)||Date.parse(c.nextEligibleAt)<at))invalid([...path,'nextEligibleAt']);
  });
