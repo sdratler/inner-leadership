@@ -1,5 +1,5 @@
 'use client';
-import {useCallback,useEffect,useMemo,useRef,useState,type FormEvent} from 'react';
+import {useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState,type FormEvent} from 'react';
 import {Button,Input} from '../../ui/workspace/controls.tsx';
 import type {ErrorCode} from '../../lib/errors.ts';
 import {
@@ -16,6 +16,7 @@ type Locale='en'|'he';
 export type PendingGroupOperation={save:PreparedGroupSave;uncertain:boolean};
 type Selection={current:GroupPreparationRecord;view:GroupPreparationRecord;historical:boolean};
 type LoadSelection={cursor:string|null;groupId?:string;revision?:number;trail:(string|null)[]};
+type ViewGeneration={generation:number;key:string;active:boolean};
 const emptyInputs=():GroupDraftInputs=>({label:'',firstClassLocalDate:'',proposedCapacity:''});
 export function retainGroupOperation(pending:PendingGroupOperation,result:GroupSaveResult):PendingGroupOperation|null{
  if(result.state==='saved')return null;
@@ -91,20 +92,37 @@ export function FishingGroupPreparationWorkspace({locale,initialGroupId,initialR
  const [created,setCreated]=useState<GroupDraftInputs>(emptyInputs),[editing,setEditing]=useState<GroupDraftInputs|null>(null),[cancelChecked,setCancelChecked]=useState(false);
  const [receipt,setReceipt]=useState<{record:GroupPreparationRecord;replayed:boolean}|null>(null),[notice,setNotice]=useState<''|'no_changes'|'unconfirmed'>('');
  const [trail,setTrail]=useState<(string|null)[]>([null]),[historyInput,setHistoryInput]=useState('');
- const pendingRef=useRef<PendingGroupOperation|null>(null),busyRef=useRef(false),alive=useRef(false),serial=useRef(0);
+ const pendingRef=useRef<PendingGroupOperation|null>(null),busyRef=useRef(false),serial=useRef(0);
+ const viewGeneration=useRef<ViewGeneration>({generation:0,key:selectionKey,active:false});
+ const activeAttempt=useRef<object|null>(null);
  const readAbort=useRef<AbortController|null>(null),saveAbort=useRef<AbortController|null>(null);
  const lastLoad=useRef<LoadSelection>({cursor:null,trail:[null]});
  const detailHeading=useRef<HTMLHeadingElement>(null);
  const updatePending=(value:PendingGroupOperation|null)=>{pendingRef.current=value;setPending(value);};
+ const currentView=(view:ViewGeneration)=>viewGeneration.current===view&&view.active;
+ useLayoutEffect(()=>{
+  viewGeneration.current={generation:viewGeneration.current.generation+1,key:selectionKey,active:true};
+  return()=>{
+   const current=viewGeneration.current;
+   if(current.key!==selectionKey)return;
+   viewGeneration.current={...current,generation:current.generation+1,active:false};
+   readAbort.current?.abort();saveAbort.current?.abort();
+  };
+ },[selectionKey]);
  const loseAccess=useCallback(()=>{
   // A late read from before a known access denial must not restore its data.
+  const current=viewGeneration.current;
+  viewGeneration.current={...current,generation:current.generation+1};
   serial.current++;readAbort.current?.abort();setLoading(false);
   setPage(null);setSelection(null);setEditing(null);setReceipt(null);setNotice('');
  },[]);
  const load=useCallback(async(request:LoadSelection)=>{
+  const view=viewGeneration.current;
+  // Reject an obsolete closure before it can abort a newer selection's read.
+  if(!view.active||view.key!==selectionKey)return;
   const run=++serial.current;readAbort.current?.abort();const controller=new AbortController();readAbort.current=controller;
   lastLoad.current=request;
-  const current=()=>alive.current&&run===serial.current&&!controller.signal.aborted;
+  const current=()=>viewGeneration.current===view&&view.active&&run===serial.current&&!controller.signal.aborted;
   try{
    const list=await client.list(request.cursor,controller.signal);if(!current())return;
    setLoadedSelection(selectionKey);setLoading(true);setPage(null);setSelection(null);setEditing(null);setCancelChecked(false);setLoadError(null);
@@ -127,13 +145,12 @@ export function FishingGroupPreparationWorkspace({locale,initialGroupId,initialR
   }finally{if(current())setLoading(false);}
  },[client,loseAccess,selectionKey]);
  const beginLoad=useCallback((request:LoadSelection)=>{
+  if(!viewGeneration.current.active||viewGeneration.current.key!==selectionKey)return Promise.resolve();
   setLoading(true);setPage(null);setSelection(null);setEditing(null);setCancelChecked(false);setLoadError(null);
   return load(request);
- },[load]);
+ },[load,selectionKey]);
  useEffect(()=>{
-  alive.current=true;
   if(initialValid)void load({cursor:null,trail:[null],...(initialGroupId?{groupId:initialGroupId}:{}),...(initialRevision!==undefined?{revision:initialRevision}:{})});
-  return()=>{alive.current=false;readAbort.current?.abort();saveAbort.current?.abort();};
  },[initialGroupId,initialRevision,initialValid,load]);
  const createDirty=Object.values(created).some(value=>value!=='');
  const formDirty=createDirty||editing!==null;
@@ -142,29 +159,41 @@ export function FishingGroupPreparationWorkspace({locale,initialGroupId,initialR
   window.addEventListener('beforeunload',guard);return()=>window.removeEventListener('beforeunload',guard);
  },[formDirty]);
  async function save(next:PendingGroupOperation){
-  if(busyRef.current)return;
+  const view=viewGeneration.current;
+  if(busyRef.current||!view.active||view.key!==selectionKey)return;
+  const attempt={};activeAttempt.current=attempt;
   busyRef.current=true;setBusy(true);setActionError(null);setNotice('');updatePending(next);
   const controller=new AbortController();saveAbort.current=controller;
   try{
-   const result=await client.save(next.save,controller.signal);if(!alive.current)return;
+   const result=await client.save(next.save,controller.signal);
+   if(!viewGeneration.current.active||activeAttempt.current!==attempt||pendingRef.current?.save!==next.save)return;
+   if(!currentView(view)){
+    // The transport may already have committed. Keep the exact operation for
+    // explicit fresh-view recovery, but never paint its old receipt or navigate.
+    updatePending({save:next.save,uncertain:true});setNotice('unconfirmed');return;
+   }
    const retained=retainGroupOperation(next,result);updatePending(retained);
    if(result.state==='saved'){
     setReceipt({record:result.record,replayed:result.replayed});if(result.record.action==='create')setCreated(emptyInputs());setEditing(null);
     await beginLoad({cursor:null,trail:[null],groupId:result.record.groupId});
-    detailHeading.current?.focus();
+    if(currentView(view)&&activeAttempt.current===attempt)detailHeading.current?.focus();
    }else{
     setActionError(result.code);
     if(result.code==='UNAUTHENTICATED'||result.code==='FORBIDDEN')loseAccess();
    }
-  }finally{busyRef.current=false;if(alive.current)setBusy(false);}
+  }finally{
+   if(activeAttempt.current===attempt){activeAttempt.current=null;busyRef.current=false;if(viewGeneration.current.active)setBusy(false);}
+  }
  }
  async function checkPending(){
   const original=pendingRef.current;if(!original||busyRef.current)return;
+  const view=viewGeneration.current;if(!view.active||view.key!==selectionKey)return;
+  const attempt={};activeAttempt.current=attempt;
   busyRef.current=true;setBusy(true);setActionError(null);setNotice('');
   const run=++serial.current;readAbort.current?.abort();const controller=new AbortController();readAbort.current=controller;setLoading(false);
   try{
    const read=await client.record(original.save.command.groupId,original.save.command.expectedRevision+1,controller.signal);
-   if(!alive.current||run!==serial.current||controller.signal.aborted)return;
+   if(!currentView(view)||activeAttempt.current!==attempt||pendingRef.current?.save!==original.save||run!==serial.current||controller.signal.aborted)return;
    if(read.state==='ready'&&groupSaveMatches(original.save,read.value)){
     updatePending(null);setReceipt({record:read.value,replayed:true});if(read.value.action==='create')setCreated(emptyInputs());
     await beginLoad({cursor:null,trail:[null],groupId:read.value.groupId});
@@ -173,7 +202,9 @@ export function FishingGroupPreparationWorkspace({locale,initialGroupId,initialR
     setNotice('unconfirmed');
     if(code==='UNAUTHENTICATED'||code==='FORBIDDEN')loseAccess();
    }
-  }finally{busyRef.current=false;if(alive.current)setBusy(false);}
+  }finally{
+   if(activeAttempt.current===attempt){activeAttempt.current=null;busyRef.current=false;if(viewGeneration.current.active)setBusy(false);}
+  }
  }
  function create(event:FormEvent<HTMLFormElement>){
   event.preventDefault();if(pendingRef.current||busyRef.current)return;setActionError(null);setReceipt(null);setNotice('');
