@@ -28,6 +28,7 @@ export interface ServiceCardReconciliationAuthorityV4{
 // Adapter/driver failure is UNAVAILABLE even if it carries a typed rejection
 // code: COMMIT may have succeeded. Only the actual callback rejection identity
 // can retain its AppError. Recover the original operation; do not auto-retry.
+// A new callback invocation discards the previous invocation's error identity.
 export type ServiceCurrentCardLedgerV4={
  context:Readonly<BillingLedgerContext>;frame:ServiceOwnerSnapshotV4;
  advance(receipts?:readonly LedgerReceipt[]):Promise<ServiceOwnerSnapshotV4>;

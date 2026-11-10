@@ -162,3 +162,17 @@ it.each(['CONFLICT','FORBIDDEN'] as const)('card-current-v4 preserves durable se
  await expect(run(f,l=>l.advance([p]))).rejects.toThrow();expect(await raw(f)).toEqual(committed);
  expect(observed).toMatchObject({message:'UNAVAILABLE'});
 });
+it.each(['CONFLICT','FORBIDDEN'] as const)('card-current-v4 discards an earlier callback %s after rollback then retry COMMIT',async code=>{
+ const f=await ready(),p=payment(f),original=new AppError(code);let callbacks=0,observed:unknown;
+ const db:IdentityStore={transaction:async work=>{
+  // First actual callback advances, rejects and rolls back. The adapter retries
+  // in a new actual TX, commits successfully, then reports the ORIGINAL error.
+  await expect(f.db.transaction(work)).rejects.toBe(original);
+  await f.db.transaction(work);throw original;
+ }};
+ try{await f.port(db).withCurrentCardServiceV4(f.binding,f.quote.id,async l=>{callbacks++;const result=await l.advance([p]);if(callbacks===1)throw original;return result;});}catch(error){observed=error;}
+ expect(callbacks).toBe(2);const committed=await raw(f),current=await read(f);
+ expect(current.quote.revision).toBe(4);expect(current.balance.receipts).toEqual([p]);expect(current.balance).toMatchObject({state:'paid',paidMinor:130000,remainingMinor:0});
+ await expect(run(f,l=>l.advance([p]))).rejects.toThrow();expect(await raw(f)).toEqual(committed);
+ expect(observed).toMatchObject({message:'UNAVAILABLE'});
+});

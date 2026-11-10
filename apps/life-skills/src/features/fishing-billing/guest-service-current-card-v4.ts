@@ -61,6 +61,8 @@ export class FishingServiceCurrentCardV4{
   billingId.parse(quoteId);const binding=Object.freeze(billingStripeBindingSchema.parse(rawBinding));
   let callbackFailure:unknown,rejected=false;
   try{return await this.db.transaction(async physical=>{
+   // Each actual callback invocation supersedes all earlier retry provenance.
+   callbackFailure=undefined;rejected=false;
    const original=physical.query,query=original.bind(physical),time=this.currentNow(),at=time.valueOf();let open=true,active=true,claimed=false,failed=false,completed=false;
    const guard=()=>fact(open&&physical.query===original&&c.tx===tx&&c.workspaceId===this.workspaceId&&c.now===time&&time.valueOf()===at);
    const tx:SqlSession=Object.freeze({query:async<R extends object>(sql:string,v:readonly unknown[]=[])=>{guard();const rows=await query<R>(sql,v);guard();return rows;}}),c=Object.freeze({workspaceId:this.workspaceId,now:time,tx});
