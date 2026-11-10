@@ -40,8 +40,11 @@ export default async function Page({params,searchParams}:{params:Promise<{locale
    catch(error){if(error instanceof AppError&&error.code==="FORBIDDEN")notFound();throw error;}
   })():undefined;
   let fishing:Awaited<ReturnType<FishingMarketingStore['read']>>=null,fishingUnavailable=false;
-  const showFishing=process.env.LS_FISHING_MARKETING_ENABLED==='true'&&(section==='overview'||section==='content_calendar');
-  if(showFishing){try{const r=context.runtime;fishing=await new FishingMarketingStore(r.store,r.config.workspaceId,r.config.keyring,r.config.lookupKey.toString('hex'),process.env.LS_BNA_OWNER_ACCOUNT_ID??'',r.clock).read(context.actor);}catch{fishingUnavailable=true;}}
+  const showFishing=section==='overview'||section==='content_calendar';
+  if(showFishing){
+   if(process.env.LS_FISHING_MARKETING_ENABLED==='true'){try{const r=context.runtime;fishing=await new FishingMarketingStore(r.store,r.config.workspaceId,r.config.keyring,r.config.lookupKey.toString('hex'),process.env.LS_BNA_OWNER_ACCOUNT_ID??'',r.clock).read(context.actor);}catch{fishingUnavailable=true;}}
+   else fishingUnavailable=true;
+  }
   const fishingCreative=showFishing&&fishing?await verifiedFishingCreative():null;
   let attribution:Awaited<ReturnType<typeof readTaggedInquiries>>|null=null,attributionUnavailable=false;
   if(fishing){try{const r=context.runtime;attribution=await readTaggedInquiries(r.store,r.config.workspaceId,r.config.keyring,r.config.lookupKey.toString('hex'),process.env.LS_BNA_OWNER_ACCOUNT_ID??'',r.clock,context.actor,fishing.snapshot,typeof rawQuery.linkCursor==='string'?rawQuery.linkCursor:undefined);}catch{attributionUnavailable=true;}}
