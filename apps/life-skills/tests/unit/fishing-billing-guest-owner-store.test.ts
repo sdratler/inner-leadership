@@ -20,6 +20,7 @@ import {guestGrantLifecycleSchema,FishingBillingGuestGrantResolver,type BillingG
 import {FishingBillingGuestNativeV3} from '../../src/features/fishing-billing/guest-native-v3.ts';
 import {changeGuestBillingState} from '../../src/features/fishing-billing/guest-domain-v3.ts';
 import {FishingBillingGuestOwnerStore} from '../../src/lib/fishing-billing-guest-owner-store.ts';
+import {ANCHORED_OFFER_V3,type ChildPeriodNativeAuthorityV3,type NativeEligibleLessonV3} from '../../src/features/fishing-billing/child-period-provenance-v3.ts';
 import {OWNER_MONEY_V3,OWNER_RESPONSE_MAX_BYTES,FISHING_BILLING_OWNER_V3_PATH,billingOwnerCommandV3Schema,billingOwnerReadV3Schema,ownerMoneyReceiptV3Schema} from '../../src/lib/fishing-billing-owner-contract-v3.ts';
 import {billingOwnerReadV2Schema} from '../../src/lib/fishing-billing-owner-contract-v2.ts';
 import {fishingBillingOwnerHttpV3,type FishingBillingOwnerHttpV3Deps} from '../../src/lib/fishing-billing-owner-http-v3.ts';
@@ -41,6 +42,7 @@ const ring={activeKeyId:'synthetic',keys:{synthetic:Buffer.alloc(32,7)}},key=Buf
 let owner:Actor,parent:Actor,foreign:Actor,fault:string|null=null;
 let onAuthority:((c:BillingContext,a:BillingAction,s:BillingScope)=>Promise<void>)|null=null;
 let afterSql:((sql:string,rows:readonly object[])=>Promise<void>)|null=null;
+let afterLessonRead:((c:Readonly<BillingContext>,facts:readonly NativeEligibleLessonV3[])=>Promise<void>)|null=null;
 const binder:IdentityStore={transaction:work=>db.transaction(tx=>work({query:async<T extends object>(sql:string,v:readonly unknown[]=[])=>{if(fault&&sql.startsWith(fault))throw Error('SYNTHETIC_SQL_FAILURE');const rows=(await tx.query<T>(sql,[...v])).rows;await afterSql?.(sql,rows);return rows;}} as SqlSession))};
 const authority:BillingAuthority={authorize:async(c,a,s)=>{
  if(s.programKey!=='fishing_monthly_club'||!s.familyId)throw new AppError('FORBIDDEN');
@@ -49,6 +51,21 @@ const authority:BillingAuthority={authorize:async(c,a,s)=>{
  await onAuthority?.(c,a,s);
 },reminderPermission:async()=>{throw Error('REMINDERS_NOT_ADMITTED');}};
 const store=(now=at,dbinder:IdentityStore=binder)=>new FishingBillingGuestOwnerStore(dbinder,ws,ring,key,{now:()=>new Date(now)},authority);
+// Disposable synthetic native scheduling source only. This is NOT an adapter
+// for real Florida eligibility, draft preparations, or retired native meetings.
+const nativeLessons:ChildPeriodNativeAuthorityV3={firstEligibleLessons:async(c,query)=>{
+ const facts:NativeEligibleLessonV3[]=[];
+ for(const child of query.children){
+  const rows=await c.tx.query<{id:string;revision:number;startsAt:Date}>(`SELECT id,revision,starts_at AS "startsAt" FROM synthetic_first_eligible_lessons
+   WHERE workspace_id=$1 AND family_id=$2 AND child_id=$3 AND group_id=$4 AND state='scheduled_eligible'
+   ORDER BY starts_at,id LIMIT 1 FOR SHARE`,[c.workspaceId,query.familyId,child.childId,child.groupId]);
+  const row=rows[0];if(!row)return null;
+  facts.push({workspaceId:c.workspaceId,familyId:query.familyId,childId:child.childId,groupId:child.groupId,id:row.id,revision:row.revision,startsAt:row.startsAt.toISOString(),
+   source:{id:'SYNTHETIC-UNAPPROVED-NATIVE-LESSON/'+row.id+'/'+row.revision,sha256:createHmac('sha256',key).update(JSON.stringify(row)).digest('hex')}});
+ }
+ await afterLessonRead?.(c,facts);return facts;
+}};
+const anchoredStore=(dbinder:IdentityStore=binder,lessons:ChildPeriodNativeAuthorityV3|null=nativeLessons)=>new FishingBillingGuestOwnerStore(dbinder,ws,ring,key,{now:()=>new Date(at)},authority,lessons);
 async function actor(role:'practitioner'|'parent',workspace=ws){
  const id=randomUUID(),digest=id.replaceAll('-','').padEnd(64,'0');
  await db.query("INSERT INTO ls_identity.people(id,workspace_id,kind,profile_ciphertext,created_at) VALUES($1,$2,'adult','SYNTHETIC',$3)",[id,workspace,at]);
@@ -66,10 +83,11 @@ beforeAll(async()=>{
  for(const f of ['0001_ls_foundation.sql','0010_ls_identity_cases_20260906.sql'])await db.exec(await readFile('migrations/'+f,'utf8'));
  await db.exec(await readFile('tests/fixtures/fishing-billing.sql','utf8'));
  await db.exec(await readFile('migrations/proposals/UNNUMBERED_ls_fishing_billing_guest_v3.sql','utf8'));
+ await db.exec(`CREATE TEMP TABLE synthetic_first_eligible_lessons(workspace_id uuid,family_id uuid,child_id uuid,group_id uuid,id uuid,revision integer,starts_at timestamptz,state text,PRIMARY KEY(workspace_id,id))`);
  for(const id of [ws,other])await db.query('INSERT INTO ls_identity.workspaces(id,created_at) VALUES($1,$2)',[id,at]);
  owner=await actor('practitioner');parent=await actor('parent');foreign=await actor('practitioner',other);
 },20000);
-afterEach(()=>{onAuthority=null;fault=null;afterSql=null;});afterAll(async()=>{await db.close();});
+afterEach(()=>{onAuthority=null;fault=null;afterSql=null;afterLessonRead=null;});afterAll(async()=>{await db.close();});
 async function scenario(){
  const family=randomUUID(),children=[randomUUID(),randomUUID()],d={...syntheticDefinition(),id:randomUUID(),publishedBy:owner.id};
  await db.query('INSERT INTO ls_cases.families(id,workspace_id,label_ciphertext,created_at) VALUES($1,$2,$3,$4)',[family,ws,'SYNTHETIC',at]);
@@ -80,6 +98,110 @@ async function scenario(){
 }
 const row=(id:string)=>db.query<{revision:number;ciphertext:string}>('SELECT revision,payload_ciphertext AS ciphertext FROM ls_fishing_billing.quotes WHERE workspace_id=$1 AND id=$2',[ws,id]);
 const issue=(id:string)=>({operationId:randomUUID(),quoteId:id,expectedVersion:1});
+
+async function anchoredScenario(){
+ const f=await scenario(),group=randomUUID();
+ const children=f.command.children.map(child=>({lineId:child.lineId,childId:child.childId,groupId:group,periodId:randomUUID(),
+  firstEligibleLessonId:randomUUID(),expectedLessonRevision:1,dueAt:child.dueAt}));
+ for(const [index,child] of children.entries())await db.query('INSERT INTO synthetic_first_eligible_lessons VALUES($1,$2,$3,$4,$5,1,$6,$7)',
+  [ws,f.family,child.childId,child.groupId,child.firstEligibleLessonId,index===0?'2035-01-31T21:30:00Z':'2035-02-15T21:00:00Z','scheduled_eligible']);
+ return {...f,command:{...f.command,version:ANCHORED_OFFER_V3,children}};
+}
+it('anchored-native atomically saves two native first-lesson periods and encrypted provenance then issues/reloads',async()=>{
+ const f=await anchoredScenario(),created=await anchoredStore().createAnchoredOffer(owner,f.command);
+ expect(created.quote.lines.map(l=>l.period.startsAt)).toEqual(['2035-01-31T21:30:00.000Z','2035-02-15T21:00:00.000Z']);
+ expect(created.quote.lines.map(l=>l.period.endsAt)).toEqual(['2035-02-28T21:30:00.000Z','2035-03-15T20:00:00.000Z']);
+ expect(created.periods.map(p=>p.lesson.id)).toEqual(f.command.children.map(c=>c.firstEligibleLessonId));
+ expect(created.quote.acceptance).toBeNull();expect(created.quote.version).toBe(BILLING_GUEST_V3);
+ const journal=(await db.query<{ciphertext:string}>('SELECT result_ciphertext AS ciphertext FROM ls_fishing_billing.commands WHERE operation_id=$1',[f.command.operationId])).rows[0]!;
+ expect(journal.ciphertext).not.toContain(f.command.children[0]!.firstEligibleLessonId);
+ const issued=await anchoredStore().issueAnchoredOffer(owner,issue(created.quote.id));
+ const reloaded=await anchoredStore(binder,null).readAnchoredOffer(owner,created.quote.id);
+ expect(issued.quote.state).toBe('issued');expect(reloaded.quote).toEqual(issued.quote);expect(reloaded.periods).toEqual(created.periods);
+ expect((await db.query('SELECT * FROM ls_fishing_billing.obligations WHERE quote_id=$1',[created.quote.id])).rows).toHaveLength(0);
+});
+it('anchored-native refuses caller dates, missing resolver, missing eligibility and stale lesson revision before writes',async()=>{
+ const f=await anchoredScenario(),bad={...f.command,children:f.command.children.map(c=>({...c,startsAt:'2035-01-01T00:00:00Z'}))};
+ await expect(anchoredStore().createAnchoredOffer(owner,bad)).rejects.toThrow();
+ await expect(anchoredStore(binder,null).createAnchoredOffer(owner,f.command)).rejects.toMatchObject({code:'UNAVAILABLE'});
+ f.command.children[1]!.expectedLessonRevision=2;
+ await expect(anchoredStore().createAnchoredOffer(owner,f.command)).rejects.toMatchObject({code:'UNAVAILABLE'});
+ f.command.children[1]!.expectedLessonRevision=1;
+ await db.query("UPDATE synthetic_first_eligible_lessons SET state='cancelled' WHERE id=$1",[f.command.children[1]!.firstEligibleLessonId]);
+ await expect(anchoredStore().createAnchoredOffer(owner,f.command)).rejects.toMatchObject({code:'UNAVAILABLE'});
+ expect((await row(f.command.id)).rows).toHaveLength(0);
+ expect((await db.query('SELECT * FROM ls_fishing_billing.commands WHERE operation_id=$1',[f.command.operationId])).rows).toHaveLength(0);
+});
+it('anchored-native enforces current family/session isolation and rejects swapped native facts',async()=>{
+ const f=await anchoredScenario();
+ await expect(anchoredStore().createAnchoredOffer(parent,f.command)).rejects.toMatchObject({code:'UNAVAILABLE'});
+ await expect(anchoredStore().createAnchoredOffer(foreign,f.command)).rejects.toMatchObject({code:'UNAVAILABLE'});
+ const swapped:ChildPeriodNativeAuthorityV3={firstEligibleLessons:async(c,q)=>[...(await nativeLessons.firstEligibleLessons(c,q))!].reverse()};
+ await expect(anchoredStore(binder,swapped).createAnchoredOffer(owner,f.command)).rejects.toMatchObject({code:'UNAVAILABLE'});
+ expect((await row(f.command.id)).rows).toHaveLength(0);
+});
+it('anchored-native uses the actual first eligible lesson rather than a requested later lesson',async()=>{
+ const f=await anchoredScenario(),child=f.command.children[0]!;
+ await db.query('INSERT INTO synthetic_first_eligible_lessons VALUES($1,$2,$3,$4,$5,1,$6,$7)',[ws,f.family,child.childId,child.groupId,randomUUID(),'2035-01-20T21:30:00Z','scheduled_eligible']);
+ await expect(anchoredStore().createAnchoredOffer(owner,f.command)).rejects.toMatchObject({code:'UNAVAILABLE'});
+ expect((await row(f.command.id)).rows).toHaveLength(0);
+});
+it('anchored-native rolls back both siblings when source changes after journal writes',async()=>{
+ const f=await anchoredScenario();let calls=0;
+ onAuthority=async c=>{if(++calls===2)await c.tx.query('UPDATE synthetic_first_eligible_lessons SET revision=2,starts_at=$2 WHERE id=$1',[f.command.children[1]!.firstEligibleLessonId,'2035-02-16T21:00:00Z']);};
+ await expect(anchoredStore().createAnchoredOffer(owner,f.command)).rejects.toMatchObject({code:'UNAVAILABLE'});
+ expect(calls).toBe(2);expect((await row(f.command.id)).rows).toHaveLength(0);
+ expect((await db.query('SELECT * FROM ls_fishing_billing.commands WHERE operation_id=$1',[f.command.operationId])).rows).toHaveLength(0);
+});
+it('anchored-native rechecks session after terminal lesson resolution and rolls back a failed journal',async()=>{
+ const f=await anchoredScenario(),local=await ownerSession();let calls=0;
+ afterLessonRead=async c=>{if(++calls===2)await c.tx.query('UPDATE ls_identity.sessions SET revoked_at=$2 WHERE token_digest=$1',[local.sessionDigest,at]);};
+ await expect(anchoredStore().createAnchoredOffer(local,f.command)).rejects.toMatchObject({code:'UNAVAILABLE'});
+ expect((await row(f.command.id)).rows).toHaveLength(0);
+ afterLessonRead=null;fault='INSERT INTO ls_fishing_billing.commands';
+ await expect(anchoredStore().createAnchoredOffer(owner,f.command)).rejects.toMatchObject({code:'UNAVAILABLE'});
+ expect((await row(f.command.id)).rows).toHaveLength(0);
+});
+it('anchored-native replays the original committed operation after uncertain commit without rereading eligibility',async()=>{
+ const f=await anchoredScenario();let lost=true;
+ const uncertain:IdentityStore={transaction:async work=>{const value=await binder.transaction(work);if(lost){lost=false;throw new AppError('CONFLICT');}return value;}};
+ await expect(anchoredStore(uncertain).createAnchoredOffer(owner,f.command)).rejects.toMatchObject({code:'UNAVAILABLE'});
+ await db.query("UPDATE synthetic_first_eligible_lessons SET state='cancelled' WHERE child_id=ANY($1::uuid[])",[f.children]);
+ const replay=await anchoredStore(binder,null).createAnchoredOffer(owner,f.command);
+ expect(replay.replayed).toBe(true);expect(replay.quote.state).toBe('draft');
+ expect((await db.query('SELECT operation_id FROM ls_fishing_billing.commands WHERE quote_id=$1',[f.command.id])).rows).toHaveLength(1);
+ await expect(anchoredStore().createAnchoredOffer(owner,{...f.command,children:[...f.command.children].reverse()})).rejects.toMatchObject({code:'UNAVAILABLE'});
+ await expect(anchoredStore().issueAnchoredOffer(owner,issue(f.command.id))).rejects.toMatchObject({code:'UNAVAILABLE'});
+});
+it('anchored-native issuance refuses changed native time or absent provenance and preserves the original draft',async()=>{
+ const f=await anchoredScenario(),created=await anchoredStore().createAnchoredOffer(owner,f.command),before=(await row(f.command.id)).rows[0]!;
+ await db.query('UPDATE synthetic_first_eligible_lessons SET starts_at=$2 WHERE id=$1',[f.command.children[0]!.firstEligibleLessonId,'2035-02-01T21:30:00Z']);
+ await expect(anchoredStore().issueAnchoredOffer(owner,issue(f.command.id))).rejects.toMatchObject({code:'UNAVAILABLE'});
+ expect((await row(f.command.id)).rows[0]).toEqual(before);expect(created.quote.state).toBe('draft');
+ await db.query('DELETE FROM ls_fishing_billing.commands WHERE operation_id=$1',[f.command.operationId]);
+ await expect(anchoredStore().readAnchoredOffer(owner,f.command.id)).rejects.toMatchObject({code:'UNAVAILABLE'});
+ await expect(anchoredStore().issueAnchoredOffer(owner,issue(f.command.id))).rejects.toMatchObject({code:'UNAVAILABLE'});
+});
+it('anchored-native validates stored source scope and original derived dates on fresh read',async()=>{
+ const f=await anchoredScenario();await anchoredStore().createAnchoredOffer(owner,f.command);
+ const saved=(await db.query<{ciphertext:string}>('SELECT result_ciphertext AS ciphertext FROM ls_fishing_billing.commands WHERE operation_id=$1',[f.command.operationId])).rows[0]!;
+ const aad='ls_fishing_billing/v1/command/'+ws+'/'+f.command.operationId;
+ const record=JSON.parse(unseal(saved.ciphertext,aad,ring));record.receipt.periods[0].lesson.familyId=randomUUID();
+ await db.query('UPDATE ls_fishing_billing.commands SET result_ciphertext=$2 WHERE operation_id=$1',[f.command.operationId,seal(JSON.stringify(record),aad,ring)]);
+ await expect(anchoredStore().readAnchoredOffer(owner,f.command.id)).rejects.toMatchObject({code:'UNAVAILABLE'});
+});
+it('anchored-native rolls back a late issuance source change and replays a successful original issue as history',async()=>{
+ const f=await anchoredScenario();await anchoredStore().createAnchoredOffer(owner,f.command);const before=(await row(f.command.id)).rows[0]!,cmd=issue(f.command.id);let calls=0;
+ onAuthority=async c=>{if(++calls===3)await c.tx.query('UPDATE synthetic_first_eligible_lessons SET starts_at=$2 WHERE id=$1',[f.command.children[1]!.firstEligibleLessonId,'2035-02-16T21:00:00Z']);};
+ await expect(anchoredStore().issueAnchoredOffer(owner,cmd)).rejects.toMatchObject({code:'UNAVAILABLE'});
+ expect((await row(f.command.id)).rows[0]).toEqual(before);
+ expect((await db.query('SELECT operation_id FROM ls_fishing_billing.commands WHERE operation_id=$1',[cmd.operationId])).rows).toHaveLength(0);
+ onAuthority=null;const issued=await anchoredStore().issueAnchoredOffer(owner,cmd);
+ await db.query("UPDATE synthetic_first_eligible_lessons SET state='cancelled' WHERE child_id=ANY($1::uuid[])",[f.children]);
+ expect(await anchoredStore(binder,null).issueAnchoredOffer(owner,cmd)).toEqual({...issued,replayed:true});
+ await db.query('DELETE FROM ls_fishing_billing.commands WHERE operation_id=$1',[f.command.operationId]);
+ await expect(anchoredStore().issueAnchoredOffer(owner,cmd)).rejects.toMatchObject({code:'UNAVAILABLE'});
+});
 
 it('saves and issues NEW V3 siblings without creating debt, then reloads through another store',async()=>{
  const f=await scenario(),created=await store().createOffer(owner,f.command),issued=await store().issueOffer(owner,issue(f.command.id)),read=await store().readQuote(owner,f.command.id);

@@ -15,6 +15,8 @@ import {BILLING_GUEST_V3,guestFamilyOfferSchema,type GuestFamilyOffer,type Guest
 import {verifyGuestFamilyOffer} from './fishing-billing-guest-material-v3.ts';
 import {verifyStoredGuestFinancialEvidence} from './fishing-billing-guest-evidence-readback.ts';
 import {OWNER_MONEY_V3,ownerCurrentV3Schema,compactOwnerOperationResultV3,billingOwnerCommandV3Schema,ownerMoneyReceiptV3Schema,sameGuestOwnerLineage,type BillingOwnerCommandV3,type OwnerMoneyReceiptV3} from './fishing-billing-owner-contract-v3.ts';
+import {ANCHORED_OFFER_V3,anchoredOfferCommandV3Schema,anchoredOfferReceiptV3Schema,deriveAnchoredOfferPeriodsV3,verifyAnchoredOfferReceiptV3,
+ type AnchoredOfferCommandV3,type ChildPeriodNativeAuthorityV3} from '../features/fishing-billing/child-period-provenance-v3.ts';
 
 const receiptSchema=z.object({
  version:z.literal(BILLING_GUEST_V3),operationId:billingId,action:z.enum(['create','issue']),
@@ -31,7 +33,12 @@ const moneyJournalSchema=z.object({
  operationId:billingId,actorId:billingId,action:z.enum(['cash_date','reverse_cash','state']),quoteId:billingId,
  digest:z.string().regex(/^[a-f0-9]{64}$/),receipt:ownerMoneyReceiptV3Schema,
 }).strict();
-const journalSchema=z.discriminatedUnion('kind',[quoteJournalSchema,moneyJournalSchema]);
+const anchoredJournalSchema=z.object({
+ version:z.literal(ANCHORED_OFFER_V3),kind:z.literal('owner_anchored_quote'),workspaceId:billingId,
+ operationId:billingId,actorId:billingId,action:z.literal('create_anchored'),quoteId:billingId,
+ digest:z.string().regex(/^[a-f0-9]{64}$/),command:anchoredOfferCommandV3Schema,receipt:anchoredOfferReceiptV3Schema,
+}).strict();
+const journalSchema=z.discriminatedUnion('kind',[quoteJournalSchema,moneyJournalSchema,anchoredJournalSchema]);
 const canonical=(v:unknown):string=>v===null||typeof v!=='object'?JSON.stringify(v):Array.isArray(v)?'['+v.map(canonical).join(',')+']':'{'+Object.keys(v).sort().map(k=>JSON.stringify(k)+':'+canonical((v as Record<string,unknown>)[k])).join(',')+'}';
 const unavailable=()=>new AppError('UNAVAILABLE');
 const requireFact=(v:unknown)=>{if(!v)throw unavailable();};
@@ -54,14 +61,14 @@ export class FishingBillingGuestOwnerStore{
  private readonly transactions=new WeakMap<object,SqlSession>();
  constructor(private readonly db:IdentityStore,private readonly workspaceId:WorkspaceId,
   private readonly ring:Keyring,digestKey:Buffer,private readonly clock:IdentityClock,
-  private readonly authority:BillingAuthority){
+  private readonly authority:BillingAuthority,private readonly childPeriods:ChildPeriodNativeAuthorityV3|null=null){
   billingId.parse(workspaceId);requireFact(digestKey.length>=32);this.key=Buffer.from(digestKey);
  }
  private now(){const n=this.clock.now();requireFact(n instanceof Date&&Number.isFinite(n.valueOf()));return n;}
  private contextCurrent(c:BillingContext){requireFact(c.workspaceId===this.workspaceId&&this.transactions.get(c)===c.tx);}
  private tx(c:BillingContext){this.contextCurrent(c);return c.tx;}
  private hmac(v:unknown){return createHmac('sha256',this.key).update(canonical(v)).digest('hex');}
- private digest(action:'create'|'issue',command:unknown){return this.hmac({version:BILLING_GUEST_V3,kind:'owner_quote',workspaceId:this.workspaceId,action,command});}
+ private digest(action:'create'|'issue'|'create_anchored',command:unknown){return this.hmac({version:BILLING_GUEST_V3,kind:'owner_quote',workspaceId:this.workspaceId,action,command});}
  private async owner(c:BillingContext,actor:Actor){
   this.contextCurrent(c);
   c.now=this.now();const fresh=await freshActor(c.tx,actor,c.now);
@@ -109,6 +116,12 @@ export class FishingBillingGuestOwnerStore{
   const record=journalSchema.parse(JSON.parse(unseal(row.ciphertext,commandAad(this.workspaceId,id),this.ring)));
   requireFact(record.workspaceId===this.workspaceId&&record.operationId===id&&record.actorId===row.actorId&&row.action==='guest_'+record.action&&record.quoteId===row.quoteId&&record.digest===row.digest);
   if(record.kind==='owner_money')requireFact(Date.parse(record.receipt.recordedAt)===row.createdAt.valueOf());
+  if(record.kind==='owner_anchored_quote'){
+   const receipt=verifyAnchoredOfferReceiptV3(record.receipt,record.command);
+   requireFact(record.quoteId===receipt.entityId&&record.operationId===receipt.operationId&&record.command.operationId===id&&
+    receipt.quote.workspaceId===this.workspaceId&&!receipt.replayed&&record.digest===this.digest('create_anchored',record.command)&&
+    (!receipt.quote.override||receipt.quote.override.actorId===record.actorId)&&Date.parse(receipt.quote.createdAt)===row.createdAt.valueOf());
+  }
   return {row,record};
  }
  private async previous(c:BillingContext,actor:Actor,operationId:string,action:'create'|'issue',command:unknown,quoteId:string):Promise<Receipt|null>{
@@ -128,6 +141,62 @@ export class FishingBillingGuestOwnerStore{
   const record=quoteJournalSchema.parse({version:BILLING_GUEST_V3,kind:'owner_quote',workspaceId:this.workspaceId,operationId:command.operationId,actorId:c.actor.id,action,quoteId:q.id,digest,receipt});
   await this.tx(c).query('INSERT INTO ls_fishing_billing.commands(workspace_id,operation_id,actor_id,action,quote_id,request_digest,result_ciphertext,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',[this.workspaceId,command.operationId,c.actor.id,'guest_'+action,q.id,digest,seal(JSON.stringify(record),commandAad(this.workspaceId,command.operationId),this.ring),c.now]);return receipt;
  }
+ private async firstPeriods(c:BillingContext,command:AnchoredOfferCommandV3){
+  if(!this.childPeriods)throw unavailable();
+  const view=Object.freeze({...c,actor:Object.freeze({...c.actor}),now:new Date(c.now)});
+  const children=Object.freeze(command.children.map(child=>Object.freeze({...child})));
+  const facts=await this.childPeriods.firstEligibleLessons(view,Object.freeze({quoteId:command.id,familyId:command.familyId,children}));
+  this.contextCurrent(c);
+  return deriveAnchoredOfferPeriodsV3(command,this.workspaceId,facts);
+ }
+ private async anchoredRecord(c:BillingContext,q:GuestFamilyOffer){
+  const rows=await this.tx(c).query<{operationId:string}>('SELECT operation_id AS "operationId" FROM ls_fishing_billing.commands WHERE workspace_id=$1 AND quote_id=$2 AND action=$3 LIMIT 2 FOR SHARE',[this.workspaceId,q.id,'guest_create_anchored']);
+  if(rows.length===0)return null;requireFact(rows.length===1);
+  const found=await this.commandRecord(c,rows[0]!.operationId);requireFact(found?.record.kind==='owner_anchored_quote');
+  if(!found||found.record.kind!=='owner_anchored_quote')throw unavailable();
+  verifyAnchoredOfferReceiptV3(found.record.receipt,found.record.command,q);return found.record;
+ }
+ /** Strict prospective path: dates come from actual native lesson facts, not
+  * request fields. Quote and encrypted source provenance share one commit. */
+ async createAnchoredOffer(actor:Actor,raw:unknown){
+  const command=anchoredOfferCommandV3Schema.parse(raw);
+  return this.context(actor,async c=>{
+   const s:BillingScope={programKey:'fishing_monthly_club',quoteId:command.id,familyId:command.familyId,childIds:command.children.map(child=>child.childId)};
+   await this.current(c,actor,'create',s);
+   const prior=await this.commandRecord(c,command.operationId);
+   if(prior){
+    const j=prior.record;requireFact(j.kind==='owner_anchored_quote');if(j.kind!=='owner_anchored_quote')throw unavailable();
+    requireFact(j.actorId===c.actor.id&&j.quoteId===command.id&&j.digest===this.digest('create_anchored',command));
+    const q=await this.quote(c,command.id);verifyAnchoredOfferReceiptV3(j.receipt,command,q);
+    await this.current(c,actor,'read',scope(q));return {...j.receipt,replayed:true};
+   }
+   const row=await one<{id:string;publishedAt:Date;ciphertext:string}>(this.tx(c),'SELECT id,published_at AS "publishedAt",payload_ciphertext AS ciphertext FROM ls_fishing_billing.definitions WHERE workspace_id=$1 AND id=$2 FOR SHARE',[this.workspaceId,command.definitionId]);if(!row)throw unavailable();
+   const definition=publishedOfferSchema.parse(JSON.parse(unseal(row.ciphertext,'ls_fishing_billing/v1/definition/'+this.workspaceId+'/'+command.definitionId,this.ring)));
+   requireFact(definition.id===row.id&&definition.id===command.definitionId&&Date.parse(definition.publishedAt)===row.publishedAt.valueOf());
+   const periods=await this.firstPeriods(c,command);
+   const quote=createGuestFamilyOffer(definition,{operationId:command.operationId,id:command.id,familyId:command.familyId,definitionId:command.definitionId,override:command.override,children:command.children.map((child,index)=>({
+    lineId:child.lineId,childId:child.childId,groupId:child.groupId,dueAt:child.dueAt,period:periods[index]!.period,
+   }))},{workspaceId:this.workspaceId,actorId:c.actor.id,now:c.now.toISOString()});
+   const receipt=verifyAnchoredOfferReceiptV3({version:ANCHORED_OFFER_V3,operationId:command.operationId,action:'create_anchored',entityId:quote.id,entityVersion:1,quote,periods,replayed:false},command);
+   await this.tx(c).query('INSERT INTO ls_fishing_billing.quotes(workspace_id,id,family_id,definition_id,revision,payload_ciphertext,created_at) VALUES($1,$2,$3,$4,$5,$6,$7)',[this.workspaceId,quote.id,quote.familyId,quote.definition.id,quote.revision,seal(JSON.stringify(quote),quoteAad(this.workspaceId,quote.id),this.ring),c.now]);
+   const record=anchoredJournalSchema.parse({version:ANCHORED_OFFER_V3,kind:'owner_anchored_quote',workspaceId:this.workspaceId,operationId:command.operationId,actorId:c.actor.id,action:'create_anchored',quoteId:quote.id,digest:this.digest('create_anchored',command),command,receipt});
+   await this.tx(c).query('INSERT INTO ls_fishing_billing.commands(workspace_id,operation_id,actor_id,action,quote_id,request_digest,result_ciphertext,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',[this.workspaceId,command.operationId,c.actor.id,'guest_create_anchored',quote.id,record.digest,seal(JSON.stringify(record),commandAad(this.workspaceId,command.operationId),this.ring),c.now]);
+   await this.current(c,actor,'create',s);
+   requireFact(canonical(await this.firstPeriods(c,command))===canonical(periods));
+   await this.owner(c,actor);return receipt;
+  });
+ }
+ /** Original scheduling provenance, including after later issuance/cancellation.
+  * Financial acceptance/balance still requires the existing current-ledger
+  * evidence reader; this read does not certify current lesson eligibility. */
+ async readAnchoredOffer(actor:Actor,id:string){
+  return this.context(actor,async c=>{
+   const quote=await this.quote(c,id);await this.current(c,actor,'read',scope(quote));
+   const record=await this.anchoredRecord(c,quote);if(!record)throw unavailable();
+   await this.current(c,actor,'read',scope(quote));return {version:ANCHORED_OFFER_V3,quote,periods:record.receipt.periods};
+  });
+ }
+ async issueAnchoredOffer(actor:Actor,raw:unknown){return this.issueOfferInternal(actor,raw,true);}
  async createOffer(actor:Actor,raw:unknown):Promise<Receipt>{
   const cmd=createFamilyOfferSchema.parse(raw);
   return this.context(actor,async c=>{
@@ -142,14 +211,23 @@ export class FishingBillingGuestOwnerStore{
    return this.journal(c,'create',cmd,q);
   });
  }
- async issueOffer(actor:Actor,raw:unknown):Promise<Receipt>{
+ async issueOffer(actor:Actor,raw:unknown):Promise<Receipt>{return this.issueOfferInternal(actor,raw,false);}
+ private async issueOfferInternal(actor:Actor,raw:unknown,requireAnchored:boolean):Promise<Receipt>{
   const cmd=commandSchema.extend({quoteId:billingId}).strict().parse(raw);
   return this.context(actor,async c=>{
    const before=await this.quote(c,cmd.quoteId);await this.current(c,actor,'issue',scope(before));
+   const original=await this.anchoredRecord(c,before);if(requireAnchored&&!original)throw unavailable();
    const old=await this.previous(c,actor,cmd.operationId,'issue',cmd,cmd.quoteId);if(old)return old;
+   if(original)requireFact(canonical(await this.firstPeriods(c,original.command))===canonical(original.receipt.periods));
    await this.current(c,actor,'issue',scope(before));const q=issueGuestFamilyOffer(before,cmd.expectedVersion,c.now.toISOString());
    const changed=await one(this.tx(c),'UPDATE ls_fishing_billing.quotes SET revision=$4,payload_ciphertext=$5 WHERE workspace_id=$1 AND id=$2 AND revision=$3 RETURNING id',[this.workspaceId,q.id,before.revision,q.revision,seal(JSON.stringify(q),quoteAad(this.workspaceId,q.id),this.ring)]);requireFact(changed);
-   return this.journal(c,'issue',cmd,q);
+   const receipt=await this.journal(c,'issue',cmd,q);
+   if(original){
+    await this.current(c,actor,'issue',scope(q));
+    requireFact(canonical(await this.firstPeriods(c,original.command))===canonical(original.receipt.periods));
+    await this.owner(c,actor);
+   }
+   return receipt;
   });
  }
  async readQuote(actor:Actor,id:string):Promise<GuestFamilyOffer>{
