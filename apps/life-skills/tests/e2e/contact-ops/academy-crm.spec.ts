@@ -69,11 +69,13 @@ if(!runtimePath){
   const owner=fixture.credentials.find(value=>value.role==="practitioner")!;
   await ownerFrame(page,locale);
   const nav=page.locator('[data-fishing-owner-navigation="true"]');
-  const mobileToggle=nav.getByRole("button",{name:locale==="he"?/^הצגת אזורי העבודה:/:/^Show work areas:/});
+  const mobileToggle=nav.getByRole("button");
   if(await mobileToggle.isVisible()){
+   await expect(mobileToggle).toHaveAccessibleName(t(locale,"Show work areas: Families & contacts","הצגת אזורי העבודה: משפחות ואנשי קשר"));
    await expect(mobileToggle).toHaveAttribute("aria-expanded","false");
    await mobileToggle.press("Space");
    await expect(mobileToggle).toHaveAttribute("aria-expanded","true");
+   await expect(mobileToggle).toHaveAccessibleName(t(locale,"Hide work areas: Families & contacts","הסתרת אזורי העבודה: משפחות ואנשי קשר"));
   }
   await nav.locator('[data-fishing-owner-destination="settings"]').click();
   await expect(page).toHaveURL(runtime.origin+"/"+locale+"/app/settings");
