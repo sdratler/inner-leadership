@@ -667,3 +667,32 @@ it('mounted-owner-boundary: terminal demo admission rolls back journal, minors, 
  expect(await createdNativeRows(f,command)).toEqual({family:[],children:[],journal:[]});expect(await f.counts()).toEqual(before);expect(await f.cutover.read(f.owner)).toEqual(state);
  expect((await engine.query('SELECT 1 FROM ls_demo.accounts WHERE workspace_id=$1',[f.workspace])).rows).toEqual([]);
 });
+
+it('native-family-source: actual owner bootstrap supplies saved siblings and epoch without caller authority, then reloads explicit creation',async()=>{
+ const f=await fixture(true,runtimeLookupKey.toString('hex')),env={LS_PROVIDER_INDEX_OWNER_ACCOUNT_ID:f.owner.id},h=await composedOwnerHarness(f,env);
+ const query='?'+new URLSearchParams({kind:'source',reference:f.saved.item.id});
+ const initial=await h.call(null,query);expect(initial.status).toBe(200);const source=(await initial.json()).data;
+ expect(source).toMatchObject({kind:'family_source',reference:f.saved.item.id,expectedEpoch:1,guardianName:f.fields.guardianName,messageLanguage:f.fields.messageLanguage,contactAdmission:'admitted',association:null});
+ expect(source.children).toEqual(f.fields.children.map(({id,name,ageYears})=>({id,name,ageYears})));expect(JSON.stringify(source)).not.toContain(f.fields.email);
+ const command={version:NATIVE_FAMILY_VERSION,operationId:randomUUID(),reference:source.reference,expectedEpoch:source.expectedEpoch,expectedSourceDigest:source.sourceDigest,
+  ownerReviewedMapping:true,familyId:randomUUID(),familyLabel:'SYNTHETIC explicitly reviewed family',children:source.children.map((child:{id:string})=>({applicationChildId:child.id,nativeChildId:randomUUID()}))};
+ expect((await h.call({action:'create_native_family',command})).status).toBe(200);
+ const fresh=await composedOwnerHarness(f,env),loaded=await fresh.call(null,query);expect(loaded.status).toBe(200);const after=(await loaded.json()).data;
+ expect(after.association.command.selection).toEqual({reference:command.reference,familyId:command.familyId,children:command.children});
+ expect(after.association).toMatchObject({guardianVerified:false,recipientVerified:false,financialAcceptance:false,outboundEligible:false});expect(after.children).toEqual(source.children);expect(await f.count()).toBe(1);
+ expect((await fresh.call(null,query+'&expectedEpoch=999')).status).toBe(400);
+});
+it('native-family-source: an unadmitted current inquiry is explicit and the display read creates no native authority',async()=>{
+ const f=await fixture(false,runtimeLookupKey.toString('hex')),before=await f.counts(),h=await composedOwnerHarness(f,{LS_PROVIDER_INDEX_OWNER_ACCOUNT_ID:f.owner.id});
+ const response=await h.call(null,'?'+new URLSearchParams({kind:'source',reference:f.saved.item.id}));expect(response.status).toBe(200);
+ expect((await response.json()).data).toMatchObject({contactAdmission:'required',association:null,children:expect.any(Array)});
+ expect(await f.count()).toBe(0);expect(await f.counts()).toEqual(before);
+});
+it('native-family-source: a native association read failure is unavailable rather than an empty family',async()=>{
+ const f=await fixture(true,runtimeLookupKey.toString('hex'));
+ const unavailable:IdentityStore={transaction:work=>db.transaction(tx=>work({query:async<T extends object>(sql:string,values:readonly unknown[]=[])=>{
+  if(sql.includes('FROM ls_fishing_billing.inquiry_family_proposals'))throw new AppError('UNAVAILABLE');return tx.query<T>(sql,values);
+ }}))};
+ const h=await composedOwnerHarness(f,{LS_PROVIDER_INDEX_OWNER_ACCOUNT_ID:f.owner.id},unavailable),response=await h.call(null,'?'+new URLSearchParams({kind:'source',reference:f.saved.item.id}));
+ expect(response.status).toBe(503);expect(await response.json()).toMatchObject({ok:false,error:{code:'UNAVAILABLE'}});expect(await f.count()).toBe(0);
+});

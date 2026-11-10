@@ -11,37 +11,20 @@ import {systemClock,type Actor,type IdentityClock,type WorkspaceId} from '../fea
 import {isTrip390Interest,type GroupApplicationRecord} from '../features/group-application/contract.ts';
 import {isCurrentTrip390Interest,trip390CurrentInterestSchema,type Trip390CurrentInterest} from '../features/group-application/academy-trip390-contract.ts';
 import {NATIVE_FAMILY_VERSION,nativeFamilyCreateCommandSchema} from '../features/fishing-billing/native-family-contract-v1.ts';
+import {FISHING_INQUIRY_FAMILY_PROPOSAL_VERSION,fishingInquiryFamilySelectionSchema as selection,fishingFamilyProposalCommandSchema,
+ fishingInquiryFamilyProposalSchema as recordSchema,type FishingFamilyProposalCommand,type FishingInquiryFamilyProposal} from '../features/fishing-billing/inquiry-family-contract-v1.ts';
+export {FISHING_INQUIRY_FAMILY_PROPOSAL_VERSION,fishingFamilyProposalCommandSchema,fishingInquiryFamilyProposalPreviewSchema,
+ fishingInquiryFamilyProposalSchema,type FishingFamilyProposalCommand,type FishingInquiryFamilyProposal} from '../features/fishing-billing/inquiry-family-contract-v1.ts';
 
-export const FISHING_INQUIRY_FAMILY_PROPOSAL_VERSION='JLFA-FISHING-INQUIRY-FAMILY-PROPOSAL-v1' as const;
 const uuid=z.uuid(),digest=z.string().regex(/^[a-f0-9]{64}$/);
-const mapping=z.object({applicationChildId:uuid,nativeChildId:uuid}).strict();
-const selection=z.object({reference:uuid,familyId:uuid,children:z.array(mapping).min(1).max(10)}).strict()
- .refine(v=>new Set(v.children.map(c=>c.applicationChildId.toLowerCase())).size===v.children.length&&new Set(v.children.map(c=>c.nativeChildId.toLowerCase())).size===v.children.length,'DUPLICATE_CHILD_MAPPING');
-const epoch=z.number().int().min(0).max(Number.MAX_SAFE_INTEGER-1);
+const epoch=fishingFamilyProposalCommandSchema.shape.expectedEpoch;
 const currentDataId=uuid.refine(value=>value===value.toLowerCase(),'CANONICAL_UUID_REQUIRED');
 const currentFamilyDataInputSchema=z.object({proposalId:currentDataId,reference:currentDataId,expectedEpoch:epoch,lock:z.enum(['shared','snapshot'])}).strict();
 export type FishingCurrentFamilyDataInput=z.infer<typeof currentFamilyDataInputSchema>;
-export const fishingFamilyProposalCommandSchema=z.object({operationId:uuid,expectedEpoch:epoch,
- selection,expectedSourceDigest:digest,expectedNativeDigest:digest}).strict();
-export type FishingFamilyProposalCommand=z.infer<typeof fishingFamilyProposalCommandSchema>;
-const snapshot=z.object({version:z.string().min(1).max(200),language:z.enum(['en','he']),textDigest:digest}).strict();
-const recordSchema=z.object({version:z.literal(FISHING_INQUIRY_FAMILY_PROPOSAL_VERSION),id:uuid,workspaceId:uuid,
- command:fishingFamilyProposalCommandSchema,recordedBy:uuid,recordedAt:z.iso.datetime(),guardianPersonId:uuid,
- messageLanguage:z.enum(['en','he']),sourceVersion:z.string().min(1).max(200),offerVersion:z.string().min(1).max(200),
- acknowledgment:z.object({version:z.string().min(1).max(200),language:z.enum(['en','he']),
-  reservationNotice:snapshot,studentConduct:snapshot,whatsapp:z.boolean()}).strict(),
- state:z.literal('proposed'),guardianVerified:z.literal(false),recipientVerified:z.literal(false),
- financialAcceptance:z.literal(false),outboundEligible:z.literal(false),
-}).strict();
-export type FishingInquiryFamilyProposal=z.infer<typeof recordSchema>;
 const nativeCreationJournalSchema=z.object({
  version:z.literal(NATIVE_FAMILY_VERSION),workspaceId:uuid,operationId:uuid,actorId:uuid,
  requestDigest:digest,command:nativeFamilyCreateCommandSchema,proposal:recordSchema,
 }).strict();
-export const fishingInquiryFamilyProposalSchema=recordSchema;
-export const fishingInquiryFamilyProposalPreviewSchema=recordSchema.pick({version:true,guardianPersonId:true,messageLanguage:true,state:true,
- guardianVerified:true,recipientVerified:true,financialAcceptance:true,outboundEligible:true})
- .extend({selection,sourceDigest:digest,nativeDigest:digest}).strict();
 function proposalAcknowledgment(fields:Trip390CurrentInterest):FishingInquiryFamilyProposal['acknowledgment']{
  const a=fields.acknowledgment;
  const document=({version,language,textDigest}:{version:string;language:'en'|'he';textDigest:string})=>({version,language,textDigest});

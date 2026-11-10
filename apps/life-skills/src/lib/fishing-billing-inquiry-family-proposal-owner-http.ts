@@ -12,6 +12,8 @@ import {canonicalForwardedRequest} from '../features/integration/canonical-forwa
 import {FISHING_INQUIRY_FAMILY_PROPOSAL_VERSION,fishingFamilyProposalCommandSchema,
  fishingInquiryFamilyProposalSchema,fishingInquiryFamilyProposalPreviewSchema,type FishingBillingInquiryFamilyProposals} from './fishing-billing-inquiry-family-proposal.ts';
 import {NATIVE_FAMILY_VERSION,nativeFamilyCreateCommandSchema} from '../features/fishing-billing/native-family-contract-v1.ts';
+import {nativeFamilyOwnerSourceSchema,type NativeFamilyOwnerSource} from '../features/fishing-billing/native-family-owner-source-contract.ts';
+import type {Actor} from '../features/identity/types.ts';
 
 export const FISHING_INQUIRY_FAMILY_PROPOSAL_OWNER_PATH='/api/private/fishing-inquiry-family-proposals';
 const command=z.discriminatedUnion('action',[
@@ -24,6 +26,7 @@ const read=z.object({reference:z.uuid(),expectedEpoch:fishingFamilyProposalComma
 export type FishingInquiryFamilyProposalOwnerHttpDependencies={
  origin:string;sessions:Pick<IdentitySessions,'actor'|'csrf'>;limits:RateLimitStore;rateLimitKey:string;
  store:Pick<FishingBillingInquiryFamilyProposals,'read'|'preview'|'propose'|'createNativeFamily'>;
+ source?:(actor:Actor,reference:string)=>Promise<NativeFamilyOwnerSource>;
 };
 const equal=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
 
@@ -47,6 +50,15 @@ export async function fishingInquiryFamilyProposalOwnerHttp(request:Request,
   if(actor.role!=='practitioner'||actor.state!=='active')throw new AppError('FORBIDDEN');
   const key=opaqueRateLimitKey(`fishing-family-proposal-owner:${actor.workspaceId}:${actor.id}:${request.method}`,d.rateLimitKey);
   if(request.method==='GET'){
+   if(url.searchParams.get('kind')==='source'){
+    const reference=url.searchParams.get('reference');
+    if(url.searchParams.size!==2||url.searchParams.getAll('kind').length!==1||url.searchParams.getAll('reference').length!==1||!z.uuid().safeParse(reference).success)throw new AppError('INVALID_REQUEST');
+    if(!d.source)throw new AppError('UNAVAILABLE');
+    await enforceRateLimit(d.limits,key,60,60_000);
+    const data=nativeFamilyOwnerSourceSchema.parse(await d.source(actor,reference!));
+    if(data.reference!==reference||data.association&&data.association.workspaceId!==actor.workspaceId)throw new AppError('UNAVAILABLE');
+    response=successResponse(data,requestId);
+   }else{
    if(url.searchParams.size!==2||url.searchParams.getAll('reference').length!==1||url.searchParams.getAll('expectedEpoch').length!==1||
     !/^(0|[1-9]\d{0,15})$/.test(url.searchParams.get('expectedEpoch')??''))throw new AppError('INVALID_REQUEST');
    const parsed=read.safeParse({reference:url.searchParams.get('reference'),expectedEpoch:Number(url.searchParams.get('expectedEpoch'))});
@@ -55,6 +67,7 @@ export async function fishingInquiryFamilyProposalOwnerHttp(request:Request,
    const record=fishingInquiryFamilyProposalSchema.parse(await d.store.read(actor,parsed.data));
    if(record.workspaceId!==actor.workspaceId||record.command.selection.reference!==parsed.data.reference)throw new AppError('UNAVAILABLE');
    response=successResponse({version:FISHING_INQUIRY_FAMILY_PROPOSAL_VERSION,kind:'proposal',record},requestId);
+   }
   }else{
    if(url.search)throw new AppError('INVALID_REQUEST');
    verifyMutationOrigin(canonical,d.origin);verifyCsrfToken(request.headers.get('x-csrf-token'),d.sessions.csrf(token));

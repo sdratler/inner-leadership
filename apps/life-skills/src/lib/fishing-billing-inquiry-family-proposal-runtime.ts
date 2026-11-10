@@ -5,6 +5,7 @@ import type { IdentityStore } from '../features/identity/store.ts';
 import { FishingBillingInquiryFamilyProposals } from './fishing-billing-inquiry-family-proposal.ts';
 import type { FishingInquiryFamilyProposalOwnerHttpDependencies } from './fishing-billing-inquiry-family-proposal-owner-http.ts';
 import { assertCurrentFishingOwner, boundFishingOwner, configuredFishingOwnerBinding, type FishingOwnerEnvironment } from './fishing-owner-boundary.ts';
+import { readFishingNativeFamilyOwnerSource } from './fishing-native-family-owner-source.ts';
 
 type NativeRuntime = GroupPreparationIdentityRuntime;
 
@@ -15,7 +16,7 @@ type NativeRuntime = GroupPreparationIdentityRuntime;
 export function composeFishingInquiryFamilyProposalOwnerRuntime(runtime: NativeRuntime, env: FishingOwnerEnvironment): FishingInquiryFamilyProposalOwnerHttpDependencies {
   const { config, services, store, clock } = runtime;
   const binding = configuredFishingOwnerBinding(config.workspaceId, env);
-  function guardedStore(actor: Actor, intent: 'read' | 'write') {
+  function guardedDatabase(actor: Actor, intent: 'read' | 'write'): IdentityStore {
     const owner = boundFishingOwner(binding, actor);
     const guarded: IdentityStore = { transaction: work => store.transaction(async tx => {
       // The native class first establishes its READ ONLY/write transaction and
@@ -24,7 +25,10 @@ export function composeFishingInquiryFamilyProposalOwnerRuntime(runtime: NativeR
       await assertCurrentFishingOwner(tx, binding, owner, intent, clock);
       return result;
     }) };
-    return new FishingBillingInquiryFamilyProposals(guarded, config.workspaceId, config.keyring, config.lookupKey.toString('hex'), clock);
+    return guarded;
+  }
+  function guardedStore(actor: Actor, intent: 'read' | 'write') {
+    return new FishingBillingInquiryFamilyProposals(guardedDatabase(actor, intent), config.workspaceId, config.keyring, config.lookupKey.toString('hex'), clock);
   }
   return {
     origin: config.origin, sessions: {
@@ -38,6 +42,7 @@ export function composeFishingInquiryFamilyProposalOwnerRuntime(runtime: NativeR
       },
       csrf: token => services.sessions.csrf(token),
     }, limits: services.limits, rateLimitKey: config.rateLimitKey,
+    source: (actor, reference) => readFishingNativeFamilyOwnerSource(guardedDatabase(actor, 'read'), runtime, actor, reference),
     store: {
       read: (actor, input) => guardedStore(actor, 'read').read(actor, input),
       preview: (actor, input) => guardedStore(actor, 'read').preview(actor, input),
