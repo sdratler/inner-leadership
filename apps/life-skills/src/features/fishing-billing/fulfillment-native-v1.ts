@@ -151,7 +151,18 @@ export class FishingFulfillmentNativeV1{
   });
  }
  async readPlan(actor:Actor,quoteId:string){
+  return this.withPlanData(actor,quoteId,async(_c,_data,plan)=>plan);
+ }
+ /** Trusted prospective-service composition in the SAME actual quote/source
+  * transaction. Original history remains read-only; this callback creates no
+  * reservation, acceptance or new capability for a browser. */
+ async withPlanData<T>(actor:Actor,quoteId:string,work:(c:Readonly<BillingContext>,data:AnchoredPlanningDataV3,plan:Awaited<ReturnType<FishingFulfillmentNativeV1['planData']>>)=>Promise<T>){
   return this.billing.withAnchoredPlanning(actor,quoteId,async(c,data)=>{
+   const plan=await this.planData(c,data);return work(c,data,plan);
+  });
+ }
+ private async planData(c:Readonly<BillingContext>,data:AnchoredPlanningDataV3){
+   const quoteId=data.quote.id;
    this.context(c);for(const group of new Set(data.quote.lines.map(line=>line.groupId)))if(group)await this.programme.readGroupDataInTransaction(c,group);else fail();
    const saved=await this.get(c,'plan',quoteId);if(!saved)fail('NOT_FOUND');this.verifyPlan(saved,data);if(saved.record.kind!=='plan')fail();
    const changed=new Set<string>();
@@ -161,6 +172,5 @@ export class FishingFulfillmentNativeV1{
    }
    return {version:FULFILLMENT_V1,classification:'historical_plan_not_eligibility' as const,plan:saved,
     departureSourceState:changed.size?'changed' as const:'unchanged' as const,changedDepartureIds:[...changed]};
-  });
  }
 }
