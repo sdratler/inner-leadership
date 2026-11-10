@@ -7,6 +7,7 @@ import {promisify} from "node:util";
 import {expect,test,type BrowserContext,type Page,type Locator} from "@playwright/test";
 import {syntheticChildFailure} from "../group-interest/synthetic-child-output.ts";
 import type {AcademyCrmBrowserRuntime} from "./academy-crm-fixture.ts";
+import {SESSION_COOKIE} from "../../../src/lib/security/session.ts";
 
 const runtimePath=process.env.LS_GROUP_INTEREST_FIXTURE_PATH;
 if(!runtimePath){
@@ -20,7 +21,7 @@ if(!runtimePath){
   expect(result.stdout).toContain("ACADEMY_CRM_UI_ACCEPTANCE_PASS project="+project);
  });
 }else{
- const runtime=JSON.parse(readFileSync(runtimePath,"utf8")) as {origin:string;academyCrm:AcademyCrmBrowserRuntime};
+ const runtime=JSON.parse(readFileSync(runtimePath,"utf8")) as {origin:string;parent:string;academyCrm:AcademyCrmBrowserRuntime};
  if(process.env.LS_ACADEMY_CRM_UI_ONLY!=="true"||!/^https:\/\/localhost:310[5678]$/.test(runtime.origin)||!runtime.academyCrm)
   throw Error("ACADEMY_CRM_ISOLATED_FIXTURE_REQUIRED");
  const fixture=runtime.academyCrm;
@@ -46,9 +47,51 @@ if(!runtimePath){
   await page.getByLabel(t(locale,"Password","סיסמה"),{exact:true}).fill(credentials.password);
   const response=page.waitForResponse(value=>new URL(value.url()).pathname==="/api/identity/login"&&value.request().method()==="POST");
   await page.getByRole("button",{name:t(locale,"Sign in","כניסה"),exact:true}).click();
-  expect((await response).status()).toBe(200);
+  const result=await response;
+  expect(result.status()).toBe(role==="practitioner"?200:401);
   if(role==="practitioner")await expect(page).toHaveURL(runtime.origin+target);
-  else await expect(page).toHaveURL(new RegExp("/"+locale+"/family"));
+  else{
+   // The selected owner runtime rejects valid historical parent credentials,
+   // rather than opening a parent portal or issuing an owner session.
+   expect(await result.headerValue("set-cookie")).toBeNull();
+   await expect(page).toHaveURL(runtime.origin+"/"+locale+"/login?next="+encodeURIComponent(target));
+  }
+ }
+ async function ownerFrame(page:Page,locale:"en"|"he"){
+  const shell=page.locator('[data-fishing-owner-shell="true"]'),nav=shell.locator('[data-fishing-owner-navigation="true"]');
+  await expect(shell).toHaveAttribute("dir",locale==="he"?"rtl":"ltr");
+  await expect(nav).toHaveCount(1);
+  const hrefs=await nav.locator("a").evaluateAll(links=>links.map(link=>link.getAttribute("href")).sort());
+  expect(hrefs).toEqual(["clients","fishing-groups","group-applications","marketing","settings"].map(path=>"/"+locale+"/app/"+path).sort());
+  await expect(nav.locator('[data-availability="unavailable"] a,[data-availability="unavailable"] button')).toHaveCount(0);
+ }
+ async function selectedOwnerRoutes(page:Page,locale:"en"|"he",returnPath:string){
+  const owner=fixture.credentials.find(value=>value.role==="practitioner")!;
+  await ownerFrame(page,locale);
+  await page.goto(runtime.origin+"/"+locale+"/app/settings");
+  await ownerFrame(page,locale);
+  await expect(page.getByRole("heading",{name:t(locale,"Settings","הגדרות"),exact:true})).toBeVisible();
+  await expect(page.locator("main").getByText(owner.email,{exact:true})).toBeVisible();
+  await expect(page.locator("main").getByText(fixture.credentials.find(value=>value.role==="parent")!.email,{exact:true})).toHaveCount(0);
+  const contacts=await page.request.get(runtime.origin+"/api/identity/contacts");
+  expect(contacts.status()).toBe(200);
+  expect((await contacts.json()).data).toEqual({email:owner.email,emailVerified:true,phone:null,phoneVerified:false});
+  const groups=page.waitForResponse(value=>new URL(value.url()).pathname==="/api/private/fishing-group-preparations"&&value.request().method()==="GET");
+  await page.goto(runtime.origin+"/"+locale+"/app/fishing-groups");
+  const groupRead=await groups;expect(groupRead.status()).toBe(200);
+  expect((await groupRead.json()).data).toMatchObject({kind:"list",page:{items:[]}});
+  await expect(page.getByRole("heading",{name:t(locale,"Group preparation","הכנת קבוצות"),exact:true})).toBeVisible();
+  await ownerFrame(page,locale);
+  for(const path of["/"+locale+"/app/practice","/"+locale+"/family","/"+locale+"/app/payments",
+   "/api/identity/preferences","/api/private/contact-profiles","/api/private/bna-mailbox-replies"]){
+   const denied=await page.request.get(runtime.origin+path,{maxRedirects:0});
+   expect(denied.status(),path).toBe(404);
+   expect(await denied.text()).not.toContain(fixture.retired.marker);
+  }
+  const calendar=await page.request.get(runtime.origin+"/"+locale+"/app/calendar",{maxRedirects:0});
+  expect(calendar.status()).toBe(307);
+  expect(calendar.headers().location).toBe(runtime.origin+"/"+locale+"/app/group-applications");
+  await page.goto(runtime.origin+returnPath);
  }
  async function submit(page:Page,button:Locator,action:string){
   const response=page.waitForResponse(value=>new URL(value.url()).pathname==="/api/private/academy-crm"&&
@@ -61,6 +104,7 @@ if(!runtimePath){
   const inquiry=fixture.inquiries.find(value=>value.locale===locale)!;
   const inquiryPath="/"+locale+"/app/clients?inquiryId="+inquiry.id;
   await login(page,locale,inquiryPath);
+  await selectedOwnerRoutes(page,locale,inquiryPath);
   const panel=details(page,locale);
   await expect(panel.getByRole("heading",{name:t(locale,"Add this Academy inquiry","הוספת הפנייה לאקדמיה"),exact:true})).toBeVisible();
   await expect(panel.getByLabel(t(locale,"Email","דוא״ל"),{exact:true})).toHaveValue(inquiry.email);
@@ -133,15 +177,22 @@ if(!runtimePath){
   expect(search.status()).toBe(200);expect((await search.json()).data).toMatchObject({total:0,items:[]});
  });
 
- test("ordinary parent login cannot read, mutate or render Academy contacts",async({page})=>{
+ test("selected owner runtime denies historical parent credentials and existing parent sessions",async({page,context})=>{
   await login(page,"en","/en/app/clients","parent");
+  expect((await context.cookies()).some(value=>value.name===SESSION_COOKIE)).toBe(false);
+  // Only the negative case receives the already-existing synthetic parent
+  // token. All successful owner journeys still establish ordinary logins.
+  expect(runtime.parent).toMatch(/^[A-Za-z0-9_-]{43}$/);
+  await context.addCookies([{name:SESSION_COOKIE,value:runtime.parent,url:runtime.origin,httpOnly:true,secure:true,sameSite:"Lax"}]);
   const list=await page.request.get(runtime.origin+"/api/private/academy-crm");
-  expect(list.status()).toBe(403);expect(await list.text()).not.toContain(fixture.inquiries[0]!.name);
-  const session=await (await page.request.get(runtime.origin+"/api/identity/session")).json();
-  const denied=await page.request.post(runtime.origin+"/api/private/academy-crm",{headers:{origin:runtime.origin,"sec-fetch-site":"same-origin","x-csrf-token":session.data.csrfToken},
+  expect(list.status()).toBe(401);expect(await list.text()).not.toContain(fixture.inquiries[0]!.name);
+  const session=await page.request.get(runtime.origin+"/api/identity/session");
+  expect(session.status()).toBe(401);
+  const denied=await page.request.post(runtime.origin+"/api/private/academy-crm",{headers:{origin:runtime.origin,"sec-fetch-site":"same-origin","x-csrf-token":"synthetic-parent-denied-before-csrf"},
    data:{action:"note",operationId:randomUUID(),expectedEpoch:1,personId:fixture.retired.personId,expectedVersion:1,text:"DENIED_PARENT_NOTE"}});
-  expect(denied.status()).toBe(403);
+  expect(denied.status()).toBe(401);
   await page.goto(runtime.origin+"/en/app/clients");
+  await expect(page).toHaveURL(new RegExp("^"+runtime.origin.replaceAll(".","\\.")+"/en/login(?:\\?|$)"));
   await expect(page.getByRole("heading",{name:"Academy people",exact:true})).toHaveCount(0);
   await expect(page.locator("body")).not.toContainText(fixture.inquiries[0]!.name);
  });
