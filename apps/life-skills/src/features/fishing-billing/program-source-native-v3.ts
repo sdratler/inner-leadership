@@ -6,21 +6,13 @@ import type {ChildPeriodNativeAuthorityV3,NativeEligibleLessonV3} from './child-
 import type {BillingContext} from './native.ts';
 import {FishingBillingInquiryFamilyProposals} from '../../lib/fishing-billing-inquiry-family-proposal.ts';
 import {privateDigest} from '../contact-ops/server/digests.ts';
-import {seal,unseal,type Keyring} from '../identity/crypto.ts';
+import {seal,type Keyring} from '../identity/crypto.ts';
+import {decodeProgramSourceRowV3,programSourceAadV3,programSourceRequestDigestV3,programSourceSelectV3 as select,
+ readProgramSourceInTransactionV3,readProgramLessonsInTransactionV3,type ProgramSourceKindV3 as Kind,type ProgramSourceStoredV3 as Stored,type ProgramSourceRowV3 as Row} from './program-source-readback-v3.ts';
 import {freshActor,lockWorkspace} from '../identity/data.ts';
 import {one,type IdentityStore,type SqlSession} from '../identity/store.ts';
 import type {Actor,AccountId,WorkspaceId,IdentityClock} from '../identity/types.ts';
 
-type Kind=ProgramSourceCommandV3['kind'];
-type Stored={record:ProgramSourceRecordV3;digest:string};
-type Row={groupId:string;kind:Kind;id:string;revision:number;headDigest:string;recordWorkspace:string;recordGroup:string;recordKind:Kind;recordId:string;
- recordRevision:number;operationId:string;recordedBy:string;recordedAt:Date;requestDigest:string;digest:string;previousDigest:string|null;ciphertext:string};
-const select=`SELECT h.group_id AS "groupId",h.kind,h.source_id AS id,h.revision,h.record_digest AS "headDigest",
- v.workspace_id AS "recordWorkspace",v.group_id AS "recordGroup",v.kind AS "recordKind",v.source_id AS "recordId",v.revision AS "recordRevision",
- v.operation_id AS "operationId",v.recorded_by AS "recordedBy",v.recorded_at AS "recordedAt",v.request_digest AS "requestDigest",
- v.record_digest AS digest,v.previous_digest AS "previousDigest",v.payload_ciphertext AS ciphertext
- FROM ls_fishing_billing.program_source_heads h LEFT JOIN ls_fishing_billing.program_source_versions v
- ON v.workspace_id=h.workspace_id AND v.group_id=h.group_id AND v.kind=h.kind AND v.source_id=h.source_id AND v.revision=h.revision`;
 function fail(code:'UNAVAILABLE'|'CONFLICT'|'FORBIDDEN'|'NOT_FOUND'='UNAVAILABLE'):never{throw new AppError(code);}
 type RejectedCode='CONFLICT'|'FORBIDDEN'|'NOT_FOUND'|'UNAUTHENTICATED'|'INVALID_REQUEST';
 // Private provenance token: only the transaction's observed callback rejection
@@ -42,17 +34,10 @@ export class FishingProgramSourceNativeV3 implements ChildPeriodNativeAuthorityV
  }
  private now(){const at=this.clock.now();if(!(at instanceof Date)||!Number.isFinite(at.valueOf()))fail();return new Date(at);}
  private hash(value:unknown){return privateDigest(value,this.integrityKey);}
- private request(actorId:string,command:ProgramSourceCommandV3){return this.hash({domain:PROGRAM_SOURCE_V3,workspaceId:this.workspaceId,actorId,command});}
- private aad(group:string,kind:Kind,id:string,revision:number){return `ls_fishing_billing/program-source/v3/${this.workspaceId}/${group}/${kind}/${id}/${revision}`;}
+ private request(actorId:string,command:ProgramSourceCommandV3){return programSourceRequestDigestV3(this.workspaceId,actorId,command,this.integrityKey);}
+ private aad(group:string,kind:Kind,id:string,revision:number){return programSourceAadV3(this.workspaceId,group,kind,id,revision);}
  private decode(row:Row):Stored{
-  try{
-   const record=programSourceRecordV3Schema.parse(JSON.parse(unseal(row.ciphertext,this.aad(row.groupId,row.kind,row.id,row.revision),this.ring))),c=record.command;
-   if(record.workspaceId!==this.workspaceId||row.recordWorkspace!==this.workspaceId||c.groupId!==row.groupId||row.recordGroup!==row.groupId||
-    c.kind!==row.kind||row.recordKind!==row.kind||c.id!==row.id||row.recordId!==row.id||record.revision!==row.revision||row.recordRevision!==row.revision||
-    record.recordedBy!==row.recordedBy||c.operationId!==row.operationId||record.recordedAt!==row.recordedAt.toISOString()||record.previousDigest!==row.previousDigest||
-    row.requestDigest!==this.request(record.recordedBy,c)||row.digest!==row.headDigest||row.digest!==this.hash({domain:'program-source-record/v3',record}))fail();
-   return {record,digest:row.digest};
-  }catch{fail();}
+  return decodeProgramSourceRowV3(row,this.workspaceId,this.ring,this.integrityKey);
  }
  private async owner(context:Readonly<BillingContext>){
   const a=context.actor;if(context.workspaceId!==this.workspaceId||a.workspaceId!==this.workspaceId||a.id!==this.ownerId||a.role!=='practitioner'||a.state!=='active')fail('FORBIDDEN');
@@ -63,12 +48,10 @@ export class FishingProgramSourceNativeV3 implements ChildPeriodNativeAuthorityV
   if(!row)fail('FORBIDDEN');
  }
  private async get(tx:SqlSession,groupId:string,kind:Kind,id:string):Promise<Stored|null>{
-  const rows=await tx.query<Row>(select+' WHERE h.workspace_id=$1 AND h.group_id=$2 AND h.kind=$3 AND h.source_id=$4 LIMIT 2 FOR SHARE OF h',[this.workspaceId,groupId,kind,id]);
-  if(rows.length>1)fail();return rows[0]?this.decode(rows[0]):null;
+  return readProgramSourceInTransactionV3({workspaceId:this.workspaceId,tx},this.workspaceId,groupId,kind,id,this.ring,this.integrityKey);
  }
  private async lessons(tx:SqlSession,groupId:string){
-  const rows=await tx.query<Row>(select+" WHERE h.workspace_id=$1 AND h.group_id=$2 AND h.kind='lesson' ORDER BY h.source_id LIMIT 1001 FOR SHARE OF h",[this.workspaceId,groupId]);
-  if(rows.length>1000)fail();return rows.map(row=>this.decode(row));
+  return readProgramLessonsInTransactionV3({workspaceId:this.workspaceId,tx},this.workspaceId,groupId,this.ring,this.integrityKey);
  }
  private async family(tx:SqlSession,record:ProgramSourceRecordV3){
   const command=record.command;if(command.kind!=='progression')fail();
