@@ -8,10 +8,12 @@ import {serviceGuestFixtureV4} from '../fixtures/fishing-service-guest-v4.ts';
 import {FishingServiceGuestNativeV4,serviceGuestFinancialEvidenceV4Schema} from '../../src/features/fishing-billing/guest-service-native-v4.ts';
 import {BILLING_SERVICE_V4,serviceAcceptanceOutcomeV4Schema,serviceRecurringPresentationV4Schema,type ServiceAcceptCommandV4} from '../../src/features/fishing-billing/guest-service-contract-v4.ts';
 import {serviceRecurringStatementSha256V4} from '../../src/features/fishing-billing/guest-service-material-v4.ts';
+import {FishingServiceGuestGrantResolverV4} from '../../src/features/fishing-billing/guest-service-grant-resolver-v4.ts';
 import {serviceGuestAadV4} from '../../src/features/fishing-billing/guest-service-aad-v4.ts';
 import {seal,unseal} from '../../src/features/identity/crypto.ts';
 import {verifyServiceFamilyOfferV4} from '../../src/features/fishing-billing/guest-service-domain-v4.ts';
-import type {IdentityStore} from '../../src/features/identity/store.ts';
+import type {IdentityStore,SqlSession} from '../../src/features/identity/store.ts';
+import type {BillingLedgerContext} from '../../src/features/fishing-billing/native.ts';
 import {AppError} from '../../src/lib/errors.ts';
 vi.mock('server-only',()=>({}));
 let engine:PGlite;const network=vi.fn(async()=>{throw Error('NO_NETWORK');});
@@ -24,7 +26,7 @@ afterEach(()=>{expect(network).not.toHaveBeenCalled();});afterAll(async()=>{try{
 // payment/reminder or PostgreSQL lock competition is established here.
 async function ready(){
  const f=await serviceGuestFixtureV4(engine);
- const store=(db=f.db,resolver=f.resolver())=>new FishingServiceGuestNativeV4(db,f.workspace,programRing,programKey,f.clock,resolver);
+ const store=(db=f.db,resolver=f.resolver())=>new FishingServiceGuestNativeV4(db,f.workspace,programRing,programKey,f.commandKey,f.clock,resolver);
  return {...f,store};
 }
 type Fixture=Awaited<ReturnType<typeof ready>>;
@@ -146,4 +148,36 @@ it.each(['operation','private evidence','child period'] as const)('service-accep
  }}))};
  await expect(f.store(db).acceptFinancialOffer(f.token,f.command)).rejects.toThrow('UNAVAILABLE');
  expect((await f.store().acceptFinancialOffer(f.token,f.command)).acceptanceId).toBe(first.acceptanceId);expect(await state(f)).toEqual(accepted);
+});
+it('service-acceptance-v4 pins the original physical native context query across mandatory authority hooks',async()=>{
+ const f=await ready();let session:SqlSession|undefined,replacement:SqlSession['query']|undefined,replacedQueries=0;
+ const db:IdentityStore={transaction:work=>f.db.transaction(tx=>{
+  session={query:tx.query.bind(tx)};replacement=async<R extends object>(sql:string,v:readonly unknown[]=[])=>{replacedQueries++;return tx.query<R>(sql,v);};return work(session);
+ })};
+ const resolver=f.resolver({...f.guestAuthority,current:async(c,g,mode)=>{
+  const e=await f.guestAuthority.current(c,g,mode);if(mode==='fresh'&&session&&replacement)session.query=replacement;return e;
+ }});
+ const result=await f.store(db,resolver).acceptFinancialOfferOutcome(f.token,f.command);
+ expect(replacedQueries).toBe(0);expect(result.state).toBe('rejected_current_attempt');expect(await state(f)).toEqual(empty);
+});
+it.each(['fresh','terminal'] as const)('service-acceptance-v4 refuses native context clock mutation during %s admission instead of silently committing',async phase=>{
+ const f=await ready(),resolver=f.resolver({...f.guestAuthority,current:async(c,g,mode)=>{
+  const e=await f.guestAuthority.current(c,g,mode);if(mode===phase)c.now.setTime(c.now.valueOf()+86_400_000);return e;
+ }});
+ const result=await f.store(f.db,resolver).acceptFinancialOfferOutcome(f.token,f.command);
+ expect(result.state).toBe('rejected_current_attempt');expect(await state(f)).toEqual(empty);
+});
+it('service-acceptance-v4 accepts a genuine advancing constructor clock while keeping each context time immutable',async()=>{
+ const f=await ready();let tick=Date.parse('2035-01-02T15:02:00.000Z');const clock={now:()=>new Date(tick++)};
+ const resolver=new FishingServiceGuestGrantResolverV4(f.workspace,programRing,programKey,f.commandKey,clock,f.guestAuthority),store=new FishingServiceGuestNativeV4(f.db,f.workspace,programRing,programKey,f.commandKey,clock,resolver);
+ const receipt=await store.acceptFinancialOffer(f.token,f.command);expect(Date.parse(receipt.acceptedAt)).toBeGreaterThan(Date.parse('2035-01-02T15:02:00.000Z'));expect(await state(f)).toEqual(accepted);
+});
+it('service-acceptance-v4 revokes the actual borrowed native SQL view after invocation completion',async()=>{
+ const f=await ready();let retained:BillingLedgerContext|undefined,escapedQueries=0;
+ const db:IdentityStore={transaction:work=>f.db.transaction(tx=>work({query:async<R extends object>(sql:string,v:readonly unknown[]=[])=>{
+  if(sql==='SELECT 1 AS escaped_native_probe')escapedQueries++;return tx.query<R>(sql,v);
+ }}))};
+ const resolver=f.resolver({...f.guestAuthority,target:async c=>{retained=c;return f.guestAuthority.target(c);}});
+ await f.store(db,resolver).acceptFinancialOffer(f.token,f.command);if(!retained)throw Error('EXPECTED_ACTUAL_CONTEXT');
+ await expect(retained.tx.query('SELECT 1 AS escaped_native_probe')).rejects.toThrow('UNAVAILABLE');expect(escapedQueries).toBe(0);
 });

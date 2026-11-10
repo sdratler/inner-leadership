@@ -57,6 +57,11 @@ type Facts=Readonly<{grant:ServiceGrantRecordV4;command:ServiceAcceptCommandV4;c
 function stored(condition:unknown):asserts condition{if(!condition)throw new AppError('UNAVAILABLE');}
 function freeze<T>(value:T):T{if(value&&typeof value==='object'){for(const item of Object.values(value))freeze(item);Object.freeze(value);}return value;}
 function precise(t:string){return Number.isFinite(Date.parse(t))&&!(/\.(\d+)/.exec(t)?.[1]?.slice(3)??'').replace(/0+$/,'');}
+/** Data-integrity recipe, not a caller capability or admission decision. */
+export function serviceGuestCommandDigestV4(workspaceId:WorkspaceId,grantId:string,command:ServiceAcceptCommandV4,key:Buffer){
+ stored(billingId.safeParse(workspaceId).success&&billingId.safeParse(grantId).success&&key.length>=32);
+ return createHmac('sha256',key).update(canonical({version:BILLING_SERVICE_V4,workspaceId,grantId,action,command})).digest('hex');
+}
 
 /** Actor-free, unmounted V4 resolution ONLY. Actual origin-authenticated quote
  * and exact-version grant SQL are read in the caller's real transaction. No
@@ -110,7 +115,7 @@ export class FishingServiceGuestGrantResolverV4{
    await this.authority.target(c);this.context(c,tx);await lockWorkspace(tx,this.workspaceId);this.context(c,tx);
    const {g,lifecycle}=await this.load(c,digest);this.context(c,tx);
    stored(command.expectedQuoteRevision===g.offer.material.financial.issuedRevision&&command.offerSnapshotSha256===g.offer.sha256&&command.displayBundleId===g.displayBundle.id&&command.displayBundleSha256===g.displayBundle.sha256);
-   const commandDigest=createHmac('sha256',this.key).update(canonical({version:BILLING_SERVICE_V4,workspaceId:this.workspaceId,grantId:g.id,action,command})).digest('hex');
+   const commandDigest=serviceGuestCommandDigestV4(this.workspaceId,g.id,command,this.key);
    const kind=lifecycle.state==='consumed'?'replay' as const:'fresh' as const;
    stored(!lifecycle.use||lifecycle.use.operationId===command.operationId&&lifecycle.use.commandDigest===commandDigest);
    const currentEvidence=this.evidence(await this.authority.current(c,g,kind),g);this.context(c,tx);this.now(g);
