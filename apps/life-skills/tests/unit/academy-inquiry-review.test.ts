@@ -63,7 +63,8 @@ describe("Fishing inquiry presentation boundary",()=>{
  it("makes the existing Fishing destination first in People without changing other destinations or roles",()=>{
   const contexts=practitionerContext("/en/app/clients",null);
   expect(contexts[0]).toEqual({key:"group_applications",path:"app/group-applications",en:"Fishing inquiries",he:"פניות לדיג"});
-  expect(contexts.slice(1).map(x=>x.key)).toEqual(["all","prospects","audience","whatsapp_group","needs_review","paid","active","archived"]);
+  expect(contexts[1]).toEqual({key:"fishing_groups",path:"app/fishing-groups",en:"Fishing groups",he:"קבוצות דיג"});
+  expect(contexts.slice(1).map(x=>x.key)).toEqual(["fishing_groups","all","prospects","audience","whatsapp_group","needs_review","paid","active","archived"]);
   expect(breadcrumbItems("en","practitioner","/en/app/group-applications").at(-1)?.label).toBe("Fishing inquiries");
  });
 });
