@@ -7,6 +7,10 @@ import {childPeriodLessonWeeksV3} from './service-periods-v3.ts';
 import {FishingProgramSourceNativeV3} from './program-source-native-v3.ts';
 import {FishingFulfillmentNativeV1} from './fulfillment-native-v1.ts';
 import {SERVICE_PLAN_V1,servicePlanPreviewV1Schema,servicePlanSnapshotV1Schema,type ServicePlanSnapshotV1} from './service-plan-contract-v1.ts';
+import type {BillingContext} from './native.ts';
+import type {AnchoredPlanningDataV3} from '../../lib/fishing-billing-guest-owner-store.ts';
+
+export type NativeServicePlanV1=Readonly<{version:typeof SERVICE_PLAN_V1;snapshot:ServicePlanSnapshotV1;digest:string}>;
 
 function fail(code:'UNAVAILABLE'|'CONFLICT'|'FORBIDDEN'='CONFLICT'):never{throw new AppError(code);}
 const overlap=(a:{startsAt:string;endsAt:string},b:{startsAt:string;endsAt:string})=>Date.parse(a.startsAt)<Date.parse(b.endsAt)&&Date.parse(a.endsAt)>Date.parse(b.startsAt);
@@ -21,6 +25,11 @@ export class FishingServicePlanNativeV1{
  }
  private hash(value:unknown){return privateDigest(value,this.key);}
  async preview(actor:Actor,raw:unknown){
+  return this.withPreview(actor,raw,async(_c,_data,preview)=>preview);
+ }
+ /** Same-transaction native material composition. A preview is scheduling
+  * data; downstream issue/acceptance must independently admit every effect. */
+ async withPreview<T>(actor:Actor,raw:unknown,work:(c:Readonly<BillingContext>,data:AnchoredPlanningDataV3,preview:NativeServicePlanV1)=>Promise<T>){
   const command=servicePlanPreviewV1Schema.parse(raw);
   return this.fulfillment.withPlanData(actor,command.quoteId,async(c,data,planning)=>{
    if(c.workspaceId!==this.workspaceId||c.actor.workspaceId!==this.workspaceId)fail('FORBIDDEN');
@@ -67,7 +76,7 @@ export class FishingServicePlanNativeV1{
      progression:{revision:progress.record.revision,digest:progress.digest,eligibleFrom:p.eligibleFrom,readiness:p.readiness,evidence:p.evidence},weeklyLessons:lessons,foundation});
    }
    const parsed=servicePlanSnapshotV1Schema.parse(snapshot);
-   return {version:SERVICE_PLAN_V1,snapshot:parsed,digest:this.hash({domain:'prospective-service-plan/v1',snapshot:parsed})};
+   return work(c,data,{version:SERVICE_PLAN_V1,snapshot:parsed,digest:this.hash({domain:'prospective-service-plan/v1',snapshot:parsed})});
   });
  }
 }
