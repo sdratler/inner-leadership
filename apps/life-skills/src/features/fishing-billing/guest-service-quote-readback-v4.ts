@@ -38,7 +38,7 @@ export function decodeServiceIssueJournalV4(row:ServiceIssueJournalRowV4,workspa
 export async function serviceIssueJournalRowV4(c:Context,workspaceId:WorkspaceId,operationId:string){
  stored(c.workspaceId===workspaceId);return one<ServiceIssueJournalRowV4>(c.tx,'SELECT '+columns+' FROM ls_fishing_billing.commands WHERE workspace_id=$1 AND operation_id=$2',[workspaceId,operationId]);
 }
-export async function readIssuedServiceQuoteV4(c:Context,workspaceId:WorkspaceId,id:string,ring:Keyring,key:string){
+export async function readIssuedServiceQuoteWithRowV4(c:Context,workspaceId:WorkspaceId,id:string,ring:Keyring,key:string){
  stored(c.workspaceId===workspaceId);
  const row=await one<{id:string;familyId:string;definitionId:string;revision:number;createdAt:Date;materialVersion:string|null;ciphertext:string}>(c.tx,
   'SELECT id,family_id AS "familyId",definition_id AS "definitionId",revision,created_at AS "createdAt",material_version AS "materialVersion",payload_ciphertext AS ciphertext FROM ls_fishing_billing.quotes WHERE workspace_id=$1 AND id=$2 FOR UPDATE',[workspaceId,id]);
@@ -49,5 +49,9 @@ export async function readIssuedServiceQuoteV4(c:Context,workspaceId:WorkspaceId
  stored(origins.length===1);const original=decodeServiceIssueJournalV4(origins[0]!,workspaceId,ring,key).receipt.quote;
  stored(quote.revision>=original.revision&&canonical(quote.offer)===canonical(original.offer)&&quote.messageLocaleAtIssue===original.messageLocaleAtIssue);
  if(quote.revision===original.revision)stored(canonical(quote)===canonical(original));
- return quote;
+ return {row,quote};
+}
+/** Preserve the existing material-only return for native owner readers. */
+export async function readIssuedServiceQuoteV4(c:Context,workspaceId:WorkspaceId,id:string,ring:Keyring,key:string){
+ return (await readIssuedServiceQuoteWithRowV4(c,workspaceId,id,ring,key)).quote;
 }
