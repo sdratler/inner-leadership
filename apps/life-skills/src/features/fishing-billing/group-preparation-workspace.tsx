@@ -127,6 +127,7 @@ export function FishingGroupPreparationWorkspace({locale,initialGroupId,initialR
   serial.current++;readAbort.current?.abort();setLoading(false);
   setPage(null);setSelection(null);setEditing(null);setReceipt(null);setNotice('');
  },[]);
+ const denyFromNative=useCallback((code:ErrorCode)=>{setLoadError(code);loseAccess();},[loseAccess]);
  const load=useCallback(async(request:LoadSelection)=>{
   const view=viewGeneration.current;
   // Reject an obsolete closure before it can abort a newer selection's read.
@@ -319,7 +320,8 @@ export function FishingGroupPreparationWorkspace({locale,initialGroupId,initialR
   </div>}
   <ProgramSourceWorkspaceV3 locale={locale} groupId={initialValid&&!waiting&&!loadError?selection?.current.groupId:undefined}
    groupLabel={initialValid&&!waiting&&!loadError?selection?.current.fields.label:undefined}
-   readOnly={!!selection?.historical||busy||pending!==null||waiting||editing!==null||createDirty||selection?.current.state!=='draft'} onLockChange={setSourceLocked}/>
+   workspaceId={initialValid&&!waiting&&!loadError?selection?.current.workspaceId:undefined}
+   readOnly={!!selection?.historical||busy||pending!==null||waiting||editing!==null||createDirty||selection?.current.state!=='draft'} onLockChange={setSourceLocked} onAccessDenied={denyFromNative}/>
  </main>;
 }
 export {FishingGroupPreparationWorkspace as GroupPreparationWorkspace};
