@@ -187,9 +187,9 @@ export function ProgramSourceWorkspaceV3({locale,groupId,groupLabel,readOnly=fal
  const editable=groupCommand?.kind==='group'&&groupCommand.fields.state==='forming'&&!readOnly;
  const locked=busy||pending!==null;
  function submit(event:FormEvent<HTMLFormElement>){
-  event.preventDefault();if(!editing||!groupId||!editable||locked)return;
+  event.preventDefault();if(!editing||!groupId||!data||!editable||locked)return;
   try{
-   const prepared=prepareProgramLessonSaveV3(groupId,editing.record?.command.id??crypto.randomUUID(),crypto.randomUUID(),editing.inputs,editing.record??undefined);
+   const prepared=prepareProgramLessonSaveV3(groupId,editing.record?.command.id??crypto.randomUUID(),crypto.randomUUID(),editing.inputs,editing.record??undefined,data.group.record.workspaceId);
    if(!prepared){report({kind:'notice',value:'unchanged'});return;}
    void save({save:prepared,uncertain:false});
   }catch(error){report(error instanceof ProgramLessonInputErrorV3?{kind:'time',reason:error.reason}:{kind:'error',code:'INVALID_REQUEST'});}

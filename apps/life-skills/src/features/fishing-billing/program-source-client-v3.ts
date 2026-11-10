@@ -4,7 +4,7 @@ import {sessionInfo} from '../identity/client.ts';
 import {billingId} from './contracts.ts';
 import {formatFloridaLocalTime,resolveFloridaLocalTime} from './florida-local-time.ts';
 import {PROGRAM_SOURCE_V3,programSourceCommandV3Schema,type ProgramSourceCommandV3,type ProgramSourceRecordV3} from './program-source-contract-v3.ts';
-import {PROGRAM_SOURCE_OWNER_PATH,programSourceGroupDataV3Schema,programSourceRecordedDataV3Schema,
+import {PROGRAM_SOURCE_OWNER_PATH,programSourceGroupDataV3Schema,programSourceSaveDataV3Schema,
  type ProgramSourceGroupDataV3,type ProgramSourceRecordedDataV3} from './program-source-owner-contract-v3.ts';
 
 // Complete bounded reads may contain up to 1000 lessons and 1000 participant plans.
@@ -16,7 +16,7 @@ const envelope=z.discriminatedUnion('ok',[
 type Failure={code:ErrorCode;requestId:string|null};
 export type ProgramSourceReadResultV3={state:'ready';value:ProgramSourceGroupDataV3;requestId:string}|({state:'failed'}&Failure);
 export type ProgramSourceSaveResultV3={state:'saved';value:ProgramSourceRecordedDataV3;requestId:string}|({state:'unknown'|'rejected'|'not_sent'}&Failure);
-export type PreparedProgramSourceSaveV3=Readonly<{command:ProgramSourceCommandV3;serialized:string}>;
+export type PreparedProgramSourceSaveV3=Readonly<{command:ProgramSourceCommandV3;serialized:string;workspaceId:string}>;
 export type ProgramLessonInputsV3={sequence:string;startsAt:string;endsAt:string;state:'scheduled'|'cancelled'};
 export class ProgramLessonInputErrorV3 extends Error{
  constructor(readonly reason:'invalid'|'ambiguous'|'nonexistent',readonly field:'startsAt'|'endsAt'){
@@ -29,9 +29,11 @@ export function programLessonInputsV3(record?:ProgramSourceRecordV3):ProgramLess
  const fields=record.command.fields;
  return {sequence:String(fields.sequence),startsAt:formatFloridaLocalTime(fields.startsAt),endsAt:formatFloridaLocalTime(fields.endsAt),state:fields.state};
 }
-export function prepareProgramLessonSaveV3(groupId:string,id:string,operationId:string,inputs:ProgramLessonInputsV3,current?:ProgramSourceRecordV3):PreparedProgramSourceSaveV3|null{
+export function prepareProgramLessonSaveV3(groupId:string,id:string,operationId:string,inputs:ProgramLessonInputsV3,current?:ProgramSourceRecordV3,workspaceId?:string):PreparedProgramSourceSaveV3|null{
  if(current&&(current.command.kind!=='lesson'||current.command.groupId!==groupId||current.command.id!==id))throw new Error('LESSON_SELECTION_MISMATCH');
  const before=current?.command.kind==='lesson'?current.command.fields:undefined;
+ const scope=current?.workspaceId??workspaceId;
+ if(!scope||(current&&workspaceId&&current.workspaceId!==workspaceId))throw new Error('LESSON_WORKSPACE_REQUIRED');
  const instant=(field:'startsAt'|'endsAt')=>{
   const original=before?.[field];
   if(original&&inputs[field]===formatFloridaLocalTime(original))return original;
@@ -42,21 +44,22 @@ export function prepareProgramLessonSaveV3(groupId:string,id:string,operationId:
  if(!/^\d+$/.test(inputs.sequence))throw new Error('INVALID_LESSON_SEQUENCE');
  const fields={state:inputs.state,sequence:Number(inputs.sequence),startsAt:instant('startsAt'),endsAt:instant('endsAt'),timeZone:'America/New_York' as const};
  if(before&&JSON.stringify(before)===JSON.stringify(fields))return null;
- return prepareProgramSourceSaveV3({version:current?.version??PROGRAM_SOURCE_V3,kind:'lesson',groupId,id,operationId,expectedRevision:current?.revision??0,fields});
+ return prepareProgramSourceSaveV3({version:current?.version??PROGRAM_SOURCE_V3,kind:'lesson',groupId,id,operationId,expectedRevision:current?.revision??0,fields},scope);
 }
 type Dependencies={fetch:typeof fetch;session:typeof sessionInfo;timeoutMs:number};
 type Wire={ok:true;data:unknown;requestId:string}|({ok:false;authoritative:boolean}&Failure);
 function freeze<T>(value:T):T{
  if(value&&typeof value==='object'){Object.values(value).forEach(freeze);Object.freeze(value);}return value;
 }
-export function prepareProgramSourceSaveV3(input:ProgramSourceCommandV3):PreparedProgramSourceSaveV3{
+export function prepareProgramSourceSaveV3(input:ProgramSourceCommandV3,workspaceId:string):PreparedProgramSourceSaveV3{
+ if(!billingId.safeParse(workspaceId).success||workspaceId!==workspaceId.toLowerCase())throw new Error('SOURCE_WORKSPACE_REQUIRED');
  const command=programSourceCommandV3Schema.parse(input),serialized=JSON.stringify(command);
  if(new TextEncoder().encode(serialized).length>32_768)throw new Error('INVALID_SOURCE');
- return Object.freeze({command:freeze(command),serialized});
+ return Object.freeze({command:freeze(command),serialized,workspaceId});
 }
 /** A later head or similar fields cannot confirm an earlier uncertain operation. */
 export function programSourceSaveMatchesV3(pending:PreparedProgramSourceSaveV3,record:ProgramSourceRecordV3):boolean{
- return record.revision===pending.command.expectedRevision+1&&JSON.stringify(record.command)===pending.serialized;
+ return record.workspaceId===pending.workspaceId&&record.revision===pending.command.expectedRevision+1&&JSON.stringify(record.command)===pending.serialized;
 }
 export function programSourceSavedHeadV3(pending:PreparedProgramSourceSaveV3,data:ProgramSourceGroupDataV3){
  if(data.group.record.command.groupId!==pending.command.groupId)return null;
@@ -129,7 +132,8 @@ export function createProgramSourceClientV3(overrides:Partial<Dependencies>={}){
    return bounded<ProgramSourceSaveResultV3>(async inner=>{
     let session:Awaited<ReturnType<typeof sessionInfo>>;
     try{
-     if(JSON.stringify(programSourceCommandV3Schema.parse(pending.command))!==pending.serialized)return {state:'not_sent',code:'INVALID_REQUEST',requestId:null};
+     if(!billingId.safeParse(pending.workspaceId).success||pending.workspaceId!==pending.workspaceId.toLowerCase()||JSON.stringify(programSourceCommandV3Schema.parse(pending.command))!==pending.serialized)
+      return {state:'not_sent',code:'INVALID_REQUEST',requestId:null};
      session=await deps.session();if(inner.aborted)return unavailable();
      if(session.role!=='practitioner')return {state:'not_sent',code:'FORBIDDEN',requestId:null};
      if(!z.uuid().safeParse(session.accountId).success||typeof session.csrfToken!=='string'||!session.csrfToken)return unavailable();
@@ -141,7 +145,11 @@ export function createProgramSourceClientV3(overrides:Partial<Dependencies>={}){
     const result=await wire(PROGRAM_SOURCE_OWNER_PATH,{method:'POST',headers:{'content-type':'application/json','x-csrf-token':session.csrfToken},body:pending.serialized},inner);
     if(!result.ok)return {state:result.authoritative&&!['UNAVAILABLE','INTERNAL'].includes(result.code)?'rejected':'unknown',code:result.authoritative?result.code:'UNAVAILABLE',requestId:result.requestId};
     try{
-     const value=programSourceRecordedDataV3Schema.parse(result.data);
+     const value=programSourceSaveDataV3Schema.parse(result.data);
+     if(value.kind==='rejected_source'){
+      if(value.actorId!==session.accountId||value.workspaceId!==pending.workspaceId||JSON.stringify(value.command)!==pending.serialized)throw new Error('REJECTION_SOURCE_BINDING');
+      return {state:'rejected',code:value.code,requestId:result.requestId};
+     }
      if(!programSourceSaveMatchesV3(pending,value.record)||value.record.recordedBy!==session.accountId)throw new Error('SAVED_SOURCE_BINDING');
      return {state:'saved',value,requestId:result.requestId};
     }catch{return {state:'unknown',code:'UNAVAILABLE',requestId:result.requestId};}
