@@ -16,7 +16,7 @@ import {verifyGuestFamilyOffer} from './fishing-billing-guest-material-v3.ts';
 import {verifyStoredGuestFinancialEvidence} from './fishing-billing-guest-evidence-readback.ts';
 import {OWNER_MONEY_V3,ownerCurrentV3Schema,compactOwnerOperationResultV3,billingOwnerCommandV3Schema,ownerMoneyReceiptV3Schema,sameGuestOwnerLineage,type BillingOwnerCommandV3,type OwnerMoneyReceiptV3} from './fishing-billing-owner-contract-v3.ts';
 import {ANCHORED_OFFER_V3,anchoredOfferCommandV3Schema,anchoredOfferReceiptV3Schema,deriveAnchoredOfferPeriodsV3,verifyAnchoredOfferReceiptV3,
- type AnchoredOfferCommandV3,type ChildPeriodNativeAuthorityV3} from '../features/fishing-billing/child-period-provenance-v3.ts';
+ type AnchoredOfferCommandV3,type AnchoredOfferReceiptV3,type ChildPeriodNativeAuthorityV3} from '../features/fishing-billing/child-period-provenance-v3.ts';
 
 const receiptSchema=z.object({
  version:z.literal(BILLING_GUEST_V3),operationId:billingId,action:z.enum(['create','issue']),
@@ -47,6 +47,10 @@ const quoteAad=(w:string,id:string)=>'ls_fishing_billing/guest/v3/quote/'+w+'/'+
 // Older decoders fail closed instead of treating this as an account acceptance.
 const commandAad=(w:string,id:string)=>'ls_fishing_billing/v1/command/'+w+'/'+id;
 const scope=(q:GuestFamilyOffer):BillingScope=>({programKey:'fishing_monthly_club',familyId:q.familyId,quoteId:q.id,childIds:[...new Set(q.lines.map(l=>l.childId))]});
+function frozenPlanning<T>(value:T):T{
+ if(value!==null&&typeof value==='object'){for(const child of Object.values(value))frozenPlanning(child);Object.freeze(value);}return value;
+}
+export type AnchoredPlanningDataV3=Readonly<{classification:'original_scheduling_data_only';quote:GuestFamilyOffer;original:AnchoredOfferReceiptV3}>;
 type QuoteRow={id:string;familyId:string;definitionId:string;revision:number;createdAt:Date;ciphertext:string};
 type JournalRow={actorId:string;action:string;quoteId:string;digest:string;ciphertext:string;createdAt:Date};
 
@@ -195,6 +199,25 @@ export class FishingBillingGuestOwnerStore{
    const record=await this.anchoredRecord(c,quote);if(!record)throw unavailable();
    await this.current(c,actor,'read',scope(quote));return {version:ANCHORED_OFFER_V3,quote,periods:record.receipt.periods};
   });
+ }
+ /** Trusted native planning consumer. Original quote/source remain unchanged;
+  * the callback writes only its separately reviewed planning records, never a
+  * charge/acceptance. Current financial evidence keeps its own ledger path. */
+ async withAnchoredPlanning<T>(actor:Actor,id:string,work:(c:Readonly<BillingContext>,data:AnchoredPlanningDataV3)=>Promise<T>){
+  return this.context(actor,async c=>{
+   const quote=await this.quote(c,id);await this.current(c,actor,'read',scope(quote));
+   const original=await this.anchoredRecord(c,quote);if(!original)throw unavailable();
+   const pinned=await one(this.tx(c),`SELECT s.token_digest FROM ls_identity.sessions s WHERE s.workspace_id=$1 AND s.account_id=$2 AND s.token_digest=$3
+    AND s.revoked_at IS NULL AND s.expires_at>GREATEST($4::timestamptz,clock_timestamp()) FOR SHARE`,[this.workspaceId,actor.id,actor.sessionDigest,this.now()]);
+   requireFact(pinned);
+   const basis=canonical(quote);let open=true;
+   const tx:SqlSession=Object.freeze({query:<R extends object>(sql:string,v:readonly unknown[]=[])=>{if(!open)throw unavailable();return this.tx(c).query<R>(sql,v);}});
+   const view=Object.freeze({...c,tx,actor:Object.freeze({...c.actor}),now:new Date(c.now)});
+   const data=frozenPlanning({classification:'original_scheduling_data_only' as const,quote:structuredClone(quote),original:structuredClone(original.receipt)});
+   let result:T;try{result=await work(view,data);}finally{open=false;}
+   requireFact(canonical(await this.quote(c,id))===basis);
+   await this.current(c,actor,'read',scope(quote));return result;
+  },true);
  }
  async issueAnchoredOffer(actor:Actor,raw:unknown){return this.issueOfferInternal(actor,raw,true);}
  async createOffer(actor:Actor,raw:unknown):Promise<Receipt>{

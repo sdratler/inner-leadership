@@ -14,6 +14,7 @@ import { fishingProgramSourceOwnerHttp } from '../../src/lib/fishing-program-sou
 import { composeFishingProgramSourceOwnerRuntime } from '../../src/lib/fishing-program-source-owner-runtime.ts';
 import { PROGRAM_SOURCE_OWNER_PATH, programSourceGroupDataV3Schema } from '../../src/features/fishing-billing/program-source-owner-contract-v3.ts';
 import { PROGRAM_SOURCE_V3, programSourceCommandV3Schema } from '../../src/features/fishing-billing/program-source-contract-v3.ts';
+import { ownerLocationPlanningSource } from '../../src/features/fishing-billing/owner-location-planning-source.ts';
 import { GET, POST } from '../../src/app/api/private/fishing-program-sources/route.ts';
 
 vi.mock('server-only', () => ({}));
@@ -94,4 +95,21 @@ it('native owner program HTTP refuses a rejection token whose owner correlation 
   deps.store.recordOutcome = async () => ({ version: PROGRAM_SOURCE_V3, workspaceId: other.workspace, actorId: other.owner.id, command, state: 'rejected', code: 'CONFLICT' });
   const response = await fishingProgramSourceOwnerHttp(h.request(command), async () => deps);
   expect(response.status).toBe(503); expect((await response.json()).error.code).toBe('UNAVAILABLE'); expect(await count(f)).toBe(0);
+});
+it('native owner program HTTP durably binds a genuine owner location planning note without granting venue approval', async () => {
+  const f = await fixture(), h = await harness(f), raw = programSourceCommandV3Schema.parse(f.group()); if (raw.kind !== 'group') throw Error('FIXTURE_GROUP_REQUIRED');
+  const note = await ownerLocationPlanningSource({ workspaceId: f.workspace, ownerAccountId: f.owner.id, groupId: f.groupId, operationId: raw.operationId, location: raw.fields.location });
+  const command = { ...raw, fields: { ...raw.fields, venueSource: note } }, response = await h.call(command);
+  expect(response.status).toBe(200); expect((await response.json()).data).toMatchObject({ kind: 'recorded_source', record: { recordedBy: f.owner.id, command: { fields: { state: 'forming', venueSource: note } } } });
+  const fresh = await harness(f), read = await fresh.call(undefined, '?groupId=' + f.groupId); expect(read.status).toBe(200);
+  expect((await read.json()).data).toMatchObject({ classification: 'scheduling_facts_only', group: { record: { command: { fields: { venueSource: note } } } } });
+});
+it('native owner program HTTP refuses borrowed-owner or changed-location note fingerprints before any native write', async () => {
+  const f = await fixture(), h = await harness(f), raw = programSourceCommandV3Schema.parse(f.group()); if (raw.kind !== 'group') throw Error('FIXTURE_GROUP_REQUIRED');
+  for (const fault of ['owner', 'location']) {
+    const note = await ownerLocationPlanningSource({ workspaceId: f.workspace, ownerAccountId: fault === 'owner' ? f.parent.id : f.owner.id, groupId: f.groupId, operationId: raw.operationId, location: raw.fields.location });
+    const response = await h.call({ ...raw, fields: { ...raw.fields, location: fault === 'location' ? 'SYNTHETIC different plan' : raw.fields.location, venueSource: note } });
+    expect(response.status).toBe(400); expect((await response.json()).error.code).toBe('INVALID_REQUEST');
+  }
+  expect(await count(f)).toBe(0);
 });

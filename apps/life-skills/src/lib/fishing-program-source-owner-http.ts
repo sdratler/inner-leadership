@@ -12,6 +12,7 @@ import { billingId } from '../features/fishing-billing/contracts.ts';
 import { PROGRAM_SOURCE_V3, programSourceCommandV3Schema } from '../features/fishing-billing/program-source-contract-v3.ts';
 import { PROGRAM_SOURCE_OWNER_PATH, programSourceGroupDataV3Schema, programSourceRecordedDataV3Schema, programSourceNativeOutcomeV3Schema, programSourceRejectedDataV3Schema, type ProgramSourceSaveDataV3 } from '../features/fishing-billing/program-source-owner-contract-v3.ts';
 import type { FishingProgramSourceNativeV3 } from '../features/fishing-billing/program-source-native-v3.ts';
+import { OWNER_LOCATION_PLANNING_PREFIX, ownerLocationPlanningSource } from '../features/fishing-billing/owner-location-planning-source.ts';
 
 export type FishingProgramSourceOwnerHttpDependencies = {
   origin: string; sessions: Pick<IdentitySessions, 'actor' | 'csrf'>; limits: RateLimitStore; rateLimitKey: string;
@@ -45,6 +46,10 @@ export async function fishingProgramSourceOwnerHttp(request: Request, load: () =
       verifyMutationOrigin(canonical, d.origin); verifyCsrfToken(request.headers.get('x-csrf-token'), d.sessions.csrf(token));
       await enforceRateLimit(d.limits, rateKey, 20, 60_000);
       const command = await readJson(request, programSourceCommandV3Schema);
+      if (command.kind === 'group' && command.fields.venueSource.id.startsWith(OWNER_LOCATION_PLANNING_PREFIX)) {
+        const source = await ownerLocationPlanningSource({ workspaceId: actor.workspaceId, ownerAccountId: actor.id, groupId: command.groupId, operationId: command.operationId, location: command.fields.location });
+        if (source.id !== command.fields.venueSource.id || source.sha256 !== command.fields.venueSource.sha256) throw new AppError('INVALID_REQUEST');
+      }
       invoked = true;
       let data: ProgramSourceSaveDataV3;
       if (d.store.recordOutcome) {
