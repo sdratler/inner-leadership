@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 async function handle(request: Request) {
   return fishingInquiryFamilyProposalOwnerHttp(request, async () => {
     const { identityRuntime } = await import('../../../../features/identity/runtime.ts');
-    return composeFishingInquiryFamilyProposalOwnerRuntime(await identityRuntime());
+    return composeFishingInquiryFamilyProposalOwnerRuntime(await identityRuntime(), process.env);
   });
 }
 

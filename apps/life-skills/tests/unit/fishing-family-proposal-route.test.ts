@@ -11,13 +11,14 @@ const path = 'https://fishing-owner.example.invalid/api/private/fishing-inquiry-
 const token = opaqueToken();
 const transport = { host: 'fishing-owner.example.invalid', 'x-forwarded-host': 'fishing-owner.example.invalid', 'x-forwarded-proto': 'https' };
 beforeEach(() => {
+  vi.stubEnv('LS_PROVIDER_INDEX_OWNER_ACCOUNT_ID', '00000000-0000-4000-8000-000000000002');
   for (const call of Object.values(calls)) call.mockReset();
   calls.runtime.mockResolvedValue({
     config: { origin: 'https://fishing-owner.example.invalid', workspaceId: '00000000-0000-4000-8000-000000000001', keyring: {}, lookupKey: Buffer.alloc(32, 1), rateLimitKey: 'synthetic' },
     services: { sessions: { actor: calls.actor }, limits: {} }, store: { transaction: calls.transaction }, clock: {},
   });
 });
-afterEach(() => expect(calls.transaction).not.toHaveBeenCalled());
+afterEach(() => { vi.unstubAllEnvs(); expect(calls.transaction).not.toHaveBeenCalled(); });
 
 it('the actual route rejects missing, malformed and ambiguous cookies before initializing native dependencies', async () => {
   for (const cookie of ['', SESSION_COOKIE + '=not-a-token', `${SESSION_COOKIE}=${token}; ${SESSION_COOKIE}=${token}`]) {

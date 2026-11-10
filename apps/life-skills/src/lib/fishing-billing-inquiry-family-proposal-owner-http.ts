@@ -22,7 +22,8 @@ const command=z.discriminatedUnion('action',[
 ]);
 const read=z.object({reference:z.uuid(),expectedEpoch:fishingFamilyProposalCommandSchema.shape.expectedEpoch}).strict();
 export type FishingInquiryFamilyProposalOwnerHttpDependencies={
- origin:string;sessions:IdentitySessions;limits:RateLimitStore;rateLimitKey:string;store:FishingBillingInquiryFamilyProposals;
+ origin:string;sessions:Pick<IdentitySessions,'actor'|'csrf'>;limits:RateLimitStore;rateLimitKey:string;
+ store:Pick<FishingBillingInquiryFamilyProposals,'read'|'preview'|'propose'|'createNativeFamily'>;
 };
 const equal=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
 

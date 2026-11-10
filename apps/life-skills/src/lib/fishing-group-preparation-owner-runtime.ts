@@ -1,5 +1,5 @@
 import 'server-only';
-import { AppError } from './errors.ts';
+import { configuredFishingOwnerBinding, isCurrentNativeFishingOwner } from './fishing-owner-boundary.ts';
 import type { RateLimitStore } from './security/rate-limit.ts';
 import type { FishingGroupPreparationOwnerHttpDeps } from './fishing-group-preparation-owner-http.ts';
 import { GROUP_PREPARATION_PROGRAM, groupPreparationId } from '../features/fishing-billing/group-preparation-contract.ts';
@@ -20,20 +20,13 @@ export type GroupPreparationIdentityRuntime = {
 export function configuredGroupPreparationOwnerAuthority(
   config: Pick<IdentityConfig, 'workspaceId'>, env: ServerEnvironment,
 ): GroupPreparationOwnerAuthority {
-  const workspace = groupPreparationId.safeParse(config.workspaceId);
-  const account = groupPreparationId.safeParse(env.LS_PROVIDER_INDEX_OWNER_ACCOUNT_ID);
-  if (!workspace.success || !account.success) throw new AppError('UNAVAILABLE');
-  const binding = Object.freeze({ workspaceId: workspace.data, accountId: account.data, programKey: GROUP_PREPARATION_PROGRAM });
+  const binding = Object.freeze({ ...configuredFishingOwnerBinding(config.workspaceId, env), programKey: GROUP_PREPARATION_PROGRAM });
 
   async function currentOwner(tx: SqlSession, scope: { workspaceId: string; accountId: string; programKey: string }) {
     if (scope.workspaceId !== binding.workspaceId || scope.accountId !== binding.accountId || scope.programKey !== binding.programKey) return false;
     // This account lock pins active role and conflicts with demo-marker FK insertion.
     // The reviewed store independently pins the real session/person and rechecks all guards at exit.
-    const rows = await tx.query<{ id: string }>(
-      "SELECT a.id FROM ls_identity.accounts a WHERE a.workspace_id=$1 AND a.id=$2 AND a.state='active' AND a.role='practitioner' " +
-      'AND NOT EXISTS (SELECT 1 FROM ls_demo.accounts d WHERE d.workspace_id=a.workspace_id AND d.account_id=a.id) FOR UPDATE OF a',
-      [binding.workspaceId, binding.accountId]);
-    return rows.length === 1 && rows[0]?.id === binding.accountId;
+    return isCurrentNativeFishingOwner(tx, binding, 'update');
   }
   return Object.freeze({
     async isCurrentOwner(tx, scope) {

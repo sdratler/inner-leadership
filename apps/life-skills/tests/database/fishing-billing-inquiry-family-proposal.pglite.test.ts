@@ -21,6 +21,7 @@ import {groupApplicationRequestDigest} from '../../src/features/group-applicatio
 import {TRIP390_V1_INTEREST_VERSION,TRIP390_V1_NOTICE_VERSION,TRIP390_V1_OFFER,type Trip390V1Interest} from '../../src/features/group-application/academy-trip390-v1.ts';
 import {decodeFishingInquiryFamilyProposalRecord,readFishingInquiryNativeFingerprint,FishingBillingInquiryFamilyProposals,fishingInquiryFamilyProposalSchema,fishingInquiryFamilyProposalPreviewSchema,type FishingFamilyProposalCommand,type FishingInquiryFamilyProposalRow,type FishingInquiryNativeFingerprintInput,type FishingCurrentFamilyDataInput} from '../../src/lib/fishing-billing-inquiry-family-proposal.ts';
 import {fishingInquiryFamilyProposalOwnerHttp,FISHING_INQUIRY_FAMILY_PROPOSAL_OWNER_PATH} from '../../src/lib/fishing-billing-inquiry-family-proposal-owner-http.ts';
+import {composeFishingInquiryFamilyProposalOwnerRuntime} from '../../src/lib/fishing-billing-inquiry-family-proposal-runtime.ts';
 vi.mock('server-only',()=>({}));
 
 // New no-URL memory DB, real committed DDL/stores/crypto and synthetic data.
@@ -51,7 +52,7 @@ beforeAll(async()=>{
 afterEach(()=>{expect(globalThis.fetch).toBe(network);expect(network).not.toHaveBeenCalled();});
 afterAll(async()=>{try{await engine?.close();}finally{vi.unstubAllGlobals();}});
 
-async function fixture(admit=true){
+async function fixture(admit=true,integrityKey=key){
  const workspace=asId(randomUUID(),'workspace');await engine.query('INSERT INTO ls_identity.workspaces VALUES($1,$2)',[workspace,now]);
  async function actor(role:'practitioner'|'parent'){
   const id=asId(randomUUID(),'account'),personId=asId(randomUUID(),'person'),token=Buffer.alloc(32,role==='parent'?2:1).toString('base64url');
@@ -62,13 +63,13 @@ async function fixture(admit=true){
   await engine.query('INSERT INTO ls_identity.sessions(token_digest,workspace_id,account_id,created_at,expires_at) VALUES($1,$2,$3,$4,$5)',[digest,workspace,id,now,new Date('2036-01-01T00:00:00Z')]);
   return {id,workspaceId:workspace,personId,role,state:'active',locale:'en',sessionDigest:digest,expiresAt:Date.parse('2036-01-01T00:00:00Z')} as Actor;
  }
- const owner=await actor('practitioner'),parent=await actor('parent'),cutover=new ContactCutoverStore(db,ring,key,clock);
+ const owner=await actor('practitioner'),parent=await actor('parent'),cutover=new ContactCutoverStore(db,ring,integrityKey,clock);
  await cutover.initializeAcademy(owner,{operationId:randomUUID(),expectedEpoch:0,observedNativeWritesSinceSwitch:0,
   decisionId:'ACADEMY-ONLY-CRM-20261028-01',evidence:{retiredSourcesFence:'a'.repeat(64),retiredSchedulesFence:'b'.repeat(64),retainedAcademyRecords:'c'.repeat(64),queueReconciliation:'d'.repeat(64),restorePlan:'e'.repeat(64)}});
  const fields={...currentTrip390Fields(),guardianName:'SYNTHETIC Current Guardian',email:'synthetic-'+randomUUID()+'@example.invalid',
   children:[{id:randomUUID(),name:'SYNTHETIC Brother One',ageYears:11,experience:'new' as const},{id:randomUUID(),name:'SYNTHETIC Brother Two',ageYears:13,experience:'some' as const}]};
- const saved=await new PublicGroupApplicationStore(db,workspace,ring,key,clock).submit({operationId:randomUUID(),fields});
- const crm=new AcademyCrmStore(db,ring,key,clock),preview=await crm.previewInquiry(owner,saved.item.id,1);
+ const saved=await new PublicGroupApplicationStore(db,workspace,ring,integrityKey,clock).submit({operationId:randomUUID(),fields});
+ const crm=new AcademyCrmStore(db,ring,integrityKey,clock),preview=await crm.previewInquiry(owner,saved.item.id,1);
  let guardianId:string|null=null;
  if(admit)guardianId=(await crm.execute(owner,{action:'from_inquiry',operationId:randomUUID(),expectedEpoch:1,sourceApplicationId:saved.item.id,
   sourceDigest:preview.sourceDigest,fields:{stage:'SYNTHETIC inquiry',nextAction:null,followUpDate:null,notes:''}})).personId;
@@ -81,7 +82,7 @@ async function fixture(admit=true){
   children.push({applicationChildId:child.id,nativeChildId});
  }
  const selection={reference:saved.item.id,familyId,children};
- const store=(binder=db)=>new FishingBillingInquiryFamilyProposals(binder,workspace,ring,key,clock);
+ const store=(binder=db)=>new FishingBillingInquiryFamilyProposals(binder,workspace,ring,integrityKey,clock);
  const prepare=async()=>{const p=await store().preview(owner,{selection,expectedEpoch:1});return {operationId:randomUUID(),selection,expectedEpoch:1,expectedSourceDigest:p.sourceDigest,expectedNativeDigest:p.nativeDigest} satisfies FishingFamilyProposalCommand;};
  const source=async()=>(await engine.query<{payload_ciphertext:string}>('SELECT * FROM ls_service_interest.public_applications WHERE workspace_id=$1 AND id=$2',[workspace,saved.item.id])).rows[0]!;
  const count=async()=>(await engine.query<{n:number}>('SELECT count(*)::int AS n FROM ls_fishing_billing.inquiry_family_proposals WHERE workspace_id=$1',[workspace])).rows[0]!.n;
@@ -611,4 +612,58 @@ it('owner-http-native-family: a lost committed result recovers only the original
  const fresh=await ownerHttpHarness(f),retry=await fresh.call({action:'create_native_family',command});
  expect(retry.status).toBe(200);expect((await retry.json()).data).toMatchObject({resultKind:'original_creation_receipt',replayed:true});
  expect(await createdNativeRows(f,command)).toEqual(committed);expect(await f.counts()).toEqual(before);
+});
+
+// Exercise the actual mounted compositor, real sessions/CSRF/rate store and
+// committed native schema. No actor or native family store is stubbed.
+const runtimeLookupKey=Buffer.alloc(32,9);
+async function composedOwnerHarness(f:Awaited<ReturnType<typeof fixture>>,env:Readonly<Record<string,string|undefined>>,binder=db){
+ const token=randomBytes(32).toString('base64url');
+ await engine.query('INSERT INTO ls_identity.sessions(token_digest,workspace_id,account_id,created_at,expires_at) VALUES($1,$2,$3,$4,$5)',[tokenDigest(token),f.workspace,f.owner.id,now,new Date('2036-01-01T00:00:00Z')]);
+ const config={enabled:true,workspaceId:f.workspace,origin:ownerHttpOrigin,keyring:ring,csrfKey:Buffer.alloc(32,8),lookupKey:runtimeLookupKey,rateLimitKey:key,sessionSeconds:3600};
+ const sessions=new IdentitySessions(db,config,clock),limits=new PostgresIdentityRateStore(db);
+ const call=(body:unknown,query?:string)=>{
+  const host=new URL(ownerHttpOrigin).host;
+  const request=new Request(ownerHttpOrigin+FISHING_INQUIRY_FAMILY_PROPOSAL_OWNER_PATH+(query??''),{method:query?'GET':'POST',
+   headers:{host,'x-forwarded-host':host,'x-forwarded-proto':'https',cookie:`${SESSION_COOKIE}=${token}`,origin:ownerHttpOrigin,'sec-fetch-site':'same-origin','x-csrf-token':sessions.csrf(token),'content-type':'application/json'},
+   ...(query?{}:{body:JSON.stringify(body)})});
+  return fishingInquiryFamilyProposalOwnerHttp(request,async()=>composeFishingInquiryFamilyProposalOwnerRuntime({config,services:{sessions,limits},store:binder,clock},env));
+ };
+ return {token,call};
+}
+async function markDemo(tx:SqlSession,f:Awaited<ReturnType<typeof fixture>>){
+ await tx.query('INSERT INTO ls_demo.batches(workspace_id,batch_id,created_by) VALUES($1,$2,$3)',[f.workspace,'ls-owner-20350106',f.owner.id]);
+ await tx.query('INSERT INTO ls_demo.accounts(workspace_id,account_id,batch_id,source_key) VALUES($1,$2,$3,$4)',[f.workspace,f.owner.id,'ls-owner-20350106','SYNTHETIC-owner-denial']);
+}
+it.each(['missing','other-owner','demo'] as const)('mounted-owner-boundary: %s binding cannot read PII or create native children',async kind=>{
+ const f=await fixture(true,runtimeLookupKey.toString('hex')),command=await nativeFamilyCommand(f),before=await f.counts();
+ const env=kind==='missing'?{}:{LS_PROVIDER_INDEX_OWNER_ACCOUNT_ID:kind==='other-owner'?randomUUID():f.owner.id};
+ if(kind==='demo')await db.transaction(tx=>markDemo(tx,f));
+ const http=await composedOwnerHarness(f,env);
+ const preview=await http.call({action:'preview',expectedEpoch:1,selection:f.selection});
+ const create=await http.call({action:'create_native_family',command});
+ expect(preview.status).toBe(kind==='missing'?503:403);expect(create.status).toBe(kind==='missing'?503:403);
+ for(const response of [preview,create])expect(JSON.stringify(await response.json())).not.toContain(f.fields.email);
+ expect(await createdNativeRows(f,command)).toEqual({family:[],children:[],journal:[]});expect(await f.counts()).toEqual(before);
+});
+it('mounted-owner-boundary: configured native owner preserves read-only preview, exact siblings, new-session read and retry',async()=>{
+ const f=await fixture(true,runtimeLookupKey.toString('hex')),command=await nativeFamilyCommand(f),before=await f.counts(),env={LS_PROVIDER_INDEX_OWNER_ACCOUNT_ID:f.owner.id};
+ const http=await composedOwnerHarness(f,env),preview=await http.call({action:'preview',expectedEpoch:1,selection:f.selection});expect(preview.status).toBe(200);
+ const created=await http.call({action:'create_native_family',command});expect(created.status).toBe(200);const record=(await created.json()).data.record;
+ const fresh=await composedOwnerHarness(f,env),read=await fresh.call(null,'?'+new URLSearchParams({reference:command.reference,expectedEpoch:'1'}));
+ expect(read.status).toBe(200);expect((await read.json()).data.record).toEqual(record);
+ const retry=await fresh.call({action:'create_native_family',command});expect(retry.status).toBe(200);expect((await retry.json()).data).toMatchObject({replayed:true,record});
+ const after=await f.counts();expect(Number(after.people)).toBe(Number(before.people)+2);expect(Number(after.families)).toBe(Number(before.families)+1);
+ for(const field of ['accounts','cases','mail','outbound']as const)expect(after[field]).toBe(before[field]);
+ expect(await f.count()).toBe(1);
+});
+it('mounted-owner-boundary: terminal demo admission rolls back journal, minors, family and native write counter',async()=>{
+ const f=await fixture(true,runtimeLookupKey.toString('hex')),command=await nativeFamilyCommand(f),before=await f.counts(),state=await f.cutover.read(f.owner);let marked=false;
+ const barrier:IdentityStore={transaction:work=>db.transaction(tx=>work({query:async<T extends object>(sql:string,values:readonly unknown[]=[])=>{
+  const rows=await tx.query<T>(sql,values);if(sql.startsWith('INSERT INTO ls_fishing_billing.commands')){marked=true;await markDemo(tx,f);}return rows;
+ }}))};
+ const http=await composedOwnerHarness(f,{LS_PROVIDER_INDEX_OWNER_ACCOUNT_ID:f.owner.id},barrier),response=await http.call({action:'create_native_family',command});
+ expect(marked).toBe(true);expect(response.status).toBe(503);expect((await response.json()).error.code).toBe('UNAVAILABLE');
+ expect(await createdNativeRows(f,command)).toEqual({family:[],children:[],journal:[]});expect(await f.counts()).toEqual(before);expect(await f.cutover.read(f.owner)).toEqual(state);
+ expect((await engine.query('SELECT 1 FROM ls_demo.accounts WHERE workspace_id=$1',[f.workspace])).rows).toEqual([]);
 });
