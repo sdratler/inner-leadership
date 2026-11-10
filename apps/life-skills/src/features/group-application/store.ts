@@ -16,6 +16,7 @@ import {INQUIRY_EMAIL_PURPOSE} from './inquiry-email-copy.ts';
 import {isCurrentTrip390Interest} from './academy-trip390-contract.ts';
 import {TRIP390_V3_INTEREST_VERSION} from './academy-trip390-v3.ts';
 import {queueInquiryEmail} from "./inquiry-email.ts";
+import {queueAcademyOwnerNotification} from './academy-owner-notification.ts';
 import {decodeStoredGroupApplication,groupApplicationRequestDigest,groupApplicationPayloadAad} from './group-application-record.ts';
 import {isFreeFounderRegistration,type AcademyFounderStore} from './academy-founder-store.ts';
 
@@ -35,7 +36,7 @@ export type GroupApplicationReviewPage={items:GroupApplicationRecord[];nextCurso
 export class PublicGroupApplicationStore{
  constructor(private readonly db:IdentityStore,private readonly workspaceId:WorkspaceId,private readonly ring:Keyring,
   private readonly digestKey:string,private readonly clock:IdentityClock=systemClock,private readonly emailQueueEnabled=false,private readonly founder?:AcademyFounderStore,
-  private readonly reviewProgram:FloridaProgramId="sunday_fishing_academy"){floridaProgramIdSchema.parse(reviewProgram);}
+  private readonly reviewProgram:FloridaProgramId="sunday_fishing_academy",private readonly ownerNotificationsEnabled=false){floridaProgramIdSchema.parse(reviewProgram);}
  private inOwnerScope(item:GroupApplicationRecord){return isTrip390Interest(item.fields)?this.reviewProgram==='sunday_fishing_academy':isFloridaGroupApplication(item.fields)&&item.fields.programId===this.reviewProgram;}
  private cursorAad(actor:Actor){return `ls_service_interest/review_cursor/v1/${this.workspaceId}/${actor.id}/${this.reviewProgram}`;}
  private searchDigest(search:string){return privateDigest({domain:"public-group-review-search/v1",search},this.digestKey);}
@@ -117,6 +118,9 @@ export class PublicGroupApplicationStore{
    const founder=free?await this.founder!.accept(tx,id,command.fields,continuation!):undefined;
    if(this.founder&&!trip390)await this.founder.bindAttribution(tx,command.operationId,id,attribution);
    const acknowledgment=!free&&this.emailQueueEnabled?await queueInquiryEmail(tx,this.workspaceId,id,command.fields,this.ring,now):undefined;
+   // Current inquiries get independent durable intents in the save transaction.
+   // Replay/duplicate returns above never backfill historical requests.
+   if(this.ownerNotificationsEnabled&&isTrip390Interest(command.fields)&&isCurrentTrip390Interest(command.fields))await queueAcademyOwnerNotification(tx,this.workspaceId,id,command.fields,this.ring,now);
    return {saved:true as const,replayed:false,duplicate:false,item:await this.read(tx,id),...(founder?{founder}:{}),...(acknowledgment?{acknowledgment}:{})};
   });
  }

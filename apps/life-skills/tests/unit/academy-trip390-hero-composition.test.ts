@@ -7,6 +7,7 @@ import ts from 'typescript';
 import {AcademyTrip390Page,desktopHeroBands,contactDockState} from '../../src/features/group-application/academy-trip390-page.tsx';
 import assets from '../../src/features/group-application/academy-hero-assets.json';
 import {academyR2Copy} from '../../src/features/group-application/academy-r2-copy.ts';
+import {primaryActionMode,heroActionReachability,admittedEnlargedPhotoBlock,contactRestorationFindings,type PrimaryActionSnapshot,type ActionReachabilitySnapshot,type PhotoBlockedContactSnapshot,type ContactRestorationSnapshot} from '../e2e/group-interest/academy-trip390.visual-checks.ts';
 
 const css=postcss.parse(readFileSync(new URL('../../src/features/group-application/academy-trip390.module.css',import.meta.url),'utf8'));
 const ordinary=[[1280,720],[1366,768],[1440,900],[1496,794],[1496,766],[1920,1080]] as const;
@@ -63,7 +64,8 @@ describe('ordinary hero composition without the typed-attr/aspect support cliff'
  it.each(['en','he'] as const)('ships registered numeric geometry and one unchanged %s action before effects',initialLocale=>{
   const html=renderToStaticMarkup(createElement(AcademyTrip390Page,{initialLocale}));
   const tag=html.match(/<section[^>]*data-master-height[^>]*>/)![0];
-  expect(tag).toContain(`--master-height:${assets.textFree.desktop.height/assets.textFree.desktop.width}`);expect(tag).toContain(`--master-top:${300/2048}`);expect(tag).toContain(`--master-bottom:${900/2048}`);
+  expect(tag).toContain(`data-master-height="${assets.textFree.desktop.height/assets.textFree.desktop.width}"`);expect(tag).toContain(`data-master-top="${300/2048}"`);expect(tag).toContain(`data-master-bottom="${900/2048}"`);
+  expect(tag).not.toContain('style=');
   expect(tag).not.toContain('data-reflow="true"');
   const hero=html.slice(html.indexOf(tag),html.indexOf('</section>',html.indexOf(tag)));
   expect(hero.match(/data-jlfa-hero-action/g)).toHaveLength(1);expect(hero.match(/data-jlfa-reserve/g)).toHaveLength(1);
@@ -78,6 +80,63 @@ describe('ordinary hero composition without the typed-attr/aspect support cliff'
    if(rule.selector.includes('[data-master-height]')&&rule.selector.endsWith(' h1'))rule.walkDecls('font-size',d=>{usesBandFont=d.value.includes('--upper-band')&&d.value.includes('36px');});
    if(rule.selector.includes('[data-master-height]')&&rule.selector.endsWith(' .heroAction'))rule.walkDecls('gap',d=>{gapWithinSource=d.value.startsWith('clamp(12px,')&&d.value.endsWith(',16px)');});
   });expect(frameFromPicture).toBe(true);expect(usesBandFont).toBe(true);expect(gapWithinSource).toBe(true);
+ });
+});
+
+describe('R07 CSP-compatible registered geometry',()=>{
+ it('R07 supplies the exact registry projection in external CSS before hydration',()=>{
+  const values:Record<string,number>={};
+  css.walkRules(rule=>{
+   if(rule.selector!=='.hero[data-master-height]'||!matchesConditions(rule,1366,768))return;
+   rule.walkDecls(/^--master-(height|top|bottom)$/,d=>{values[d.prop]=Number(d.value);});
+  });
+  const master=assets.textFree.desktop,region=assets.current.en.desktop;
+  expect(region.sourceSha256).toBe(master.sha256);
+  expect(values).toEqual({'--master-height':master.height/master.width,'--master-top':region.protectedRect[1]!/master.width,'--master-bottom':region.protectedRect[3]!/master.width});
+ });
+});
+
+describe('R02 source-qualified primary-action reachability',()=>{
+ const rect=(left:number,top:number,width:number,height:number)=>({left,top,width,height,right:left+width,bottom:top+height});
+ function flow(width=320,height=568):PrimaryActionSnapshot{
+  const nw=width>=768?2048:1143,nh=width>=768?1143:2048,photo=rect(0,200,width,width*nh/nw),action=rect(0,photo.bottom,width,156),cta=rect(20,action.top+72,width-40,56);
+  return {viewport:{width,height},hero:rect(0,74,width,action.bottom-74),photo:{...photo,naturalWidth:nw,naturalHeight:nh},action,cta,painted:true,initialPrimaryVisible:false,reflow:true,actionPosition:'static',declaredShortCase:`${width}x${height}`,declaredEnlargedText:false,pageFontSize:17};
+ }
+ it.each([[320,568],[375,667],[844,390]])('R02 accepts only the declared actual %ix%i natural-flow scroll case', (width,height)=>{
+  expect(primaryActionMode(flow(width,height))).toBe('scroll');expect(primaryActionMode({...flow(width,height),declaredShortCase:null})).toBe('unreachable');
+ });
+ it('R02 rejects ordinary offscreen and retained bad-before desktop flow even with a visible header action',()=>{
+  const ordinary={...flow(1366,768),declaredShortCase:null};expect(primaryActionMode(ordinary)).toBe('unreachable');
+  const before={...ordinary,initialPrimaryVisible:true,action:rect(0,230,1366,150),cta:rect(500,300,266,56)};
+  expect(primaryActionMode(before)).toBe('unreachable');
+  // An ordinary valid overlay still requires an initially visible action.
+  const overlay={...ordinary,actionPosition:'absolute'};expect(primaryActionMode(overlay)).toBe('unreachable');expect(primaryActionMode({...overlay,initialPrimaryVisible:true})).toBe('initial');
+ });
+ it('R02 denies mismatched/unadmitted viewport labels and a reflow flag without real below-image geometry',()=>{
+  const s=flow();expect(primaryActionMode({...s,declaredShortCase:'375x667'})).toBe('unreachable');expect(primaryActionMode(flow(321,568))).toBe('unreachable');
+  expect(primaryActionMode({...s,reflow:false})).toBe('unreachable');expect(primaryActionMode({...s,actionPosition:'absolute'})).toBe('unreachable');
+  const above=rect(0,s.photo.top-156,s.viewport.width,156);expect(primaryActionMode({...s,action:above,cta:rect(20,above.top+72,280,56)})).toBe('unreachable');
+  expect(primaryActionMode({...s,initialPrimaryVisible:true,action:above,cta:rect(20,above.top+72,280,56)})).toBe('unreachable');
+  for(const w of [1366,1440])expect(primaryActionMode({...flow(w,768),declaredShortCase:'320x568'})).toBe('unreachable');
+ });
+ it('R02 rejects distorted photo, hidden control and control clipped outside the flow wrapper',()=>{
+  const s=flow();expect(primaryActionMode({...s,photo:{...rect(0,200,320,100),naturalWidth:1143,naturalHeight:2048}})).toBe('unreachable');
+  expect(primaryActionMode({...s,painted:false})).toBe('unreachable');expect(primaryActionMode({...s,initialPrimaryVisible:true,painted:false})).toBe('unreachable');
+  expect(primaryActionMode({...s,cta:rect(20,s.cta.top,350,56)})).toBe('unreachable');expect(primaryActionMode({...s,cta:rect(20,s.action.bottom-20,280,56)})).toBe('unreachable');
+ });
+ it('R02 permits declared actual200percent text only with actual natural flow, never a declaration alone',()=>{
+  const s={...flow(390,844),declaredShortCase:null,declaredEnlargedText:true,pageFontSize:34};expect(primaryActionMode(s)).toBe('scroll');
+  expect(primaryActionMode({...s,declaredEnlargedText:false})).toBe('unreachable');expect(primaryActionMode({...s,pageFontSize:17})).toBe('unreachable');expect(primaryActionMode({...s,reflow:false})).toBe('unreachable');
+ });
+ const reachable=():ActionReachabilitySnapshot=>({viewport:{width:320,height:568},cta:rect(20,460,280,56),painted:true,headerBottom:74,pointsClear:true});
+ it('R02 accepts verified current hitbox only after the same action is wholly visible and point-clear',()=>expect(heroActionReachability(reachable())).toEqual([]));
+ it('R02 keeps an unrelated ordinary-size clear-action holdout valid without a short-case exemption',()=>{
+  const s={...flow(1440,900),declaredShortCase:null,actionPosition:'absolute',initialPrimaryVisible:true};expect(primaryActionMode(s)).toBe('initial');
+  expect(heroActionReachability({viewport:{width:430,height:932},cta:rect(60,800,310,64),painted:true,headerBottom:81,pointsClear:true})).toEqual([]);
+ });
+ it.each(['intercepted','header','bottom','hidden','hitbox'] as const)('R02 rejects %s after scroll instead of assuming that scroll or click implies reachability',mode=>{
+  const s=reachable();if(mode==='intercepted')s.pointsClear=false;if(mode==='header')s.cta=rect(20,70,280,56);if(mode==='bottom')s.cta=rect(20,530,280,56);if(mode==='hidden')s.painted=false;if(mode==='hitbox')s.cta=rect(20,460,47,56);
+  expect(heroActionReachability(s).length).toBeGreaterThan(0);
  });
 });
 
@@ -111,5 +170,166 @@ describe('HERO-SHORT-CONTACT-R01 readiness before initial/reflow paint',()=>{
   const schedule:ts.VariableDeclaration[]=[];const find=(n:ts.Node)=>{if(ts.isVariableDeclaration(n)&&n.name.getText(source)==='schedule')schedule.push(n);ts.forEachChild(n,find);};find(hook.arguments[0]!);
   const arrow=schedule[0]!.initializer!;expect(ts.isArrowFunction(arrow)).toBe(true);
   const body=ts.isArrowFunction(arrow)&&ts.isBlock(arrow.body)?arrow.body:null;expect(body?.statements[0]?.getText(source)).toBe('invalidate();');expect(body?.getText(source)).toContain('requestAnimationFrame(measure)');
+ });
+});
+
+describe('CONTACT-SCROLL-R01 actual layout-hook event lifecycle',()=>{
+ // Execute the actual hook with deterministic geometry/RAF primitives. This
+ // observes readiness/event ordering, not browser paint or scroll smoothness.
+ type Target={l:number;r:number;t:number;b:number;g:number};
+ function mounted(oldScroll=false,fontSize=17,viewportWidth=1280,oldHighFallback=false,geometry?:{left:number;right:number;top:number;height:number;targets:Target[]}){
+  const source=ts.createSourceFile('page.tsx',readFileSync(new URL('../../src/features/group-application/academy-trip390-page.tsx',import.meta.url),'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
+  let callback='';const visit=(node:ts.Node)=>{if(ts.isCallExpression(node)&&ts.isIdentifier(node.expression)&&node.expression.text==='useLayoutEffect'&&node.arguments[0]?.getText(source).includes('const link=contact.current'))callback=node.arguments[0].getText(source);ts.forEachChild(node,visit);};visit(source);
+  // Controlled bad-before: bind the current actual structural scheduler to
+  // scroll, exactly as c3b did. It must fail the clear-scroll readiness rule.
+  if(oldScroll)callback=callback.replace("window.addEventListener('scroll',scroll,","window.addEventListener('scroll',schedule,");
+  if(oldHighFallback)callback=callback.replace('||!textReflow','');
+  const frames=new Map<number,()=>void>(),windowEvents=new Map<string,()=>void>(),documentEvents=new Map<string,()=>void>(),transitions:string[]=[];
+  let serial=0,lift=0,visibleHero=false,blocked=false,queries=0,paintedTop:number|null=null;
+  const rect=(top:number,bottom:number)=>({left:geometry?.left??viewportWidth-74,right:geometry?.right??viewportWidth-18,top,bottom,width:56,height:bottom-top});
+  const targetNode=(r:Target)=>({closest:()=>null,matches:()=>false,getClientRects:()=>[r],getBoundingClientRect:()=>({left:r.l,right:r.r,top:r.t,bottom:r.b,width:r.r-r.l,height:r.b-r.t})});
+  const link={dataset:new Proxy({contactReady:'false'},{set:(target,key,value)=>{if(key==='contactReady')transitions.push(String(value));return Reflect.set(target,key,value);}}),tabIndex:-1,ariaHidden:'true' as string|null,
+   style:{visibility:'',setProperty:(_key:string,value:string)=>{lift=parseFloat(value);},removeProperty:()=>{lift=0;}},getBoundingClientRect:()=>rect((geometry?.top??700)-lift,(geometry?.top??700)+56-lift),
+   setAttribute:(_key:string,value:string)=>{link.ariaHidden=value;},removeAttribute:()=>{link.ariaHidden=null;}};
+  const obstacle={closest:()=>null,matches:()=>false,getClientRects:()=>[rect(400,800)],getBoundingClientRect:()=>rect(400,800)};
+  const image={complete:false};
+  const dependencies={contact:{current:link},hero:{current:{querySelector:()=>visibleHero?image:null,getBoundingClientRect:()=>({top:visibleHero?0:-500,bottom:visibleHero?800:-100})}},
+   page:{current:{querySelectorAll:(selector:string)=>{queries++;if(geometry)return geometry.targets.filter(r=>selector==='a,button,summary,input,select,textarea'?r.g===12:selector==='[data-jlfa-values] article svg'&&r.g===4).map(targetNode);return blocked&&selector==='a,button,summary,input,select,textarea'?[obstacle]:paintedTop!==null&&selector==='[data-jlfa-values] article svg'?[{getBoundingClientRect:()=>rect(paintedTop!,800)}]:[];}}},header:{current:{getBoundingClientRect:()=>({bottom:80})}},dialog:{current:{open:false}},menuOpen:false,
+   registeredHero:()=>null,contactDockState,initialContactDock:contactDockState(false,false,'pending'),ResizeObserver:undefined,
+   requestAnimationFrame:(fn:()=>void)=>{frames.set(++serial,fn);return serial;},cancelAnimationFrame:(id:number)=>{frames.delete(id);},getComputedStyle:()=>({visibility:'visible',fontSize:`${fontSize}px`}),
+   window:{innerWidth:viewportWidth,innerHeight:geometry?.height??800,matchMedia:()=>({matches:viewportWidth<=999&&!oldHighFallback}),addEventListener:(event:string,fn:()=>void)=>{windowEvents.set(event,fn);},removeEventListener:(event:string,fn:()=>void)=>{if(windowEvents.get(event)===fn)windowEvents.delete(event);}},
+   document:{addEventListener:(event:string,fn:()=>void)=>{documentEvents.set(event,fn);},removeEventListener:(event:string,fn:()=>void)=>{if(documentEvents.get(event)===fn)documentEvents.delete(event);}}};
+  const emitted=ts.transpileModule(`return (${callback});`,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
+  const cleanup=(new Function(...Object.keys(dependencies),emitted)(...Object.values(dependencies)) as ()=>()=>void)();
+  return {link,frames,transitions,windowEvents,documentEvents,cleanup,setHero:(value:boolean)=>{visibleHero=value;},setBlocked:(value:boolean)=>{blocked=value;},setPaintedTop:(value:number|null)=>{paintedTop=value;},lift:()=>lift,queries:()=>queries,
+   flush:()=>{const pending=[...frames.values()];frames.clear();pending.forEach(fn=>fn());},scroll:()=>windowEvents.get('scroll')!(),resize:()=>windowEvents.get('resize')!(),toggle:()=>documentEvents.get('toggle')!()};
+ }
+ it('rejects c3b pending-frame reset and preserves clear readiness through repeated current scroll events',()=>{
+  const before=mounted(true);before.flush();before.scroll();expect(before.link.dataset.contactReady).toBe('false');expect(before.link.tabIndex).toBe(-1);expect(before.frames.size).toBe(1);before.cleanup();
+  const current=mounted();expect(current.link.dataset.contactReady).toBe('false');expect(current.link.ariaHidden).toBe('true');current.flush();current.transitions.length=0;
+  const queryStart=current.queries();for(let i=0;i<20;i++)current.scroll();
+  expect(current.transitions).not.toContain('false');expect(current.link.dataset.contactReady).toBe('true');expect(current.link.tabIndex).toBe(0);expect(current.link.ariaHidden).toBeNull();expect(current.frames.size).toBe(0);
+  // One existing collision pass per native event, no queued duplicate pass.
+  // This bounded mock query count is not a browser-duration/performance claim.
+  expect(current.queries()-queryStart).toBe(60);current.cleanup();expect(current.windowEvents.size).toBe(0);expect(current.documentEvents.size).toBe(0);
+ });
+ it('retains structural pre-paint invalidation, unready-photo and collision hiding, then restores the same dock',()=>{
+  const current=mounted(),sameLink=current.link;current.flush();current.resize();expect(current.link.dataset.contactReady).toBe('false');expect(current.frames.size).toBe(1);
+  current.scroll();expect(current.link.dataset.contactReady).toBe('true');expect(current.frames.size).toBe(0);
+  current.toggle();expect(current.link.dataset.contactReady).toBe('false');current.flush();expect(current.link.dataset.contactReady).toBe('true');
+  current.setHero(true);current.scroll();expect(current.link.dataset.contactReady).toBe('false');expect(current.link.tabIndex).toBe(-1);
+  current.setHero(false);current.setBlocked(true);current.scroll();expect(current.link.dataset.contactReady).toBe('false');expect(current.link.style.visibility).toBe('hidden');
+  current.setBlocked(false);current.scroll();expect(current.link).toBe(sameLink);expect(current.link.dataset.contactReady).toBe('true');expect(current.link.style.visibility).toBe('');current.cleanup();
+ });
+ it('bounds ordinary desktop to the local band instead of jumping above painted content',()=>{
+  const width=1280;
+  const before=mounted(false,17,width,true);before.flush();before.setPaintedTop(400);before.scroll();expect(before.lift()).toBeGreaterThan(224);before.cleanup();
+  const current=mounted(false,17,width);current.flush();current.setPaintedTop(600);current.scroll();expect(current.link.dataset.contactReady).toBe('true');expect(current.lift()).toBeLessThanOrEqual(224);
+  const clearLocalTop=current.link.getBoundingClientRect().top;current.setPaintedTop(null);current.scroll();expect(current.link.getBoundingClientRect().top).toBe(clearLocalTop);
+  current.setPaintedTop(400);current.scroll();expect(current.link.dataset.contactReady).toBe('false');expect(current.link.style.visibility).toBe('hidden');expect(current.lift()).toBe(0);
+  current.setPaintedTop(null);current.scroll();expect(current.link.dataset.contactReady).toBe('true');expect(current.lift()).toBe(0);current.cleanup();
+ });
+ it('uses the actual Hebrew left-corner clear slot instead of the observed physical-right whole-viewport jump',()=>{
+  // Public c3b HE390x844/scrollY3376 painted Range/icon/control rectangles.
+  // Replaying this geometry tests the actual hook, not a browser CSS engine.
+  const targets:Target[]=[
+   {l:194.796875,r:334,t:64.328125,b:84.328125,g:4},{l:70.609375,r:334,t:103.328125,b:120.328125,g:4},
+   {l:20.734375,r:354.25,t:242.328125,b:278.328125,g:4},{l:21.328125,r:353.65625,t:300.359375,b:319.359375,g:4},
+   {l:45.03125,r:329.96875,t:328.40625,b:347.40625,g:4},{l:60.234375,r:314.765625,t:356.453125,b:375.453125,g:4},
+   {l:315,r:355,t:412.5,b:452.5,g:12},{l:164.921875,r:299,t:414.5,b:436.5,g:4},{l:23.984375,r:299,t:451.5,b:470.5,g:4},
+   {l:233.5,r:299,t:479.546875,b:498.546875,g:4},{l:315,r:355,t:535.59375,b:575.59375,g:12},
+   {l:113.015625,r:299,t:537.59375,b:559.59375,g:4},{l:27.53125,r:299,t:574.59375,b:593.59375,g:4},
+   {l:255.171875,r:299,t:602.640625,b:621.640625,g:4},{l:315,r:355,t:658.6875,b:698.6875,g:12},
+   {l:101.625,r:299,t:660.6875,b:682.6875,g:4},{l:20.5625,r:299,t:697.6875,b:716.6875,g:4},
+   {l:140.609375,r:299,t:725.734375,b:744.734375,g:4},{l:315,r:355,t:781.78125,b:821.78125,g:12},
+   {l:166,r:299,t:783.78125,b:805.78125,g:4},{l:63.359375,r:299,t:820.78125,b:839.78125,g:4},{l:193.640625,r:299,t:848.828125,b:867.828125,g:4},
+  ];
+  const at=(left:number,right:number)=>({left,right,top:770,height:844,targets});
+  const before=mounted(false,17,390,true,at(301,357));before.flush();expect(before.lift()).toBeGreaterThan(224);before.cleanup();
+  let logicalEnd=false,physicalRight=false,rtlSafeArea=false;
+  css.walkRules(rule=>{if(rule.selector==='.page .whatsapp')rule.walkDecls(d=>{if(d.prop==='inset-inline-end')logicalEnd=true;if(d.prop==='right')physicalRight=true;});if(rule.selector==='.page[dir=rtl] .whatsapp')rule.walkDecls('inset-inline-end',d=>{rtlSafeArea=d.value.includes('safe-area-inset-left');});});
+  expect(logicalEnd).toBe(true);expect(physicalRight).toBe(false);expect(rtlSafeArea).toBe(true);
+  const current=mounted(false,17,390,false,logicalEnd&&!physicalRight?at(18,74):at(301,357));current.flush();
+  expect(current.link.dataset.contactReady).toBe('true');expect(current.lift()).toBe(0);expect(current.link.getBoundingClientRect().left).toBe(18);
+  const priorTop=current.link.getBoundingClientRect().top;current.scroll();expect(current.link.getBoundingClientRect().top).toBe(priorTop);current.cleanup();
+ });
+ it('preserves higher same-node restoration in the desktop enlarged text-reflow layout',()=>{
+  const current=mounted(false,34,1280),sameLink=current.link;current.flush();current.setPaintedTop(400);current.scroll();
+  expect(current.link).toBe(sameLink);expect(current.link.dataset.contactReady).toBe('true');expect(current.link.style.visibility).toBe('');expect(current.lift()).toBeGreaterThan(224);expect(current.link.getBoundingClientRect().top).toBeGreaterThan(92);current.cleanup();
+ });
+ it('keeps the mobile contact link still, available and focusable across scroll and viewport changes at enlarged text',()=>{
+  const current=mounted(false,34,390);
+  const origin=current.link.getBoundingClientRect(),queries=current.queries();
+  current.transitions.length=0;
+  current.setBlocked(true);current.setPaintedTop(400);
+  for(let i=0;i<20;i++)current.scroll();
+  current.resize();
+  expect(current.link.getBoundingClientRect()).toEqual(origin);
+  expect(current.queries()).toBe(queries);
+  expect(current.transitions).not.toContain('false');
+  expect(current.link.tabIndex).toBe(0);
+  expect(current.link.dataset.contactReady).toBe('true');
+  current.cleanup();
+ });
+});
+
+describe('R08 source-qualified enlarged photo contact and actual-scroll restoration',()=>{
+ const rect=(left:number,top:number,width:number,height:number)=>({left,top,width,height,right:left+width,bottom:top+height});
+ function blocked(){
+  const width=390,height=844,scale=width/assets.textFree.mobile.width,photo={...rect(0,426.640625,width,width*assets.textFree.mobile.height/assets.textFree.mobile.width),naturalWidth:1143,naturalHeight:2048};
+  const action=rect(0,photo.bottom,width,351.171875),cta=rect(20,action.top+196.390625,350,130.78125);
+  const primary:PrimaryActionSnapshot={viewport:{width,height},hero:rect(0,77.1875,width,action.bottom-77.1875),photo,action,cta,painted:true,initialPrimaryVisible:false,reflow:true,actionPosition:'static',declaredShortCase:null,declaredEnlargedText:true,pageFontSize:34};
+  const top=photo.top+assets.current.en.mobile.protectedRect[1]!*scale,bottom=Math.min(height,photo.top+assets.current.en.mobile.protectedRect[3]!*scale);
+  const dock:PhotoBlockedContactSnapshot={box:rect(316,770,56,56),lift:0,visibility:'hidden',display:'grid',inlineVisibility:'hidden',ready:'false',ariaHidden:'true',tabIndex:-1,hidden:false,position:'fixed',modalOpen:false,photoReady:true,photoRegistered:true,protectedPhoto:rect(0,top,width,bottom-top)};
+  return {primary,dock};
+ }
+ function restored():ContactRestorationSnapshot{return {box:rect(316,502.03,56,56),viewport:{width:390,height:844},headerBottom:77.1875,heroBottom:-1000,scrollY:2532,lift:267.97,painted:true,ready:'true',ariaHidden:null,tabIndex:0,hidden:false,position:'fixed',sameNode:true,destinationValid:true,pointsClear:true};}
+ it('R08 admits the measured source-rectangle no-slot case without enlarging the224 budget',()=>{
+  const {primary,dock}=blocked();expect(dock.box.top-(dock.protectedPhoto!.top-dock.box.height-12)).toBeCloseTo(233.932);
+  expect(admittedEnlargedPhotoBlock(primary,dock)).toBe(true);
+ });
+ it('R08 qualifies the actual inline-end corner and rejects the wrong side in each direction',()=>{
+  const {primary,dock}=blocked(),left={...dock,box:rect(18,770,56,56)};
+  expect(admittedEnlargedPhotoBlock(primary,{...left,direction:'rtl'})).toBe(true);
+  expect(admittedEnlargedPhotoBlock(primary,{...dock,direction:'ltr'})).toBe(true);
+  expect(admittedEnlargedPhotoBlock(primary,{...dock,direction:'rtl'})).toBe(false);
+  expect(admittedEnlargedPhotoBlock(primary,{...left,direction:'ltr'})).toBe(false);
+  expect(admittedEnlargedPhotoBlock(primary,{...left,direction:'unknown'})).toBe(false);
+ });
+ it('R08 rejects ordinary, declaration-only and forged-flow hidden states',()=>{
+  const {primary,dock}=blocked();
+  for(const patch of [{declaredEnlargedText:false},{pageFontSize:17},{reflow:false},{actionPosition:'absolute'}])expect(admittedEnlargedPhotoBlock({...primary,...patch},dock)).toBe(false);
+ });
+ it('R08 rejects missing, unloaded, unregistered and distorted-photo states',()=>{
+  const {primary,dock}=blocked();expect(admittedEnlargedPhotoBlock(primary,null)).toBe(false);
+  expect(admittedEnlargedPhotoBlock(primary,{...dock,photoReady:false})).toBe(false);expect(admittedEnlargedPhotoBlock(primary,{...dock,photoRegistered:false})).toBe(false);
+  expect(admittedEnlargedPhotoBlock({...primary,photo:{...primary.photo,naturalWidth:1000}},dock)).toBe(false);
+ });
+ it('R08 rejects a feasible above/below/lateral slot, including the old narrower focal rectangle',()=>{
+  const {primary,dock}=blocked();
+  for(const photo of [rect(0,636.27272,390,844-636.27272),rect(0,450,390,200),rect(0,604,10,240)])expect(admittedEnlargedPhotoBlock(primary,{...dock,protectedPhoto:photo})).toBe(false);
+ });
+ it('R08 requires explicit blocked inertness rather than stale ready or painted overlap',()=>{
+  const {primary,dock}=blocked();const changes:Partial<PhotoBlockedContactSnapshot>[]=[{visibility:'visible'},{inlineVisibility:''},{ready:'true'},{ariaHidden:null},{tabIndex:0},{hidden:true},{modalOpen:true},{position:'absolute'},{display:'none'},{lift:12}];
+  for(const patch of changes)expect(admittedEnlargedPhotoBlock(primary,{...dock,...patch})).toBe(false);
+ });
+ it('R08 rejects malformed, clipped and undersized hidden contact geometry',()=>{
+  const {primary,dock}=blocked();
+  for(const box of [rect(316,770,40,56),rect(-4,770,56,56),rect(316,820,56,56),{...dock.box,top:NaN}])expect(admittedEnlargedPhotoBlock(primary,{...dock,box})).toBe(false);
+  expect(admittedEnlargedPhotoBlock(primary,{...dock,protectedPhoto:null})).toBe(false);
+ });
+ it('R08 permits a proven restored body dock above224 only after the hero is behind the header',()=>{
+  expect(contactRestorationFindings(restored())).toEqual([]);
+  expect(contactRestorationFindings({...restored(),heroBottom:100})).toContain('restored-contact-photo-not-behind-header');
+  expect(contactRestorationFindings({...restored(),scrollY:0})).toContain('restored-contact-photo-not-behind-header');
+ });
+ it('R08 rejects a replacement, still-hidden/inert, wrong-destination or intercepted restored control',()=>{
+  expect(contactRestorationFindings({...restored(),sameNode:false})).toContain('restored-contact-replaced');
+  for(const patch of [{painted:false},{ready:'false'},{ariaHidden:'true'},{tabIndex:-1},{hidden:true}])expect(contactRestorationFindings({...restored(),...patch})).toContain('restored-contact-hidden-or-inert');
+  expect(contactRestorationFindings({...restored(),destinationValid:false})).toContain('restored-contact-destination');
+  expect(contactRestorationFindings({...restored(),pointsClear:false})).toContain('restored-contact-intercepted');
+ });
+ it('R08 rejects restored controls under the header, outside the viewport or without a valid hitbox',()=>{
+  for(const box of [rect(316,40,56,56),rect(316,820,56,56),rect(316,500,40,56)])expect(contactRestorationFindings({...restored(),box})).toContain('restored-contact-placement');
  });
 });

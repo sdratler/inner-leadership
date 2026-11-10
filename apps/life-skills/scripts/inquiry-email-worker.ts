@@ -3,6 +3,32 @@ import {loadSignupPopulation} from '../src/features/group-application/academy-si
 import {loadTrip390AckAdmission} from '../src/features/group-application/academy-trip390-ack-admission.ts';
 import {superviseSignupWorker} from './signup-worker-supervisor.ts';
 import type {SignupDispatchCursor} from '../src/features/group-application/academy-founder-store.ts';
+import {loadInquiryEmailControlAdmission} from '../src/features/group-application/academy-inquiry-email-control-admission.ts';
+const controlArgs=process.argv.slice(2),controlHosted=controlArgs.length===1&&controlArgs[0]==='--hosted-inquiry-email-control',controlSingle=controlArgs.length===2&&controlArgs[0]==='--dispatch-inquiry-email-control-one'&&/^[-0-9a-f]{36}$/.test(controlArgs[1]!);
+if(controlHosted||controlSingle){
+ const initial=loadInquiryEmailControlAdmission(process.env,new Date());
+ if(!initial){process.send?.({type:'JLFA_TRIP_ACK_COMPLETE',reason:'ADMISSION_CLOSED'});console.log(JSON.stringify({state:'INQUIRY_EMAIL_CONTROL_DISABLED',processed:0}));}
+ else{
+  const [{identityRuntime},{closeDatabase},{inquiryEmailControlRuntime}]=await Promise.all([
+   import('../src/features/identity/runtime.ts'),import('../src/db/client.ts'),import('../src/features/group-application/academy-inquiry-email-control-runtime.ts')]);
+  const identity=JSON.stringify(initial),stopControl=new AbortController(),stop=()=>stopControl.abort();
+  if(controlHosted){process.on('SIGINT',stop);process.on('SIGTERM',stop);}
+  try{
+   const r=await identityRuntime();let cursor:import('../src/features/group-application/academy-inquiry-email-control-outbox.ts').InquiryEmailControlCursor|undefined;
+   const cycle=async()=>{
+    const policy=loadInquiryEmailControlAdmission(process.env,r.clock.now());
+    if(!policy||policy.workspaceId!==r.config.workspaceId||JSON.stringify(policy)!==identity){stopControl.abort();process.send?.({type:'JLFA_TRIP_ACK_COMPLETE',reason:'ADMISSION_CLOSED'});return;}
+    const current=inquiryEmailControlRuntime(r,process.env);
+    if(!current){stopControl.abort();process.send?.({type:'JLFA_TRIP_ACK_COMPLETE',reason:'ADMISSION_CLOSED'});return;}
+    if(controlSingle){const state=await current.outbox.dispatchOne(controlArgs[1]!);console.log(JSON.stringify({state}));return;}
+    const result=await current.outbox.dispatchPage(cursor);cursor=result.next??undefined;
+   };
+   if(controlHosted)await superviseSignupWorker({signal:stopControl.signal,cycle,event:event=>console.log(JSON.stringify(event)),wait:(delay,signal)=>new Promise<void>(resolve=>{
+    if(signal.aborted){resolve();return;}const done=()=>{clearTimeout(timer);signal.removeEventListener('abort',done);resolve();};const timer=setTimeout(done,delay);signal.addEventListener('abort',done,{once:true});
+   })});else await cycle();
+  }finally{if(controlHosted){process.off('SIGINT',stop);process.off('SIGTERM',stop);}await closeDatabase();}
+ }
+}else{
 const tripArgs=process.argv.slice(2),tripHosted=tripArgs.length===1&&tripArgs[0]==='--hosted-trip390-ack',tripSingle=tripArgs.length===2&&tripArgs[0]==='--dispatch-trip390-ack-one'&&/^[-0-9a-f]{36}$/.test(tripArgs[1]!);
 if(tripHosted||tripSingle){
  const initial=loadTrip390AckAdmission(process.env,new Date());
@@ -87,6 +113,8 @@ if((!generic&&!initial)||(generic&&process.env.LS_INQUIRY_EMAIL_SEND_ENABLED!=='
    if(signal.aborted){resolve();return;}const done=()=>{clearTimeout(timer);signal.removeEventListener('abort',done);resolve();};const timer=setTimeout(done,delayMs);signal.addEventListener('abort',done,{once:true});
   })});else await cycle();
  }finally{if(hosted){process.off('SIGINT',stop);process.off('SIGTERM',stop);}await closeDatabase();}
+}
+
 }
 
 }

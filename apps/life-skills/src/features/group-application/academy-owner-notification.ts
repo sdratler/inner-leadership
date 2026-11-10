@@ -9,7 +9,8 @@ import {one,type IdentityStore,type SqlSession} from '../identity/store.ts';
 import type {IdentityClock} from '../identity/types.ts';
 import type {AuthEmailTransport} from '../../providers/email/transport.ts';
 import {GmailAuthTransport,parseGmailAuthConfig} from '../../providers/email/gmail.ts';
-import {groupApplicationFieldsSchema,isFloridaGroupApplication,isSchoolInquiry,type GroupApplicationFields} from './contract.ts';
+import {groupApplicationFieldsSchema,isFloridaGroupApplication,isSchoolInquiry,isTrip390Interest,type GroupApplicationFields} from './contract.ts';
+import {isCurrentTrip390Interest} from './academy-trip390-contract.ts';
 import {INQUIRY_EMAIL_FROM} from './inquiry-email-copy.ts';
 
 export const ACADEMY_OWNER_NOTIFICATION_PURPOSE='academy_owner_signup_notification' as const;
@@ -19,6 +20,12 @@ type Payload=z.infer<typeof payloadSchema>;
 const aad=(workspace:string,id:string)=>`ls_service_interest/academy_owner_notification/v1/${workspace}/${id}`;
 
 function intendedPayload(reference:string,fields:GroupApplicationFields,submittedAt:Date):Payload|null{
+ // Current R2 inquiries use their own saved contact/language/children fields.
+ // Historical Trip forms remain replay-only; never create an owner notice for them.
+ if(isTrip390Interest(fields)){
+  if(!isCurrentTrip390Interest(fields))return null;
+  return payloadSchema.parse({purpose:ACADEMY_OWNER_NOTIFICATION_PURPOSE,reference,parentName:fields.guardianName,receiptEmail:fields.email,parentLanguage:fields.messageLanguage,childCount:fields.children.length,submittedAt:submittedAt.toISOString()});
+ }
  if(!isFloridaGroupApplication(fields)||isSchoolInquiry(fields)||fields.programId!=='sunday_fishing_academy'||!fields.academyRegistration)return null;
  const registration=fields.academyRegistration;
  return payloadSchema.parse({purpose:ACADEMY_OWNER_NOTIFICATION_PURPOSE,reference,parentName:fields.parentName,receiptEmail:registration.receiptEmail,parentLanguage:registration.communicationPreferences?.parentLanguage??null,childCount:registration.learners.length,submittedAt:submittedAt.toISOString()});
