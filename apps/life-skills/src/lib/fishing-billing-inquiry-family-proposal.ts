@@ -11,6 +11,8 @@ import {systemClock,type Actor,type IdentityClock,type WorkspaceId} from '../fea
 import {isTrip390Interest,type GroupApplicationRecord} from '../features/group-application/contract.ts';
 import {isCurrentTrip390Interest,trip390CurrentInterestSchema,type Trip390CurrentInterest} from '../features/group-application/academy-trip390-contract.ts';
 import {NATIVE_FAMILY_VERSION,nativeFamilyCreateCommandSchema} from '../features/fishing-billing/native-family-contract-v1.ts';
+import type {NativeFamilyCreateCommand} from '../features/fishing-billing/native-family-contract-v1.ts';
+import type {NativeFamilyCreationOutcome,NativeFamilyRejectedCode} from '../features/fishing-billing/native-family-outcome-contract-v1.ts';
 import {FISHING_INQUIRY_FAMILY_PROPOSAL_VERSION,fishingInquiryFamilySelectionSchema as selection,fishingFamilyProposalCommandSchema,
  fishingInquiryFamilyProposalSchema as recordSchema,type FishingFamilyProposalCommand,type FishingInquiryFamilyProposal} from '../features/fishing-billing/inquiry-family-contract-v1.ts';
 export {FISHING_INQUIRY_FAMILY_PROPOSAL_VERSION,fishingFamilyProposalCommandSchema,fishingInquiryFamilyProposalPreviewSchema,
@@ -40,6 +42,9 @@ export type FishingInquiryFamilyProposalRow=Readonly<{id:string;reference:string
 type Row=FishingInquiryFamilyProposalRow;
 const select='SELECT id,application_id AS reference,family_id AS "familyId",guardian_person_id AS "guardianId",operation_id AS "operationId",recorded_by AS "recordedBy",source_digest AS "sourceDigest",native_digest AS "nativeDigest",request_digest AS "requestDigest",payload_ciphertext AS ciphertext,created_at AS "createdAt" FROM ls_fishing_billing.inquiry_family_proposals';
 type Selection=z.infer<typeof selection>;
+// Only the observed native transaction callback rejection below can mint this.
+// A same-coded driver/post-COMMIT error is never a rejection receipt.
+class NativeFamilyRejection extends Error{constructor(readonly code:NativeFamilyRejectedCode){super(code);}}
 function fail(code:'CONFLICT'|'UNAVAILABLE'='UNAVAILABLE'):never{throw new AppError(code);}
 const aad=(workspace:string,id:string)=>`ls_fishing_billing/inquiry_family_proposal/v1/${workspace}/${id}`;
 const proposalRequestDigest=(workspace:WorkspaceId,integrityKey:string,actorId:string,command:FishingFamilyProposalCommand)=>
@@ -131,7 +136,17 @@ export class FishingBillingInquiryFamilyProposals{
   * consent upgraded or cases created. Family, all minors, original proposed
   * association and replay journal commit or roll back together. */
  async createNativeFamily(actor:Actor,raw:unknown){
-  const owner=this.owner(actor),command=nativeFamilyCreateCommandSchema.parse(raw);
+  const owner=this.owner(actor);return this.createNativeFamilyCommand(owner,nativeFamilyCreateCommandSchema.parse(raw));
+ }
+ async createNativeFamilyOutcome(actor:Actor,raw:unknown):Promise<NativeFamilyCreationOutcome>{
+  const owner=this.owner(actor),command=nativeFamilyCreateCommandSchema.parse(raw),correlation={version:NATIVE_FAMILY_VERSION,workspaceId:this.workspace,actorId:owner.id,command};
+  try{return {...correlation,state:'created',receipt:await this.createNativeFamilyCommand(owner,command,error=>{
+   if(error.code==='CONFLICT'||error.code==='FORBIDDEN'||error.code==='NOT_FOUND'||error.code==='UNAUTHENTICATED'||error.code==='INVALID_REQUEST')throw new NativeFamilyRejection(error.code);
+   throw error;
+  })};}catch(error){if(error instanceof NativeFamilyRejection)return {...correlation,state:'rejected',code:error.code};throw error;}
+ }
+ private async createNativeFamilyCommand(actor:Actor,command:NativeFamilyCreateCommand,onRejected?:(error:AppError)=>never){
+  const owner=this.owner(actor);
   const requestDigest=privateDigest({domain:NATIVE_FAMILY_VERSION,workspaceId:this.workspace,actorId:owner.id,command},this.integrityKey);
   const journalAad='ls_fishing_billing/native-family/v1/'+this.workspace+'/'+command.operationId;
   let callbackFailure:unknown;
@@ -182,7 +197,7 @@ export class FishingBillingInquiryFamilyProposals{
     [this.workspace,command.operationId,owner.id,'native_family_create',requestDigest,seal(JSON.stringify(journal),journalAad,this.ring),record.recordedAt]);
    if(await this.native(context.tx,choice,context.contact.personId,fields,true)!==nativeDigest)fail('CONFLICT');
    return {version:NATIVE_FAMILY_VERSION,resultKind:'original_creation_receipt' as const,record,replayed:false};
-  });}catch(error){if(error===callbackFailure&&error instanceof AppError)throw error;throw new AppError('UNAVAILABLE');}
+  });}catch(error){if(error===callbackFailure&&error instanceof AppError){if(onRejected)onRejected(error);throw error;}throw new AppError('UNAVAILABLE');}
  }
  /** Actual current family DATA only, in the already authorized caller's TX.
   * A known proposal must still match current source/admitted contact/native
