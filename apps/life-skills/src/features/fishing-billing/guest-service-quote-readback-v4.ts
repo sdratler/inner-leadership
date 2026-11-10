@@ -46,10 +46,10 @@ export async function readIssuedServiceQuoteWithRowV4(c:Context,workspaceId:Work
  const quote=verifyServiceFamilyOfferV4(JSON.parse(unseal(row.ciphertext,serviceGuestAadV4('quote',workspaceId,id),ring)));
  stored(quote.workspaceId===workspaceId&&quote.id===row.id&&quote.familyId===row.familyId&&quote.definition.id===row.definitionId&&quote.revision===row.revision&&Date.parse(quote.createdAt)===row.createdAt.valueOf());
  const origins=await c.tx.query<ServiceIssueJournalRowV4>('SELECT '+columns+" FROM ls_fishing_billing.commands WHERE workspace_id=$1 AND quote_id=$2 AND action='guest_service_issue_v4' LIMIT 2 FOR SHARE",[workspaceId,id]);
- stored(origins.length===1);const original=decodeServiceIssueJournalV4(origins[0]!,workspaceId,ring,key).receipt.quote;
+ stored(origins.length===1);const origin=decodeServiceIssueJournalV4(origins[0]!,workspaceId,ring,key),original=origin.receipt.quote;
  stored(quote.revision>=original.revision&&canonical(quote.offer)===canonical(original.offer)&&quote.messageLocaleAtIssue===original.messageLocaleAtIssue);
  if(quote.revision===original.revision)stored(canonical(quote)===canonical(original));
- return {row,quote};
+ return {row,quote,origin};
 }
 /** Preserve the existing material-only return for native owner readers. */
 export async function readIssuedServiceQuoteV4(c:Context,workspaceId:WorkspaceId,id:string,ring:Keyring,key:string){
