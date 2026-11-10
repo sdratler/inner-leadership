@@ -1,0 +1,19 @@
+.workspace{display:grid;gap:24px;min-inline-size:0}
+.row{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.row p{margin-block-start:8px;overflow-wrap:anywhere}
+.facts{display:grid;gap:12px}
+.facts>div{display:grid;grid-template-columns:minmax(140px,.7fr) minmax(0,1fr);gap:12px;padding-block-end:12px;border-block-end:1px solid var(--ls-line)}
+.facts dt{color:var(--ls-muted)}
+.facts dd{margin:0;overflow-wrap:anywhere}
+.lessons{display:grid;gap:20px;list-style:none;padding:0}
+.lesson{padding:20px;border:1px solid var(--ls-line);border-radius:var(--ls-radius-card,12px);min-inline-size:0}
+.lesson h4{margin:0}
+.lesson .facts{margin-block:16px}
+.form,.fields{display:grid;gap:20px;min-inline-size:0}
+.form{padding-block-start:24px;border-block-start:1px solid var(--ls-line)}
+.fields{margin:0;padding:0;border:0}
+.pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
+.feedback,.recovery{display:grid;gap:16px;scroll-margin-block:24px}
+.notice{padding:14px 18px;border-inline-start:4px solid var(--ls-forest-700);background:var(--ls-paper);line-height:1.6}
+.workspace :is(input,button,select,a){scroll-margin-block:24px}
+@media(max-width:620px){.pair,.facts>div{grid-template-columns:minmax(0,1fr)}.facts>div{gap:4px}.lesson{padding:16px}.workspace{gap:20px}}

@@ -11,6 +11,7 @@ import {
  type GroupDraftInputs,type GroupSaveResult,type PreparedGroupSave,
 } from './group-preparation-client.ts';
 import styles from './group-preparation-workspace.module.css';
+import {ProgramSourceWorkspaceV3} from './program-source-workspace-v3.tsx';
 
 type Locale='en'|'he';
 export type PendingGroupOperation={save:PreparedGroupSave;uncertain:boolean};
@@ -89,6 +90,7 @@ export function FishingGroupPreparationWorkspace({locale,initialGroupId,initialR
  const [loading,setLoading]=useState(true),[loadError,setLoadError]=useState<ErrorCode|null>(null),[actionError,setActionError]=useState<ErrorCode|null>(null);
  const [loadedSelection,setLoadedSelection]=useState(selectionKey);
  const [pending,setPending]=useState<PendingGroupOperation|null>(null),[busy,setBusy]=useState(false);
+ const [sourceLocked,setSourceLocked]=useState(false);
  const [created,setCreated]=useState<GroupDraftInputs>(emptyInputs),[editing,setEditing]=useState<GroupDraftInputs|null>(null),[cancelChecked,setCancelChecked]=useState(false);
  const [receipt,setReceipt]=useState<{record:GroupPreparationRecord;replayed:boolean}|null>(null),[notice,setNotice]=useState<''|'no_changes'|'unconfirmed'>('');
  const [feedbackVersion,setFeedbackVersion]=useState(0);
@@ -216,12 +218,12 @@ export function FishingGroupPreparationWorkspace({locale,initialGroupId,initialR
   }
  }
  function create(event:FormEvent<HTMLFormElement>){
-  event.preventDefault();if(pendingRef.current||busyRef.current)return;setActionError(null);setReceipt(null);setNotice('');
+  event.preventDefault();if(pendingRef.current||busyRef.current||sourceLocked)return;setActionError(null);setReceipt(null);setNotice('');
   try{void save({save:createGroupDraft(crypto.randomUUID(),crypto.randomUUID(),created),uncertain:false});}
   catch{reportActionError('INVALID_REQUEST');}
  }
  function edit(event:FormEvent<HTMLFormElement>){
-  event.preventDefault();if(!selection||selection.historical||!editing||pendingRef.current||busyRef.current)return;
+  event.preventDefault();if(!selection||selection.historical||!editing||pendingRef.current||busyRef.current||sourceLocked)return;
   setActionError(null);setReceipt(null);setNotice('');
   try{
    const command=editGroupDraft(selection.current,crypto.randomUUID(),editing);
@@ -230,14 +232,14 @@ export function FishingGroupPreparationWorkspace({locale,initialGroupId,initialR
   }catch{reportActionError('INVALID_REQUEST');}
  }
  function cancel(){
-  if(!selection||selection.historical||!cancelChecked||pendingRef.current||busyRef.current)return;
+  if(!selection||selection.historical||!cancelChecked||pendingRef.current||busyRef.current||sourceLocked)return;
   setReceipt(null);setNotice('');setActionError(null);
   try{void save({save:prepareGroupSave(groupPreparationCommand.parse({version:GROUP_PREPARATION_VERSION,action:'cancel',
    groupId:selection.current.groupId,operationId:crypto.randomUUID(),expectedRevision:selection.current.revision})),uncertain:false});}
   catch{reportActionError('INVALID_REQUEST');}
  }
  const waiting=loading||loadedSelection!==selectionKey;
- const locked=busy||pending!==null||waiting;
+ const locked=busy||pending!==null||waiting||sourceLocked;
  const navigationLocked=locked||formDirty;
  function history(event:FormEvent<HTMLFormElement>){
   event.preventDefault();if(!selection||navigationLocked)return;
@@ -315,6 +317,9 @@ export function FishingGroupPreparationWorkspace({locale,initialGroupId,initialR
     </>}
    </section>
   </div>}
+  <ProgramSourceWorkspaceV3 locale={locale} groupId={initialValid&&!waiting&&!loadError?selection?.current.groupId:undefined}
+   groupLabel={initialValid&&!waiting&&!loadError?selection?.current.fields.label:undefined}
+   readOnly={!!selection?.historical||busy||pending!==null||waiting||editing!==null||createDirty||selection?.current.state!=='draft'} onLockChange={setSourceLocked}/>
  </main>;
 }
 export {FishingGroupPreparationWorkspace as GroupPreparationWorkspace};
