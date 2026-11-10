@@ -15,4 +15,14 @@
 .root .link:focus-visible{outline:3px solid var(--ls-teal);outline-offset:3px;scroll-margin-block:20px}
 .label{display:block;font-weight:600;line-height:1.6}
 .reason{display:block;margin-block-start:4px;color:var(--ls-muted);font-size:.875rem;line-height:1.6}
+.root .mobileToggle{display:none}
+.current{font-weight:650}
+@media(max-width:800px){
+ .header{display:none}
+ .root .mobileToggle{display:flex;justify-content:space-between;gap:12px;inline-size:100%;min-inline-size:0;min-block-size:48px;padding:12px;text-align:start;white-space:normal;overflow-wrap:anywhere}
+ .mobileToggle>span{min-inline-size:0}
+ .mobileToggle:focus-visible{outline:3px solid var(--ls-teal);outline-offset:3px}
+ .areas[data-expanded=false]{display:none}
+ .root{align-self:start}
+}
 @media(max-width:600px){.root{padding:8px}.link,.unavailable{min-block-size:48px;padding-block:12px}}
