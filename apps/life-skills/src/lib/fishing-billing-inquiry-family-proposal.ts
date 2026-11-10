@@ -10,6 +10,7 @@ import {one,type IdentityStore,type SqlSession} from '../features/identity/store
 import {systemClock,type Actor,type IdentityClock,type WorkspaceId} from '../features/identity/types.ts';
 import {isTrip390Interest,type GroupApplicationRecord} from '../features/group-application/contract.ts';
 import {isCurrentTrip390Interest,trip390CurrentInterestSchema,type Trip390CurrentInterest} from '../features/group-application/academy-trip390-contract.ts';
+import {NATIVE_FAMILY_VERSION,nativeFamilyCreateCommandSchema} from '../features/fishing-billing/native-family-contract-v1.ts';
 
 export const FISHING_INQUIRY_FAMILY_PROPOSAL_VERSION='JLFA-FISHING-INQUIRY-FAMILY-PROPOSAL-v1' as const;
 const uuid=z.uuid(),digest=z.string().regex(/^[a-f0-9]{64}$/);
@@ -33,6 +34,10 @@ const recordSchema=z.object({version:z.literal(FISHING_INQUIRY_FAMILY_PROPOSAL_V
  financialAcceptance:z.literal(false),outboundEligible:z.literal(false),
 }).strict();
 export type FishingInquiryFamilyProposal=z.infer<typeof recordSchema>;
+const nativeCreationJournalSchema=z.object({
+ version:z.literal(NATIVE_FAMILY_VERSION),workspaceId:uuid,operationId:uuid,actorId:uuid,
+ requestDigest:digest,command:nativeFamilyCreateCommandSchema,proposal:recordSchema,
+}).strict();
 export const fishingInquiryFamilyProposalSchema=recordSchema;
 export const fishingInquiryFamilyProposalPreviewSchema=recordSchema.pick({version:true,guardianPersonId:true,messageLanguage:true,state:true,
  guardianVerified:true,recipientVerified:true,financialAcceptance:true,outboundEligible:true})
@@ -109,7 +114,7 @@ export async function readFishingInquiryNativeFingerprint(tx:SqlSession,input:Fi
  * The additive proposal DDL must be separately admitted before any real use. */
 export class FishingBillingInquiryFamilyProposals{
  private readonly crm:AcademyCrmStore;
- constructor(db:IdentityStore,private readonly workspace:WorkspaceId,private readonly ring:Keyring,
+ constructor(private readonly db:IdentityStore,private readonly workspace:WorkspaceId,private readonly ring:Keyring,
   private readonly integrityKey:string,private readonly clock:IdentityClock=systemClock){
   this.crm=new AcademyCrmStore(db,ring,integrityKey,clock);
  }
@@ -127,6 +132,74 @@ export class FishingBillingInquiryFamilyProposals{
  }
  private decode(row:Row):FishingInquiryFamilyProposal{
   return decodeFishingInquiryFamilyProposalRecord(row,{workspaceId:this.workspace,keyring:this.ring,integrityKey:this.integrityKey});
+ }
+ private async insertProposal(tx:SqlSession,actorId:string,command:FishingFamilyProposalCommand,guardianId:string,fields:Trip390CurrentInterest){
+  const record=recordSchema.parse({version:FISHING_INQUIRY_FAMILY_PROPOSAL_VERSION,id:randomUUID(),workspaceId:this.workspace,
+   command,recordedBy:actorId,recordedAt:this.clock.now().toISOString(),guardianPersonId:guardianId,
+   messageLanguage:fields.messageLanguage,sourceVersion:fields.version,offerVersion:fields.offerVersion,
+   acknowledgment:proposalAcknowledgment(fields),state:'proposed',guardianVerified:false,recipientVerified:false,financialAcceptance:false,outboundEligible:false});
+  await tx.query('INSERT INTO ls_fishing_billing.inquiry_family_proposals(workspace_id,id,application_id,family_id,guardian_person_id,operation_id,recorded_by,source_digest,native_digest,request_digest,payload_ciphertext,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)',
+   [this.workspace,record.id,command.selection.reference,command.selection.familyId,record.guardianPersonId,command.operationId,actorId,
+    command.expectedSourceDigest,command.expectedNativeDigest,this.request(actorId,command),seal(JSON.stringify(record),aad(this.workspace,record.id),this.ring),record.recordedAt]);
+  return record;
+ }
+ /** Explicit creation of fresh canonical primitives from a current admitted
+  * inquiry. No names are matched, existing records adopted, accounts invited,
+  * consent upgraded or cases created. Family, all minors, original proposed
+  * association and replay journal commit or roll back together. */
+ async createNativeFamily(actor:Actor,raw:unknown){
+  const owner=this.owner(actor),command=nativeFamilyCreateCommandSchema.parse(raw);
+  const requestDigest=privateDigest({domain:NATIVE_FAMILY_VERSION,workspaceId:this.workspace,actorId:owner.id,command},this.integrityKey);
+  const journalAad='ls_fishing_billing/native-family/v1/'+this.workspace+'/'+command.operationId;
+  let callbackFailure:unknown;
+  // Only errors raised inside the actual transaction can denote rejection.
+  // A transport/driver error after commit must remain unknown and replayable.
+  const tracked:IdentityStore={transaction:work=>this.db.transaction(async tx=>{
+   callbackFailure=undefined;try{return await work(tx);}catch(error){callbackFailure=error;throw error;}
+  })};
+  const crm=new AcademyCrmStore(tracked,this.ring,this.integrityKey,this.clock);
+  try{return await crm.withInquiryContact(owner,{reference:command.reference,expectedEpoch:command.expectedEpoch,intent:'write'},async context=>{
+   await lockWorkspace(context.tx,this.workspace);
+   const fields=this.fields(context.record);
+   if(context.sourceDigest!==command.expectedSourceDigest)fail('CONFLICT');
+   if(command.children.length!==fields.children.length||fields.children.some(child=>!command.children.some(m=>m.applicationChildId===child.id)))fail('CONFLICT');
+   const prior=await one<{actorId:string;action:string;quoteId:string|null;requestDigest:string;ciphertext:string;createdAt:Date}>(context.tx,
+    'SELECT actor_id AS "actorId",action,quote_id AS "quoteId",request_digest AS "requestDigest",result_ciphertext AS ciphertext,created_at AS "createdAt" FROM ls_fishing_billing.commands WHERE workspace_id=$1 AND operation_id=$2 FOR SHARE',[this.workspace,command.operationId]);
+   if(prior){
+    if(prior.action!=='native_family_create'||prior.quoteId!==null||prior.actorId!==owner.id||prior.requestDigest!==requestDigest)fail('CONFLICT');
+    const journal=nativeCreationJournalSchema.parse(JSON.parse(unseal(prior.ciphertext,journalAad,this.ring))),record=journal.proposal;
+    if(journal.workspaceId!==this.workspace||journal.operationId!==command.operationId||journal.actorId!==owner.id||journal.requestDigest!==requestDigest||
+     privateDigest(journal.command,this.integrityKey)!==privateDigest(command,this.integrityKey)||record.workspaceId!==this.workspace||record.recordedBy!==owner.id||
+     record.recordedAt!==prior.createdAt.toISOString()||record.guardianPersonId!==context.contact.personId||record.command.operationId!==command.operationId||
+     record.command.expectedEpoch!==command.expectedEpoch||record.command.expectedSourceDigest!==context.sourceDigest||record.command.selection.reference!==command.reference||
+     record.command.selection.familyId!==command.familyId||privateDigest(record.command.selection.children,this.integrityKey)!==privateDigest(command.children,this.integrityKey))fail();
+    const saved=await one<Row>(context.tx,select+' WHERE workspace_id=$1 AND id=$2 FOR SHARE',[this.workspace,record.id]);
+    if(!saved||privateDigest(this.decode(saved),this.integrityKey)!==privateDigest(record,this.integrityKey))fail();
+    return {version:NATIVE_FAMILY_VERSION,resultKind:'original_creation_receipt' as const,record,replayed:true};
+   }
+   if(await one(context.tx,'SELECT id FROM ls_fishing_billing.inquiry_family_proposals WHERE workspace_id=$1 AND application_id=$2',[this.workspace,command.reference]))fail('CONFLICT');
+   if(await one(context.tx,'SELECT id FROM ls_cases.families WHERE workspace_id=$1 AND id=$2',[this.workspace,command.familyId])||
+    (await context.tx.query('SELECT id FROM ls_identity.people WHERE workspace_id=$1 AND id=ANY($2::uuid[])',[this.workspace,command.children.map(child=>child.nativeChildId)])).length)fail('CONFLICT');
+   const now=this.clock.now();
+   await context.tx.query('INSERT INTO ls_cases.families(id,workspace_id,label_ciphertext,created_at) VALUES($1,$2,$3,$4)',
+    [command.familyId,this.workspace,seal(command.familyLabel,`family:${this.workspace}:${command.familyId}`,this.ring),now]);
+   await context.tx.query("INSERT INTO ls_cases.family_members(workspace_id,family_id,person_id,role) VALUES($1,$2,$3,'guardian')",[this.workspace,command.familyId,context.contact.personId]);
+   for(const child of command.children){
+    const source=fields.children.find(value=>value.id===child.applicationChildId)!;
+    await context.tx.query("INSERT INTO ls_identity.people(id,workspace_id,kind,profile_ciphertext,created_at) VALUES($1,$2,'minor',$3,$4)",
+     [child.nativeChildId,this.workspace,seal(JSON.stringify({displayName:source.name}),`person:${this.workspace}:${child.nativeChildId}`,this.ring),now]);
+    await context.tx.query("INSERT INTO ls_cases.family_members(workspace_id,family_id,person_id,role) VALUES($1,$2,$3,'child')",[this.workspace,command.familyId,child.nativeChildId]);
+   }
+   const choice={reference:command.reference,familyId:command.familyId,children:command.children};
+   const nativeDigest=await this.native(context.tx,choice,context.contact.personId,fields,true);
+   const proposalCommand={operationId:command.operationId,expectedEpoch:command.expectedEpoch,selection:choice,expectedSourceDigest:context.sourceDigest,expectedNativeDigest:nativeDigest};
+   const record=await this.insertProposal(context.tx,owner.id,proposalCommand,context.contact.personId,fields);
+   const journal=nativeCreationJournalSchema.parse({version:NATIVE_FAMILY_VERSION,workspaceId:this.workspace,operationId:command.operationId,actorId:owner.id,requestDigest,command,proposal:record});
+   await context.tx.query('INSERT INTO ls_fishing_billing.commands(workspace_id,operation_id,actor_id,action,quote_id,request_digest,result_ciphertext,created_at) VALUES($1,$2,$3,$4,NULL,$5,$6,$7)',
+    [this.workspace,command.operationId,owner.id,'native_family_create',requestDigest,seal(JSON.stringify(journal),journalAad,this.ring),record.recordedAt]);
+   if(await this.native(context.tx,choice,context.contact.personId,fields,true)!==nativeDigest)fail('CONFLICT');
+   return {version:NATIVE_FAMILY_VERSION,resultKind:'original_creation_receipt' as const,record,replayed:false};
+  });}catch(error){if(error===callbackFailure&&error instanceof AppError)throw error;throw new AppError('UNAVAILABLE');}
  }
  /** Actual current family DATA only, in the already authorized caller's TX.
   * A known proposal must still match current source/admitted contact/native
@@ -176,14 +249,7 @@ export class FishingBillingInquiryFamilyProposals{
     return {record,replayed:true};
    }
    if(await one(context.tx,'SELECT id FROM ls_fishing_billing.inquiry_family_proposals WHERE workspace_id=$1 AND application_id=$2',[this.workspace,command.selection.reference]))fail('CONFLICT');
-   const record=recordSchema.parse({version:FISHING_INQUIRY_FAMILY_PROPOSAL_VERSION,id:randomUUID(),workspaceId:this.workspace,
-    command,recordedBy:owner.id,recordedAt:this.clock.now().toISOString(),guardianPersonId:context.contact.personId,
-    messageLanguage:fields.messageLanguage,sourceVersion:fields.version,offerVersion:fields.offerVersion,
-    acknowledgment:proposalAcknowledgment(fields),
-    state:'proposed',guardianVerified:false,recipientVerified:false,financialAcceptance:false,outboundEligible:false});
-   await context.tx.query('INSERT INTO ls_fishing_billing.inquiry_family_proposals(workspace_id,id,application_id,family_id,guardian_person_id,operation_id,recorded_by,source_digest,native_digest,request_digest,payload_ciphertext,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)',
-    [this.workspace,record.id,command.selection.reference,command.selection.familyId,record.guardianPersonId,command.operationId,owner.id,
-     command.expectedSourceDigest,command.expectedNativeDigest,requestDigest,seal(JSON.stringify(record),aad(this.workspace,record.id),this.ring),record.recordedAt]);
+   const record=await this.insertProposal(context.tx,owner.id,command,context.contact.personId,fields);
    return {record,replayed:false};
   });
  }

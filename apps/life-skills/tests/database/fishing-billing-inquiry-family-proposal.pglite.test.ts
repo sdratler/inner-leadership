@@ -5,7 +5,8 @@ import {beforeAll,afterAll,afterEach,it,expect,vi} from 'vitest';
 import {requirePgliteMemoryEnvironment} from '../fixtures/pglite-memory-environment.ts';
 import {currentTrip390Fields} from '../fixtures/trip390-current.ts';
 import {asId} from '../../src/lib/ids.ts';
-import {seal,tokenDigest} from '../../src/features/identity/crypto.ts';
+import {seal,unseal,tokenDigest} from '../../src/features/identity/crypto.ts';
+import {NATIVE_FAMILY_VERSION,type NativeFamilyCreateCommand} from '../../src/features/fishing-billing/native-family-contract-v1.ts';
 import type {Actor} from '../../src/features/identity/types.ts';
 import type {IdentityStore,SqlSession} from '../../src/features/identity/store.ts';
 import {lockWorkspace} from '../../src/features/identity/data.ts';
@@ -23,7 +24,7 @@ import {fishingInquiryFamilyProposalOwnerHttp,FISHING_INQUIRY_FAMILY_PROPOSAL_OW
 vi.mock('server-only',()=>({}));
 
 // New no-URL memory DB, real committed DDL/stores/crypto and synthetic data.
-// No actual schema installation, family provisioning, guardian/recipient
+// No production schema installation, family provisioning, guardian/recipient
 // verification, legal approval, owner browser, transport or provider proof.
 let engine:PGlite;
 const now=new Date('2035-01-06T15:00:00Z'),clock={now:()=>new Date(now)};
@@ -44,7 +45,7 @@ beforeAll(async()=>{
   expect(createHash('sha256').update(sql.replaceAll('\r\n','\n')).digest('hex')).toBe(manifest.find(m=>m.name===name)?.sha256);
   await engine.exec(sql);
  }
- await engine.exec('CREATE SCHEMA ls_fishing_billing');
+ await engine.exec(await readFile('tests/fixtures/fishing-billing.sql','utf8'));
  await engine.exec(await readFile('migrations/proposals/UNNUMBERED_ls_fishing_inquiry_family_proposals.sql','utf8'));
 },20000);
 afterEach(()=>{expect(globalThis.fetch).toBe(network);expect(network).not.toHaveBeenCalled();});
@@ -84,7 +85,7 @@ async function fixture(admit=true){
  const prepare=async()=>{const p=await store().preview(owner,{selection,expectedEpoch:1});return {operationId:randomUUID(),selection,expectedEpoch:1,expectedSourceDigest:p.sourceDigest,expectedNativeDigest:p.nativeDigest} satisfies FishingFamilyProposalCommand;};
  const source=async()=>(await engine.query<{payload_ciphertext:string}>('SELECT * FROM ls_service_interest.public_applications WHERE workspace_id=$1 AND id=$2',[workspace,saved.item.id])).rows[0]!;
  const count=async()=>(await engine.query<{n:number}>('SELECT count(*)::int AS n FROM ls_fishing_billing.inquiry_family_proposals WHERE workspace_id=$1',[workspace])).rows[0]!.n;
- const counts=async()=>(await engine.query('SELECT (SELECT count(*) FROM ls_identity.people WHERE workspace_id=$1) AS people,(SELECT count(*) FROM ls_identity.accounts WHERE workspace_id=$1) AS accounts,(SELECT count(*) FROM ls_cases.families WHERE workspace_id=$1) AS families,(SELECT count(*) FROM ls_cases.cases WHERE workspace_id=$1) AS cases,(SELECT count(*) FROM ls_service_interest.inquiry_email_outbox WHERE workspace_id=$1) AS mail,(SELECT count(*) FROM ls_contact_ops.outbound_projections WHERE workspace_id=$1) AS outbound',[workspace])).rows[0]!;
+ const counts=async()=>(await engine.query<Record<'people'|'accounts'|'families'|'cases'|'mail'|'outbound',string|number>>('SELECT (SELECT count(*) FROM ls_identity.people WHERE workspace_id=$1) AS people,(SELECT count(*) FROM ls_identity.accounts WHERE workspace_id=$1) AS accounts,(SELECT count(*) FROM ls_cases.families WHERE workspace_id=$1) AS families,(SELECT count(*) FROM ls_cases.cases WHERE workspace_id=$1) AS cases,(SELECT count(*) FROM ls_service_interest.inquiry_email_outbox WHERE workspace_id=$1) AS mail,(SELECT count(*) FROM ls_contact_ops.outbound_projections WHERE workspace_id=$1) AS outbound',[workspace])).rows[0]!;
  return {workspace,owner,parent,cutover,fields,saved,crm,guardianId:guardianId!,selection,store,prepare,source,count,counts};
 }
 async function reloadActor(f:Awaited<ReturnType<typeof fixture>>){
@@ -463,4 +464,116 @@ it('keeps the proposal and original source append-only with no update, delete or
  await expect(engine.query('DELETE FROM ls_fishing_billing.inquiry_family_proposals WHERE workspace_id=$1',[f.workspace])).rejects.toThrow('FISHING_INQUIRY_FAMILY_PROPOSAL_IMMUTABLE');
  await expect(engine.exec('TRUNCATE ls_fishing_billing.inquiry_family_proposals')).rejects.toThrow('FISHING_INQUIRY_FAMILY_PROPOSAL_IMMUTABLE');
  await expect(engine.query("UPDATE ls_service_interest.public_applications SET notice_language='he' WHERE workspace_id=$1",[f.workspace])).rejects.toThrow('public_group_application_append_only');expect(await f.count()).toBe(1);
+});
+
+async function nativeFamilyCommand(f:Awaited<ReturnType<typeof fixture>>):Promise<NativeFamilyCreateCommand>{
+ const source=await f.crm.previewInquiry(f.owner,f.saved.item.id,1);
+ return {version:NATIVE_FAMILY_VERSION,operationId:randomUUID(),reference:f.saved.item.id,expectedEpoch:1,
+  expectedSourceDigest:source.sourceDigest,ownerReviewedMapping:true,familyId:randomUUID(),familyLabel:'SYNTHETIC Explicit New Family',
+  children:f.fields.children.map(child=>({applicationChildId:child.id,nativeChildId:randomUUID()}))};
+}
+async function createdNativeRows(f:Awaited<ReturnType<typeof fixture>>,command:NativeFamilyCreateCommand){
+ return {family:(await engine.query('SELECT id FROM ls_cases.families WHERE workspace_id=$1 AND id=$2',[f.workspace,command.familyId])).rows,
+  children:(await engine.query('SELECT id FROM ls_identity.people WHERE workspace_id=$1 AND id=ANY($2::uuid[])',[f.workspace,command.children.map(c=>c.nativeChildId)])).rows,
+  journal:(await engine.query('SELECT operation_id FROM ls_fishing_billing.commands WHERE workspace_id=$1 AND operation_id=$2',[f.workspace,command.operationId])).rows};
+}
+it('native-family-create atomically records exact siblings and original proposed association without accounts/cases/sends',async()=>{
+ const f=await fixture(),command=await nativeFamilyCommand(f),before=await f.counts(),source=await f.source();command.children.reverse();
+ const result=await f.store().createNativeFamily(f.owner,command),record=result.record;
+ expect(result).toMatchObject({version:NATIVE_FAMILY_VERSION,resultKind:'original_creation_receipt',replayed:false});
+ expect(record).toMatchObject({state:'proposed',guardianPersonId:f.guardianId,guardianVerified:false,recipientVerified:false,financialAcceptance:false,outboundEligible:false});
+ expect(record.command.selection).toEqual({reference:command.reference,familyId:command.familyId,children:command.children});
+ expect(record.acknowledgment.whatsapp).toBe(f.fields.acknowledgment.whatsapp);
+ expect(await f.source()).toEqual(source);
+ const rows=await createdNativeRows(f,command);expect(rows.family).toHaveLength(1);expect(rows.children).toHaveLength(2);expect(rows.journal).toHaveLength(1);
+ for(const child of command.children){
+  const raw=(await engine.query<{profile:string}>("SELECT profile_ciphertext AS profile FROM ls_identity.people WHERE workspace_id=$1 AND id=$2 AND kind='minor'",[f.workspace,child.nativeChildId])).rows[0]!;
+  expect(raw.profile).not.toContain('SYNTHETIC Brother');
+  expect(JSON.parse(unseal(raw.profile,`person:${f.workspace}:${child.nativeChildId}`,ring))).toEqual({displayName:f.fields.children.find(c=>c.id===child.applicationChildId)!.name});
+ }
+ const after=await f.counts();expect(Number(after.people)).toBe(Number(before.people)+2);expect(Number(after.families)).toBe(Number(before.families)+1);
+ for(const field of ['accounts','cases','mail','outbound'] as const)expect(after[field]).toBe(before[field]);
+ const loaded=await f.store().read(f.owner,{reference:command.reference,expectedEpoch:1});expect(loaded).toEqual(record);
+ const data=await db.transaction(tx=>f.store().readCurrentDataInTransaction(tx,{proposalId:record.id,reference:command.reference,expectedEpoch:1,lock:'shared'}));
+ expect(data.classification).toBe('current_family_data_only_not_authority');expect(data.proposal).toEqual(record);
+});
+it('native-family-create replays its original journal and rejects changed request or duplicate inquiry',async()=>{
+ const f=await fixture(),command=await nativeFamilyCommand(f),created=await f.store().createNativeFamily(f.owner,command),before=await f.counts();
+ expect(await f.store().createNativeFamily(f.owner,structuredClone(command))).toEqual({...created,replayed:true});expect(await f.counts()).toEqual(before);
+ await expect(f.store().createNativeFamily(f.owner,{...command,familyLabel:'SYNTHETIC changed'})).rejects.toThrow('CONFLICT');
+ const duplicate=await nativeFamilyCommand(f);await expect(f.store().createNativeFamily(f.owner,duplicate)).rejects.toThrow('CONFLICT');
+ expect((await createdNativeRows(f,duplicate)).family).toHaveLength(0);expect(await f.counts()).toEqual(before);expect(await f.count()).toBe(1);
+});
+it('native-family-create requires affirmative explicit mapping and complete distinct native siblings',async()=>{
+ const f=await fixture(),command=await nativeFamilyCommand(f),before=await f.counts();
+ for(const invalid of [{...command,ownerReviewedMapping:false},{...command,eligible:true},
+  {...command,children:[command.children[0],command.children[0]]},
+  {...command,children:command.children.map(c=>({...c,nativeChildId:c.applicationChildId}))}])
+  await expect(f.store().createNativeFamily(f.owner,invalid)).rejects.toThrow();
+ await expect(f.store().createNativeFamily(f.owner,{...command,children:command.children.slice(0,1)})).rejects.toThrow('CONFLICT');
+ expect(await f.counts()).toEqual(before);expect(await f.count()).toBe(0);
+});
+it('native-family-create never adopts an existing family or minor from matching names or supplied IDs',async()=>{
+ const f=await fixture(),command=await nativeFamilyCommand(f),before=await f.counts();
+ await expect(f.store().createNativeFamily(f.owner,{...command,familyId:f.selection.familyId})).rejects.toThrow('CONFLICT');
+ const children=structuredClone(command.children);children[0]!.nativeChildId=f.selection.children[0]!.nativeChildId;
+ await expect(f.store().createNativeFamily(f.owner,{...command,children})).rejects.toThrow('CONFLICT');
+ expect(await f.counts()).toEqual(before);expect(await f.count()).toBe(0);
+});
+it('native-family-create denies parent, wrong workspace, stale source and stale cutover epoch',async()=>{
+ const f=await fixture(),command=await nativeFamilyCommand(f),before=await f.counts();
+ await expect(f.store().createNativeFamily(f.parent,command)).rejects.toThrow('FORBIDDEN');
+ await expect(f.store().createNativeFamily({...f.owner,workspaceId:asId(randomUUID(),'workspace')},command)).rejects.toThrow('FORBIDDEN');
+ await expect(f.store().createNativeFamily(f.owner,{...command,expectedEpoch:2})).rejects.toThrow('CONFLICT');
+ await expect(f.store().createNativeFamily(f.owner,{...command,expectedSourceDigest:'f'.repeat(64)})).rejects.toThrow('CONFLICT');
+ expect(await f.counts()).toEqual(before);expect(await f.count()).toBe(0);
+});
+it('native-family-create requires a current admitted inquiry contact and never initializes native mode',async()=>{
+ const f=await fixture(false),command=await nativeFamilyCommand(f),before=await f.counts();
+ await expect(f.store().createNativeFamily(f.owner,command)).rejects.toThrow('NOT_FOUND');
+ expect(await f.counts()).toEqual(before);expect(await f.count()).toBe(0);
+});
+it('native-family-create rolls back every primitive when the second minor or final journal fails',async()=>{
+ const f=await fixture(),command=await nativeFamilyCommand(f),before=await f.counts();
+ for(const stage of ['second-child','journal']){
+  let minors=0;
+  const broken:IdentityStore={transaction:work=>db.transaction(tx=>work({query:async<T extends object>(sql:string,values:readonly unknown[]=[])=>{
+   if(stage==='journal'&&sql.startsWith('INSERT INTO ls_fishing_billing.commands')||stage==='second-child'&&sql.startsWith('INSERT INTO ls_identity.people')&&++minors===2)throw Error('SYNTHETIC_FAILURE');
+   return tx.query<T>(sql,values);
+  }}))};
+  await expect(f.store(broken).createNativeFamily(f.owner,command)).rejects.toThrow('UNAVAILABLE');
+  expect(await createdNativeRows(f,command)).toEqual({family:[],children:[],journal:[]});expect(await f.count()).toBe(0);expect(await f.counts()).toEqual(before);
+ }
+});
+it('native-family-create rolls back new family and both minors after terminal owner revocation',async()=>{
+ const f=await fixture(),command=await nativeFamilyCommand(f),before=await f.counts();
+ const barrier:IdentityStore={transaction:work=>db.transaction(tx=>work({query:async<T extends object>(sql:string,values:readonly unknown[]=[])=>{
+  const rows=await tx.query<T>(sql,values);if(sql.startsWith('INSERT INTO ls_fishing_billing.commands'))await tx.query('UPDATE ls_identity.sessions SET revoked_at=$2 WHERE token_digest=$1',[f.owner.sessionDigest,now]);return rows;
+ }}))};
+ await expect(f.store(barrier).createNativeFamily(f.owner,command)).rejects.toThrow('UNAUTHENTICATED');
+ expect(await createdNativeRows(f,command)).toEqual({family:[],children:[],journal:[]});expect(await f.counts()).toEqual(before);expect(await f.count()).toBe(0);
+});
+it('native-family-create detects a changed child fingerprint after journal insertion and rolls back all',async()=>{
+ const f=await fixture(),command=await nativeFamilyCommand(f),before=await f.counts();
+ const barrier:IdentityStore={transaction:work=>db.transaction(tx=>work({query:async<T extends object>(sql:string,values:readonly unknown[]=[])=>{
+  const rows=await tx.query<T>(sql,values);if(sql.startsWith('INSERT INTO ls_fishing_billing.commands'))await tx.query('UPDATE ls_identity.people SET profile_ciphertext=$2 WHERE id=$1',[command.children[0]!.nativeChildId,'SYNTHETIC-CORRUPTION']);return rows;
+ }}))};
+ await expect(f.store(barrier).createNativeFamily(f.owner,command)).rejects.toThrow('CONFLICT');
+ expect(await createdNativeRows(f,command)).toEqual({family:[],children:[],journal:[]});expect(await f.counts()).toEqual(before);expect(await f.count()).toBe(0);
+});
+it('native-family-create preserves uncertain committed outcome and recovers the same original operation',async()=>{
+ const f=await fixture(),command=await nativeFamilyCommand(f);let lost=true;
+ const uncertain:IdentityStore={transaction:async work=>{const result=await db.transaction(work);if(lost){lost=false;throw new AppError('CONFLICT');}return result;}};
+ await expect(f.store(uncertain).createNativeFamily(f.owner,command)).rejects.toThrow('UNAVAILABLE');
+ const before=await f.counts(),replay=await f.store().createNativeFamily(f.owner,command);
+ expect(replay.replayed).toBe(true);expect(await f.counts()).toEqual(before);expect(await f.count()).toBe(1);
+ expect(await createdNativeRows(f,command)).toMatchObject({family:[{id:command.familyId}],children:expect.any(Array),journal:[{operation_id:command.operationId}]});
+});
+it('native-family-create authenticates original journal metadata and keeps replay distinct from current mapping data',async()=>{
+ const f=await fixture(),command=await nativeFamilyCommand(f),created=await f.store().createNativeFamily(f.owner,command);
+ await engine.query('UPDATE ls_identity.people SET profile_ciphertext=$2 WHERE id=$1',[command.children[0]!.nativeChildId,'SYNTHETIC changed profile']);
+ expect(await f.store().createNativeFamily(f.owner,command)).toEqual({...created,replayed:true});
+ await expect(f.store().read(f.owner,{reference:command.reference,expectedEpoch:1})).rejects.toThrow('CONFLICT');
+ await engine.query('UPDATE ls_fishing_billing.commands SET result_ciphertext=$2 WHERE workspace_id=$1 AND operation_id=$3',[f.workspace,'SYNTHETIC CORRUPTION',command.operationId]);
+ await expect(f.store().createNativeFamily(f.owner,command)).rejects.toThrow('UNAVAILABLE');
 });
