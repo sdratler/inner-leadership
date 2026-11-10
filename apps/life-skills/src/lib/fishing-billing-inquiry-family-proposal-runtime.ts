@@ -43,6 +43,7 @@ export function composeFishingInquiryFamilyProposalOwnerRuntime(runtime: NativeR
       csrf: token => services.sessions.csrf(token),
     }, limits: services.limits, rateLimitKey: config.rateLimitKey,
     source: (actor, reference) => readFishingNativeFamilyOwnerSource(guardedDatabase(actor, 'read'), runtime, actor, reference),
+    nativeFamilyOutcome: (actor, command) => guardedStore(actor, 'write').createNativeFamilyOutcome(actor, command),
     store: {
       read: (actor, input) => guardedStore(actor, 'read').read(actor, input),
       preview: (actor, input) => guardedStore(actor, 'read').preview(actor, input),

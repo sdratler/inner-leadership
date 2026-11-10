@@ -11,7 +11,8 @@ import type {IdentitySessions} from '../features/identity/session-adapter.ts';
 import {canonicalForwardedRequest} from '../features/integration/canonical-forwarded-request.ts';
 import {FISHING_INQUIRY_FAMILY_PROPOSAL_VERSION,fishingFamilyProposalCommandSchema,
  fishingInquiryFamilyProposalSchema,fishingInquiryFamilyProposalPreviewSchema,type FishingBillingInquiryFamilyProposals} from './fishing-billing-inquiry-family-proposal.ts';
-import {NATIVE_FAMILY_VERSION,nativeFamilyCreateCommandSchema} from '../features/fishing-billing/native-family-contract-v1.ts';
+import {NATIVE_FAMILY_VERSION,nativeFamilyCreateCommandSchema,type NativeFamilyCreateCommand} from '../features/fishing-billing/native-family-contract-v1.ts';
+import {nativeFamilyCreationOutcomeSchema,nativeFamilyCreationReceiptSchema,nativeFamilyRejectedDataSchema} from '../features/fishing-billing/native-family-outcome-contract-v1.ts';
 import {nativeFamilyOwnerSourceSchema,type NativeFamilyOwnerSource} from '../features/fishing-billing/native-family-owner-source-contract.ts';
 import type {Actor} from '../features/identity/types.ts';
 
@@ -27,8 +28,16 @@ export type FishingInquiryFamilyProposalOwnerHttpDependencies={
  origin:string;sessions:Pick<IdentitySessions,'actor'|'csrf'>;limits:RateLimitStore;rateLimitKey:string;
  store:Pick<FishingBillingInquiryFamilyProposals,'read'|'preview'|'propose'|'createNativeFamily'>;
  source?:(actor:Actor,reference:string)=>Promise<NativeFamilyOwnerSource>;
+ nativeFamilyOutcome?:(actor:Actor,command:NativeFamilyCreateCommand)=>Promise<unknown>;
 };
 const equal=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
+function nativeCreatedData(value:unknown,actor:Actor,c:NativeFamilyCreateCommand){
+ const saved=nativeFamilyCreationReceiptSchema.parse(value),record=saved.record,choice=record.command.selection;
+ if(record.workspaceId!==actor.workspaceId||record.recordedBy!==actor.id||record.command.operationId!==c.operationId||
+  record.command.expectedEpoch!==c.expectedEpoch||record.command.expectedSourceDigest!==c.expectedSourceDigest||
+  choice.reference!==c.reference||choice.familyId!==c.familyId||!equal(choice.children,c.children))throw new AppError('UNAVAILABLE');
+ return {version:NATIVE_FAMILY_VERSION,kind:'native_family_created' as const,resultKind:saved.resultKind,record,replayed:saved.replayed};
+}
 
 /** Owner-only adapter for proposed associations, not financial or
  * guardian approval. The mandatory real store rechecks current owner/source/
@@ -80,13 +89,11 @@ export async function fishingInquiryFamilyProposalOwnerHttp(request:Request,
    }else if(input.action==='create_native_family'){
     // Once invoked, a lost driver/commit response cannot prove rollback.
     proposalInvoked=true;
-    const saved=await d.store.createNativeFamily(actor,input.command),record=fishingInquiryFamilyProposalSchema.parse(saved.record);
-    const c=input.command,choice=record.command.selection;
-    if(saved.version!==NATIVE_FAMILY_VERSION||saved.resultKind!=='original_creation_receipt'||typeof saved.replayed!=='boolean'||
-     record.workspaceId!==actor.workspaceId||record.recordedBy!==actor.id||record.command.operationId!==c.operationId||
-     record.command.expectedEpoch!==c.expectedEpoch||record.command.expectedSourceDigest!==c.expectedSourceDigest||
-     choice.reference!==c.reference||choice.familyId!==c.familyId||!equal(choice.children,c.children))throw new AppError('UNAVAILABLE');
-    response=successResponse({version:NATIVE_FAMILY_VERSION,kind:'native_family_created',resultKind:saved.resultKind,record,replayed:saved.replayed},requestId);
+    if(d.nativeFamilyOutcome){
+     const outcome=nativeFamilyCreationOutcomeSchema.parse(await d.nativeFamilyOutcome(actor,input.command));
+     if(outcome.workspaceId!==actor.workspaceId||outcome.actorId!==actor.id||!equal(outcome.command,input.command))throw new AppError('UNAVAILABLE');
+     response=successResponse(outcome.state==='rejected'?nativeFamilyRejectedDataSchema.parse({version:outcome.version,kind:'native_family_rejected',workspaceId:outcome.workspaceId,actorId:outcome.actorId,command:outcome.command,code:outcome.code}):nativeCreatedData(outcome.receipt,actor,input.command),requestId);
+    }else response=successResponse(nativeCreatedData(await d.store.createNativeFamily(actor,input.command),actor,input.command),requestId);
    }else{
     // The transaction adapter may fail after COMMIT. Once invoked, no typed
     // error proves rollback; retain the original operation for read/replay.

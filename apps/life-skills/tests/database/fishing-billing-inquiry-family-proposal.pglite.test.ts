@@ -622,14 +622,15 @@ async function composedOwnerHarness(f:Awaited<ReturnType<typeof fixture>>,env:Re
  await engine.query('INSERT INTO ls_identity.sessions(token_digest,workspace_id,account_id,created_at,expires_at) VALUES($1,$2,$3,$4,$5)',[tokenDigest(token),f.workspace,f.owner.id,now,new Date('2036-01-01T00:00:00Z')]);
  const config={enabled:true,workspaceId:f.workspace,origin:ownerHttpOrigin,keyring:ring,csrfKey:Buffer.alloc(32,8),lookupKey:runtimeLookupKey,rateLimitKey:key,sessionSeconds:3600};
  const sessions=new IdentitySessions(db,config,clock),limits=new PostgresIdentityRateStore(db);
+ const runtime={config,services:{sessions,limits},store:binder,clock};
  const call=(body:unknown,query?:string)=>{
   const host=new URL(ownerHttpOrigin).host;
   const request=new Request(ownerHttpOrigin+FISHING_INQUIRY_FAMILY_PROPOSAL_OWNER_PATH+(query??''),{method:query?'GET':'POST',
    headers:{host,'x-forwarded-host':host,'x-forwarded-proto':'https',cookie:`${SESSION_COOKIE}=${token}`,origin:ownerHttpOrigin,'sec-fetch-site':'same-origin','x-csrf-token':sessions.csrf(token),'content-type':'application/json'},
    ...(query?{}:{body:JSON.stringify(body)})});
-  return fishingInquiryFamilyProposalOwnerHttp(request,async()=>composeFishingInquiryFamilyProposalOwnerRuntime({config,services:{sessions,limits},store:binder,clock},env));
+  return fishingInquiryFamilyProposalOwnerHttp(request,async()=>composeFishingInquiryFamilyProposalOwnerRuntime(runtime,env));
  };
- return {token,call};
+ return {token,call,runtime};
 }
 async function markDemo(tx:SqlSession,f:Awaited<ReturnType<typeof fixture>>){
  await tx.query('INSERT INTO ls_demo.batches(workspace_id,batch_id,created_by) VALUES($1,$2,$3)',[f.workspace,'ls-owner-20350106',f.owner.id]);
@@ -719,4 +720,30 @@ it.each(['demo','revoked']as const)('native-family-source-terminal: %s after opt
  if(kind==='demo')expect((await engine.query('SELECT account_id FROM ls_demo.accounts WHERE workspace_id=$1',[f.workspace])).rows).toEqual([{account_id:f.owner.id}]);
  if(kind==='revoked')expect((await engine.query<{revoked_at:Date|null}>('SELECT revoked_at FROM ls_identity.sessions WHERE token_digest=$1',[digest])).rows[0]!.revoked_at).not.toBeNull();
  const body=JSON.stringify(await response.json());expect(body).not.toContain(f.fields.guardianName);expect(body).not.toContain(f.fields.children[0]!.name);expect(await f.count()).toBe(0);
+});
+it('native-family-outcome: actual known rollback permits a corrected explicit family creation without duplicates',async()=>{
+ const f=await fixture(true,runtimeLookupKey.toString('hex')),h=await composedOwnerHarness(f,{LS_PROVIDER_INDEX_OWNER_ACCOUNT_ID:f.owner.id}),before=await f.counts();
+ const command={...await nativeFamilyCommand(f),familyId:f.selection.familyId};
+ const rejected=await h.call({action:'create_native_family',command});expect(rejected.status).toBe(200);
+ expect((await rejected.json()).data).toMatchObject({kind:'native_family_rejected',workspaceId:f.workspace,actorId:f.owner.id,command,code:'CONFLICT'});
+ expect(await f.count()).toBe(0);expect(await f.counts()).toEqual(before);
+ const corrected={...command,operationId:randomUUID(),familyId:randomUUID()},saved=await h.call({action:'create_native_family',command:corrected});
+ expect(saved.status).toBe(200);expect((await saved.json()).data).toMatchObject({kind:'native_family_created',replayed:false,record:{command:{operationId:corrected.operationId}}});expect(await f.count()).toBe(1);
+});
+it('native-family-outcome: typed post-COMMIT failure stays unknown and exact operation recovers through a new real session',async()=>{
+ const f=await fixture(true,runtimeLookupKey.toString('hex')),command=await nativeFamilyCommand(f);let lost=true;
+ const uncertain:IdentityStore={transaction:async work=>{let wrote=false;const result=await db.transaction(tx=>work({query:async<T extends object>(sql:string,values:readonly unknown[]=[])=>{
+  const rows=await tx.query<T>(sql,values);if(sql.startsWith('INSERT INTO ls_fishing_billing.commands'))wrote=true;return rows;
+ }}));if(wrote&&lost){lost=false;throw new AppError('FORBIDDEN');}return result;}};
+ const first=await composedOwnerHarness(f,{LS_PROVIDER_INDEX_OWNER_ACCOUNT_ID:f.owner.id},uncertain),response=await first.call({action:'create_native_family',command});
+ expect(response.status).toBe(503);expect((await response.json()).error.code).toBe('UNAVAILABLE');const rows=await createdNativeRows(f,command);expect(rows.family).toHaveLength(1);expect(rows.children).toHaveLength(2);expect(rows.journal).toHaveLength(1);
+ const fresh=await composedOwnerHarness(f,{LS_PROVIDER_INDEX_OWNER_ACCOUNT_ID:f.owner.id}),replay=await fresh.call({action:'create_native_family',command});
+ expect(replay.status).toBe(200);expect((await replay.json()).data).toMatchObject({kind:'native_family_created',replayed:true,record:{command:{operationId:command.operationId}}});expect(await createdNativeRows(f,command)).toEqual(rows);expect(await f.count()).toBe(1);
+});
+it('native-family-outcome: a borrowed actor rejection cannot become a definitive result',async()=>{
+ const f=await fixture(true,runtimeLookupKey.toString('hex')),h=await composedOwnerHarness(f,{LS_PROVIDER_INDEX_OWNER_ACCOUNT_ID:f.owner.id}),command=await nativeFamilyCommand(f);
+ const deps=composeFishingInquiryFamilyProposalOwnerRuntime(h.runtime,{LS_PROVIDER_INDEX_OWNER_ACCOUNT_ID:f.owner.id});
+ deps.nativeFamilyOutcome=async()=>({version:NATIVE_FAMILY_VERSION,workspaceId:f.workspace,actorId:f.parent.id,command,state:'rejected',code:'CONFLICT'});
+ const host=new URL(ownerHttpOrigin).host,request=new Request(ownerHttpOrigin+FISHING_INQUIRY_FAMILY_PROPOSAL_OWNER_PATH,{method:'POST',headers:{host,'x-forwarded-host':host,'x-forwarded-proto':'https',cookie:`${SESSION_COOKIE}=${h.token}`,origin:ownerHttpOrigin,'sec-fetch-site':'same-origin','x-csrf-token':h.runtime.services.sessions.csrf(h.token),'content-type':'application/json'},body:JSON.stringify({action:'create_native_family',command})});
+ const response=await fishingInquiryFamilyProposalOwnerHttp(request,async()=>deps);expect(response.status).toBe(503);expect((await response.json()).error.code).toBe('UNAVAILABLE');expect(await f.count()).toBe(0);
 });
