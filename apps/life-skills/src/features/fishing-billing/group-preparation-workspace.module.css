@@ -1,0 +1,32 @@
+.workspace{max-inline-size:1480px;inline-size:100%;margin-inline:auto}
+.header{align-items:center}
+.header p{max-inline-size:66ch}
+.boundary{padding:16px 20px;border-inline-start:4px solid var(--ls-forest-700);background:var(--ls-paper);line-height:1.65}
+.columns{display:grid;grid-template-columns:minmax(280px,.9fr) minmax(0,1.4fr);gap:24px;align-items:start}
+.sectionHeader{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.items{list-style:none;padding:0;display:grid;gap:0}
+.items li{padding-block:14px;border-block-end:1px solid var(--ls-line)}
+.items a{font-weight:650;display:inline-flex;align-items:center;min-block-size:44px;max-inline-size:100%}
+.items p{font-size:.9em;color:var(--ls-muted)}
+.pager{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.create{border-block-start:1px solid var(--ls-line);padding-block-start:24px;display:grid;gap:18px}
+.form,.fields{display:grid;gap:20px}
+.fields{border:0;margin:0;padding:0;min-inline-size:0}
+.fieldPair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
+.facts{display:grid;gap:16px}
+.facts>div{display:grid;grid-template-columns:minmax(140px,.8fr) minmax(0,1fr);gap:12px;padding-block-end:12px;border-block-end:1px solid var(--ls-line)}
+.facts dt{color:var(--ls-muted)}
+.facts dd{margin:0;overflow-wrap:anywhere}
+.facts details{margin-block-start:8px}
+.reference{display:block;font-size:.9em;overflow-wrap:anywhere;padding-block:8px}
+.history{display:flex;align-items:end;flex-wrap:wrap;gap:12px;border-block-start:1px solid var(--ls-line);padding-block-start:20px}
+.history>div{flex:1 1 160px}
+.historyNotice,.saved{border-inline-start:4px solid var(--ls-forest-700);background:var(--ls-paper);padding:14px 18px;line-height:1.6}
+.cancel{border-block-start:1px solid var(--ls-line);padding-block-start:18px}
+.cancel[open]{display:grid;gap:16px}
+.cancel summary{min-block-size:44px;cursor:pointer;font-weight:650}
+.cancel input{flex:none}
+.notice{display:grid;gap:14px}
+.workspace :is(input,button,summary,a){scroll-margin-block:24px}
+@media(max-width:1100px){.columns{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:520px){.workspace{padding:20px 16px;gap:20px}.header{display:grid;gap:12px}.columns{gap:20px}.fieldPair{grid-template-columns:minmax(0,1fr)}.facts>div{grid-template-columns:minmax(0,1fr);gap:4px}.history{align-items:stretch}.history>div{flex-basis:100%}.history button{flex:1 1 140px}.boundary{padding:14px 16px}}
