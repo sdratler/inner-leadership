@@ -15,12 +15,17 @@ import {bindServiceFinancialDraftV4,bindServiceIssuedMaterialV4,verifyServiceFin
  serviceFinancialStatementSha256V4,serviceRecurringStatementSha256V4,validateServiceAcceptCommandV4,verifyServiceGrantRecordV4,verifyServiceFinancialAcceptanceV4} from '../../src/features/fishing-billing/guest-service-material-v4.ts';
 import {serviceGuestAadV4} from '../../src/features/fishing-billing/guest-service-aad-v4.ts';
 import {seal,unseal} from '../../src/features/identity/crypto.ts';
+import {FishingGuestServiceOwnerNativeV4,type ServiceOwnerIssueAuthorityV4,type ServiceOwnerIssueCommandV4} from '../../src/features/fishing-billing/guest-service-owner-native-v4.ts';
+import {FishingBillingInquiryFamilyProposals} from '../../src/lib/fishing-billing-inquiry-family-proposal.ts';
+import {AppError} from '../../src/lib/errors.ts';
+import {issueServiceFinancialOfferV4} from '../../src/features/fishing-billing/guest-service-domain-v4.ts';
+import type {IdentityStore} from '../../src/features/identity/store.ts';
 import {digest} from '../../src/features/contact-ops/server/digests.ts';
 import {verifyGuestIssuedMaterial} from '../../src/lib/fishing-billing-guest-material-v3.ts';
 vi.mock('server-only',()=>({}));
 let engine:PGlite;const network=vi.fn(async()=>{throw Error('NO_NETWORK');});
 beforeAll(async()=>{requirePgliteMemoryEnvironment(process.env);vi.stubGlobal('fetch',network);engine=new PGlite();await initializeProgramSchema(engine);
- await engine.exec(await readFile('migrations/proposals/UNNUMBERED_ls_fishing_fulfillment_v1.sql','utf8'));},20000);
+ for(const name of ['UNNUMBERED_ls_fishing_fulfillment_v1.sql','UNNUMBERED_ls_fishing_service_material_v4.sql','UNNUMBERED_ls_fishing_quote_service_v4.sql'])await engine.exec(await readFile('migrations/proposals/'+name,'utf8'));},20000);
 afterEach(()=>{expect(network).not.toHaveBeenCalled();vi.restoreAllMocks();});afterAll(async()=>{try{await engine?.close();}finally{vi.unstubAllGlobals();}});
 // Actual native family/first lessons/quote/trip plan SQL; no injected lesson or
 // skills resolver. Synthetic references are not legal/operating/payment proof.
@@ -223,4 +228,124 @@ it('V4 grant/evidence readback uses explicit new purpose/version/AAD and never a
  const oldAad='ls_fishing_billing/guest_grant/v3/'+f.workspace+'/'+grant.id,encrypted=seal('SYNTHETIC V3 BYTES',oldAad,programRing);
  expect(()=>unseal(encrypted,serviceGuestAadV4('grant',f.workspace,grant.id),programRing)).toThrow();
  expect((await engine.query('SELECT * FROM ls_fishing_billing.guest_financial_acceptances WHERE workspace_id=$1',[f.workspace])).rows).toHaveLength(0);
+});
+async function issuerV4(){
+ const f=await materialV4(),families=new FishingBillingInquiryFamilyProposals(f.db,f.workspace,programRing,programKey,programClock);
+ // Genuine native family/source rows; explicit TEST-ONLY permission port for
+ // guardian/legal/shared capacity. These references are NOT real admission,
+ // available seats, operating approval or the future Root runtime factory.
+ const references={recipientBindingEvidenceId:randomUUID(),guardianAssuranceEvidenceId:randomUUID(),financialTermsReleaseEvidenceId:randomUUID(),
+  admissionPolicy:{id:'SYNTHETIC-UNAPPROVED-V4-GATE',sha256:'a'.repeat(64)},capacityEvidence:{id:'SYNTHETIC-NOT-A-REAL-RESERVATION',sha256:'b'.repeat(64)}};
+ let denyTerminal=false,revokeTerminal=false;
+ const authority:ServiceOwnerIssueAuthorityV4={target:async c=>{await c.tx.query('SELECT material_version FROM ls_fishing_billing.quotes WHERE workspace_id=$1 LIMIT 0',[c.workspaceId]);},current:async(c,r)=>{
+  const current=await families.readCurrentDataInTransaction(c.tx,{proposalId:f.family.id,reference:f.family.command.selection.reference,expectedEpoch:f.family.command.expectedEpoch,lock:'shared'});
+  if(current.proposal.command.selection.familyId!==r.offer.material.financial.familyId||r.locale!=='en')throw new AppError('FORBIDDEN');
+  if(r.phase==='terminal'&&denyTerminal)throw new AppError('FORBIDDEN');
+  if(r.phase==='terminal'&&revokeTerminal)await c.tx.query('UPDATE ls_identity.sessions SET revoked_at=$2 WHERE token_digest=$1',[f.owner.sessionDigest,programNow]);
+  return {version:BILLING_SERVICE_V4,workspaceId:f.workspace,actorId:c.actor.id,quoteId:r.offer.material.financial.quoteId,familyId:r.offer.material.financial.familyId,materialSha256:r.offer.sha256,locale:r.locale,...references};
+ }};
+ const store=(source=f.source(),clock=programClock)=>new FishingGuestServiceOwnerNativeV4(f.workspace,source,f.billing(),f.native,authority,programRing,programKey,clock);
+ const command:ServiceOwnerIssueCommandV4={version:BILLING_SERVICE_V4,action:'issue_service_offer_v4',operationId:randomUUID(),quoteId:f.offer.material.financial.quoteId,
+  expectedQuoteRevision:1,expectedDraftSha256:f.draft.sha256,locale:'en',material:{version:BILLING_SERVICE_V4,action:'prepare_service_financial_draft',plan:f.command,policyKind:'selected_650_product_policy'}};
+ const faults=(deny:boolean,revoke=false)=>{denyTerminal=deny;revokeTerminal=revoke;};
+ return {...f,store,command,faults,authority};
+}
+it('V4 issuer commits exact new material/current quote and immutable journal in one native transaction, preserving original V3 provenance without debt/send',async()=>{
+ const f=await issuerV4(),original=(await engine.query('SELECT result_ciphertext FROM ls_fishing_billing.commands WHERE workspace_id=$1 AND action=\'guest_create_anchored\'',[f.workspace])).rows;
+ const transaction=vi.spyOn(f.db,'transaction'),result=await f.store().issue(f.owner,f.command);
+ expect(transaction).toHaveBeenCalledTimes(1);expect(result.state).toBe('committed');if(result.state!=='committed')throw Error('EXPECTED_COMMIT');
+ expect(result.result.quote).toMatchObject({version:BILLING_SERVICE_V4,state:'issued',revision:2,acceptance:null,messageLocaleAtIssue:'en'});
+ expect(result.result.financialState).toBe('unaccepted');expect(result.result.offerHoldClock).toBe('awaiting_known_successful_send');
+ expect(await f.store().readQuote(f.owner,f.command.quoteId)).toEqual(result.result.quote);
+ expect((await engine.query('SELECT result_ciphertext FROM ls_fishing_billing.commands WHERE workspace_id=$1 AND action=\'guest_create_anchored\'',[f.workspace])).rows).toEqual(original);
+ expect((await engine.query('SELECT * FROM ls_fishing_billing.obligations WHERE workspace_id=$1',[f.workspace])).rows).toHaveLength(0);
+ expect((await engine.query('SELECT * FROM ls_fishing_billing.guest_grants WHERE workspace_id=$1',[f.workspace])).rows).toHaveLength(0);
+ await expect(f.billing().readQuote(f.owner,f.command.quoteId)).rejects.toThrow('UNAVAILABLE');
+ expect(f.family.guardianVerified).toBe(false); // Test port is NOT genuine guardian approval.
+});
+it('V4 issuer retains original receipt replay after an unknown committed typed driver outcome without duplicate versions',async()=>{
+ const f=await issuerV4();let lose=true;const db:IdentityStore={transaction:async work=>{const result=await f.db.transaction(work);if(lose){lose=false;throw new AppError('CONFLICT');}return result;}};
+ await expect(f.store(f.source(db)).issue(f.owner,f.command)).rejects.toThrow('UNAVAILABLE');
+ const result=await f.store().issue(f.owner,f.command);expect(result.state).toBe('committed');if(result.state!=='committed')throw Error('EXPECTED_REPLAY');expect(result.result.replayed).toBe(true);
+ expect((await engine.query('SELECT revision,material_version FROM ls_fishing_billing.quotes WHERE workspace_id=$1 AND id=$2',[f.workspace,f.command.quoteId])).rows).toEqual([{revision:2,material_version:BILLING_SERVICE_V4}]);
+ expect((await engine.query('SELECT * FROM ls_fishing_billing.commands WHERE workspace_id=$1 AND operation_id=$2',[f.workspace,f.command.operationId])).rows).toHaveLength(1);
+});
+it('V4 issuer distinguishes actual rollback from uncertainty, including terminal native session revocation',async()=>{
+ for(const revoked of [false,true]){
+  const f=await issuerV4();f.faults(!revoked,revoked);const result=await f.store().issue(f.owner,f.command);
+  expect(result).toMatchObject({state:'rejected_current_attempt',code:revoked?'UNAUTHENTICATED':'FORBIDDEN',command:f.command,actorId:f.owner.id,workspaceId:f.workspace});
+  expect((await engine.query('SELECT revision,material_version FROM ls_fishing_billing.quotes WHERE workspace_id=$1 AND id=$2',[f.workspace,f.command.quoteId])).rows).toEqual([{revision:1,material_version:null}]);
+  expect((await engine.query('SELECT * FROM ls_fishing_billing.commands WHERE workspace_id=$1 AND operation_id=$2',[f.workspace,f.command.operationId])).rows).toHaveLength(0);
+  expect((await engine.query<{revoked_at:Date|null}>('SELECT revoked_at FROM ls_identity.sessions WHERE token_digest=$1',[f.owner.sessionDigest])).rows[0]!.revoked_at).toBe(null);
+ }
+});
+it('V4 issuer never treats a later rejected attempt as resolution of a previously unknown operation',async()=>{
+ const f=await issuerV4(),uncertain:IdentityStore={transaction:async work=>{await f.db.transaction(work);throw new AppError('FORBIDDEN');}};
+ await expect(f.store(f.source(uncertain)).issue(f.owner,f.command)).rejects.toThrow('UNAVAILABLE');
+ await engine.query('UPDATE ls_identity.sessions SET revoked_at=$2 WHERE token_digest=$1',[f.owner.sessionDigest,programNow]);
+ expect(await f.store().issue(f.owner,f.command)).toMatchObject({state:'rejected_current_attempt',code:'UNAUTHENTICATED'});
+ expect((await engine.query('SELECT * FROM ls_fishing_billing.commands WHERE workspace_id=$1 AND operation_id=$2',[f.workspace,f.command.operationId])).rows).toHaveLength(1);
+ await engine.query('UPDATE ls_identity.sessions SET revoked_at=NULL WHERE token_digest=$1',[f.owner.sessionDigest]);
+ const recovered=await f.store().issue(f.owner,f.command);expect(recovered.state==='committed'&&recovered.result.replayed).toBe(true);
+});
+it('V4 issuer rejects stale preview/revision/language and old issued V3 quotes instead of relabelling them',async()=>{
+ const f=await issuerV4();
+ for(const command of [{...f.command,expectedDraftSha256:'f'.repeat(64)},{...f.command,locale:'he' as const},
+  {...f.command,expectedQuoteRevision:2,material:{...f.command.material,plan:{...f.command.material.plan,expectedQuoteRevision:2}}}])expect((await f.store().issue(f.owner,command)).state).toBe('rejected_current_attempt');
+ await f.billing().issueAnchoredOffer(f.owner,{operationId:randomUUID(),quoteId:f.command.quoteId,expectedVersion:1});
+ expect(await f.store().issue(f.owner,f.command)).toMatchObject({state:'rejected_current_attempt',code:'CONFLICT'});
+ expect((await engine.query('SELECT material_version FROM ls_fishing_billing.quotes WHERE workspace_id=$1 AND id=$2',[f.workspace,f.command.quoteId])).rows).toEqual([{material_version:null}]);
+});
+it('V4 issuer refuses encrypted journal/metadata downgrade and preserves immutable history',async()=>{
+ const f=await issuerV4();await f.store().issue(f.owner,f.command);
+ await expect(engine.query('UPDATE ls_fishing_billing.commands SET result_ciphertext=$3 WHERE workspace_id=$1 AND operation_id=$2',[f.workspace,f.command.operationId,'CORRUPTION'])).rejects.toThrow('FISHING_SERVICE_ISSUE_IMMUTABLE');
+ await expect(engine.query('DELETE FROM ls_fishing_billing.commands WHERE workspace_id=$1 AND operation_id=$2',[f.workspace,f.command.operationId])).rejects.toThrow('FISHING_SERVICE_ISSUE_IMMUTABLE');
+ await expect(engine.exec('TRUNCATE ls_fishing_billing.commands')).rejects.toThrow('FISHING_SERVICE_ISSUE_IMMUTABLE');
+ await expect(engine.query('UPDATE ls_fishing_billing.quotes SET material_version=NULL WHERE workspace_id=$1 AND id=$2',[f.workspace,f.command.quoteId])).rejects.toThrow('FISHING_QUOTE_VERSION_DOWNGRADE');
+ await expect(engine.query("UPDATE ls_fishing_billing.quotes SET created_at=created_at+interval '1 microsecond' WHERE workspace_id=$1 AND id=$2",[f.workspace,f.command.quoteId])).rejects.toThrow('FISHING_QUOTE_ORIGIN_INDEX_IMMUTABLE');
+ expect(await f.store().issue(f.owner,{...f.command,locale:'he'})).toMatchObject({state:'rejected_current_attempt',code:'CONFLICT'});
+});
+it('V4 issuer read checks the real target before querying private quote data',async()=>{
+ const f=await issuerV4();await f.store().issue(f.owner,f.command);vi.spyOn(f.authority,'target').mockRejectedValue(new AppError('FORBIDDEN'));
+ const original=f.db.transaction.bind(f.db);let privateReads=0;
+ vi.spyOn(f.db,'transaction').mockImplementation(work=>original(tx=>work({query:async<T extends object>(sql:string,v:readonly unknown[]=[])=>{
+  if(sql.includes('payload_ciphertext AS ciphertext FROM ls_fishing_billing.quotes'))privateReads++;return tx.query<T>(sql,v);
+ }})));
+ await expect(f.store().readQuote(f.owner,f.command.quoteId)).rejects.toThrow('FORBIDDEN');expect(privateReads).toBe(0);
+});
+it('V4 issuer rejects stale native activities, past prospective schedules and duplicate new operations without rewriting the quote',async()=>{
+ const f=await issuerV4();expect(await f.store(f.source(),{now:()=>new Date('2035-02-01T15:00:00Z')}).issue(f.owner,f.command)).toMatchObject({state:'rejected_current_attempt',code:'CONFLICT'});
+ const result=await f.store().issue(f.owner,f.command);expect(result.state).toBe('committed');
+ expect(await f.store().issue(f.owner,{...f.command,operationId:randomUUID()})).toMatchObject({state:'rejected_current_attempt',code:'CONFLICT'});
+ expect((await engine.query('SELECT revision FROM ls_fishing_billing.quotes WHERE workspace_id=$1 AND id=$2',[f.workspace,f.command.quoteId])).rows).toEqual([{revision:2}]);
+ const stale=await issuerV4();await stale.source().record(stale.owner,stale.lesson(stale.lessons[0]!,1,stale.dates[0]!,1,'cancelled'));
+ expect(await stale.store().issue(stale.owner,stale.command)).toMatchObject({state:'rejected_current_attempt',code:'CONFLICT'});
+ expect((await engine.query('SELECT material_version FROM ls_fishing_billing.quotes WHERE workspace_id=$1 AND id=$2',[stale.workspace,stale.command.quoteId])).rows).toEqual([{material_version:null}]);
+});
+it('V4 issuer denies actual parent, foreign workspace and demo-owner attempts before material can be issued',async()=>{
+ const f=await issuerV4();expect(await f.store().issue(f.parent,f.command)).toMatchObject({state:'rejected_current_attempt',code:'FORBIDDEN'});
+ const other=await issuerV4();expect(await f.store(other.source()).issue(other.owner,f.command)).toMatchObject({state:'rejected_current_attempt',code:'FORBIDDEN'});
+ const preflight=vi.spyOn(f.db,'transaction');expect(await f.store().issue(other.owner,f.command)).toMatchObject({state:'rejected_current_attempt',code:'FORBIDDEN'});expect(preflight).not.toHaveBeenCalled();preflight.mockRestore();
+ await engine.query('INSERT INTO ls_demo.batches(workspace_id,batch_id,created_by) VALUES($1,$2,$3)',[f.workspace,'ls-owner-20350102',f.owner.id]);
+ await engine.query('INSERT INTO ls_demo.accounts(workspace_id,account_id,batch_id,source_key) VALUES($1,$2,$3,$4)',[f.workspace,f.owner.id,'ls-owner-20350102','SYNTHETIC-v4-issuer']);
+ expect(await f.store().issue(f.owner,f.command)).toMatchObject({state:'rejected_current_attempt',code:'FORBIDDEN'});
+ expect((await engine.query('SELECT material_version FROM ls_fishing_billing.quotes WHERE workspace_id=$1 AND id=$2',[f.workspace,f.command.quoteId])).rows).toEqual([{material_version:null}]);
+});
+it('V4 issuer and metadata refuse any existing legacy guest effect and prohibit relabelling old command history',async()=>{
+ const f=await issuerV4();await engine.query("INSERT INTO ls_fishing_billing.guest_grants(workspace_id,id,quote_id,action,token_digest,state,issued_at,expires_at,payload_ciphertext) VALUES($1,$2,$3,'accept_financial_offer',$4,'active',$5,$6,$7)",
+  [f.workspace,randomUUID(),f.command.quoteId,randomUUID().replaceAll('-','').repeat(2),programNow,new Date('2035-01-03T15:00:00Z'),'SYNTHETIC-OPAQUE-LEGACY-GRANT-NOT-AUTHORITY']);
+ expect(await f.store().issue(f.owner,f.command)).toMatchObject({state:'rejected_current_attempt',code:'CONFLICT'});
+ await expect(engine.query('UPDATE ls_fishing_billing.quotes SET revision=revision+1,material_version=$3 WHERE workspace_id=$1 AND id=$2',[f.workspace,f.command.quoteId,BILLING_SERVICE_V4])).rejects.toThrow('FISHING_QUOTE_NOT_PRISTINE');
+ await expect(engine.query("UPDATE ls_fishing_billing.commands SET action='guest_service_issue_v4' WHERE workspace_id=$1 AND quote_id=$2 AND action='guest_create_anchored'",[f.workspace,f.command.quoteId])).rejects.toThrow('FISHING_SERVICE_ISSUE_IMMUTABLE');
+ expect((await engine.query('SELECT revision,material_version FROM ls_fishing_billing.quotes WHERE workspace_id=$1 AND id=$2',[f.workspace,f.command.quoteId])).rows).toEqual([{revision:1,material_version:null}]);
+ const precise=await issuerV4();await expect(engine.query("INSERT INTO ls_fishing_billing.commands(workspace_id,operation_id,actor_id,action,quote_id,request_digest,result_ciphertext,created_at) VALUES($1,$2,$3,'guest_service_issue_v4',$4,$5,$6,$7::timestamptz+interval '1 microsecond')",
+  [precise.workspace,randomUUID(),precise.owner.id,precise.command.quoteId,'a'.repeat(64),'SYNTHETIC-TIMESTAMP-BOUNDARY-NOT-AUTHORITY',programNow])).rejects.toThrow('service_issue_time_scope_v4');
+});
+it('V4 issuer read authenticates immutable issued material rather than accepting a coherently reencrypted price rewrite',async()=>{
+ const f=await issuerV4(),issued=await f.store().issue(f.owner,f.command);if(issued.state!=='committed')throw Error('EXPECTED_ISSUE');
+ const altered=structuredClone(f.draft.material);altered.basis.override={reason:'SYNTHETIC UNAUTHORIZED HISTORY REWRITE',actorId:f.owner.id};altered.basis.lines[0]!.amountMinor=60000;
+ const forged=issueServiceFinancialOfferV4(bindServiceFinancialDraftV4(altered),1,issued.result.issuedAt,'en');
+ await engine.query('UPDATE ls_fishing_billing.quotes SET payload_ciphertext=$3 WHERE workspace_id=$1 AND id=$2',[f.workspace,f.command.quoteId,
+  seal(JSON.stringify(forged),serviceGuestAadV4('quote',f.workspace,f.command.quoteId),programRing)]);
+ await expect(f.store().readQuote(f.owner,f.command.quoteId)).rejects.toThrow('UNAVAILABLE');
 });

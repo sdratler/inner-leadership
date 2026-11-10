@@ -1,13 +1,16 @@
 import {z} from 'zod';
-import {billingId,billingInstant,sourceReferenceSchema} from './contracts.ts';
+import {billingId,billingInstant,sourceReferenceSchema,familyOfferSchema} from './contracts.ts';
 import {guestFamilyOfferSchema,guestIssuedMaterialSchema} from '../../lib/fishing-billing-guest-contract-v3.ts';
-import {servicePlanSnapshotV1Schema} from './service-plan-contract-v1.ts';
+import {servicePlanSnapshotV1Schema,servicePlanPreviewV1Schema} from './service-plan-contract-v1.ts';
 
 /** NEW prospective protocol only. Parsing, hashes, typed names or checked
  * boxes supply no native guardian/recipient/legal/provider/seat authority.
  * No V3 grant, signature, token or evidence is accepted as a V4 record. */
 export const BILLING_SERVICE_V4='JLFA-FISHING-BILLING-SERVICE-v4' as const;
 export const SERVICE_FINANCIAL_ACTION_V4='accept_service_financial_offer_v4' as const;
+export const serviceMaterialPreviewV4Schema=z.object({version:z.literal(BILLING_SERVICE_V4),action:z.literal('prepare_service_financial_draft'),
+ plan:servicePlanPreviewV1Schema,policyKind:z.enum(['selected_650_product_policy','custom_terms_document']),
+}).strict();
 const sha=z.string().regex(/^[a-f0-9]{64}$/),revision=z.number().int().positive().max(2147483647);
 const refs=z.object({cancellation:sourceReferenceSchema,weather:sourceReferenceSchema,renewal:sourceReferenceSchema,servicePeriod:sourceReferenceSchema}).strict();
 export const servicePolicyV4Schema=z.discriminatedUnion('kind',[
@@ -77,3 +80,13 @@ export const serviceFinancialAcceptanceV4Schema=z.object({version:z.literal(BILL
   (a.recurring.kind==='one_time_only')!==(a.recurringPrivateEvidenceId===null))c.addIssue({code:'custom',message:'SERVICE_ACCEPTANCE_SCOPE_OR_TIME'});
 });
 export type ServiceFinancialAcceptanceV4=z.infer<typeof serviceFinancialAcceptanceV4Schema>;
+export const serviceFamilyOfferV4Schema=z.object({...familyOfferSchema.shape,version:z.literal(BILLING_SERVICE_V4),offer:serviceOfferBindingV4Schema,
+ acceptance:serviceFinancialAcceptanceV4Schema.nullable(),messageLocaleAtIssue:z.enum(['en','he']),
+}).strict().superRefine((q,c)=>{
+ const m=q.offer.material.financial,equal=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
+ if(q.state==='draft'||q.issuedAt===null||q.workspaceId!==m.workspaceId||q.id!==m.quoteId||q.familyId!==m.familyId||q.createdAt!==m.createdAt||q.issuedAt!==m.issuedAt||
+  !equal(q.definition,m.definition)||!equal(q.lines,m.lines)||!equal(q.override,m.override)||q.revision<m.issuedRevision||
+  (q.state==='accepted'&&!q.acceptance)||(q.state==='issued'&&q.acceptance!==null)||
+  (q.acceptance&&(!equal(q.acceptance.offer,q.offer)||q.revision<=m.issuedRevision)))c.addIssue({code:'custom',message:'SERVICE_CURRENT_QUOTE_SCOPE'});
+});
+export type ServiceFamilyOfferV4=z.infer<typeof serviceFamilyOfferV4Schema>;

@@ -1,16 +1,14 @@
 import 'server-only';
-import {z} from 'zod';
 import {AppError} from '../../lib/errors.ts';
 import type {Actor,WorkspaceId} from '../identity/types.ts';
 import {billingId,type PublishedOffer} from './contracts.ts';
-import {servicePlanPreviewV1Schema} from './service-plan-contract-v1.ts';
 import {FishingServicePlanNativeV1} from './service-plan-native-v1.ts';
-import {BILLING_SERVICE_V4,type ServicePolicyV4} from './guest-service-contract-v4.ts';
+import {BILLING_SERVICE_V4,serviceMaterialPreviewV4Schema,type ServicePolicyV4} from './guest-service-contract-v4.ts';
 import {bindServiceFinancialDraftV4} from './guest-service-material-v4.ts';
+import type {BillingContext} from './native.ts';
+import type {AnchoredPlanningDataV3} from '../../lib/fishing-billing-guest-owner-store.ts';
 
-export const serviceMaterialPreviewV4Schema=z.object({version:z.literal(BILLING_SERVICE_V4),action:z.literal('prepare_service_financial_draft'),
- plan:servicePlanPreviewV1Schema,policyKind:z.enum(['selected_650_product_policy','custom_terms_document']),
-}).strict();
+export {serviceMaterialPreviewV4Schema} from './guest-service-contract-v4.ts';
 function policy(definition:PublishedOffer,kind:ServicePolicyV4['kind']):ServicePolicyV4{
  const p=definition.policies;if(!p.cancellation||!p.weather||!p.renewal||!p.service_period)throw new AppError('UNAVAILABLE');
  const refs={cancellation:p.cancellation,weather:p.weather,renewal:p.renewal,servicePeriod:p.service_period};
@@ -35,5 +33,14 @@ export class FishingGuestServiceMaterialNativeV4{
    return bindServiceFinancialDraftV4({version:BILLING_SERVICE_V4,kind:'prospective_service_financial_draft',basis:data.quote,
     schedule:{snapshot:preview.snapshot,sourceDigest:preview.digest},policy:policy(data.quote.definition,command.policyKind)});
   });
+ }
+ /** Trusted native issuer's SAME transaction and authenticated pristine basis.
+  * No nested transaction or quote-immutability bypass is supplied here. */
+ async previewInTransaction(c:Readonly<BillingContext>,data:AnchoredPlanningDataV3,raw:unknown){
+  const command=serviceMaterialPreviewV4Schema.parse(raw);
+  if(c.workspaceId!==this.workspaceId||c.actor.workspaceId!==this.workspaceId)throw new AppError('FORBIDDEN');
+  const preview=await this.service.previewInTransaction(c,data,command.plan);
+  return bindServiceFinancialDraftV4({version:BILLING_SERVICE_V4,kind:'prospective_service_financial_draft',basis:data.quote,
+   schedule:{snapshot:preview.snapshot,sourceDigest:preview.digest},policy:policy(data.quote.definition,command.policyKind)});
  }
 }
