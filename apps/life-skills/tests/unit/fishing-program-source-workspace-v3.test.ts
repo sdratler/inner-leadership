@@ -4,7 +4,9 @@ import {describe,expect,it,vi} from 'vitest';
 import {PROGRAM_SOURCE_V3,programSourceRecordV3Schema,type ProgramSourceCommandV3} from '../../src/features/fishing-billing/program-source-contract-v3.ts';
 import {programSourceGroupDataV3Schema} from '../../src/features/fishing-billing/program-source-owner-contract-v3.ts';
 import {prepareProgramSourceSaveV3,programLessonInputsV3,prepareProgramLessonSaveV3,ProgramLessonInputErrorV3} from '../../src/features/fishing-billing/program-source-client-v3.ts';
-import {ProgramSourceWorkspaceV3,ProgramSourceSummaryV3,ProgramSourceLessonsV3,retainProgramSourceOperationV3} from '../../src/features/fishing-billing/program-source-workspace-v3.tsx';
+import {ProgramSourceWorkspaceV3,ProgramSourceSummaryV3,ProgramSourceLessonsV3,NativeFamilyRosterV3,retainProgramSourceOperationV3,retainNativeFamilyOperationV3} from '../../src/features/fishing-billing/program-source-workspace-v3.tsx';
+import {prepareNativeFamilySaveV3} from '../../src/features/fishing-billing/program-source-client-v3.ts';
+import {NATIVE_FAMILY_OWNER_SOURCE_VERSION,nativeFamilyOwnerSourceSchema} from '../../src/features/fishing-billing/native-family-owner-source-contract.ts';
 const id=(n:number)=>'00000000-0000-4000-8000-'+String(n).padStart(12,'0');
 const group=id(4),owner=id(1),workspace=id(2);
 const base={version:PROGRAM_SOURCE_V3,groupId:group,id:group,expectedRevision:0,operationId:id(5)};
@@ -22,13 +24,26 @@ describe('native owner program readable views',()=>{
   try{
    const html=renderToStaticMarkup(createElement(ProgramSourceWorkspaceV3,{locale,groupId:group,groupLabel:'Synthetic group'}));
    expect(html).toContain(locale==='he'?'טוען את לוח הזמנים השמור':'Loading the saved schedule');expect(html).toContain('dir="'+(locale==='he'?'rtl':'ltr')+'"');
-   expect(html).not.toContain(group);expect(html).not.toContain('<form');expect(html).not.toContain('No lessons have been saved');expect(network).not.toHaveBeenCalled();
+   expect(html).not.toContain(group);expect(html).not.toContain('id="program-lesson-start"');expect(html).not.toContain('id="program-group-location"');
+   expect(html).not.toContain('id="program-family-reviewed"');expect(html).not.toContain('No lessons have been saved');expect(network).not.toHaveBeenCalled();
   }finally{network.mockRestore();}
  });
  it('keeps no-selection and invalid-selection distinct from loading or saved-empty',()=>{
   const idle=renderToStaticMarkup(createElement(ProgramSourceWorkspaceV3,{locale:'en'}));
   const invalid=renderToStaticMarkup(createElement(ProgramSourceWorkspaceV3,{locale:'en',groupId:'invalid'}));
   expect(idle).toContain('Choose a saved group');expect(idle).not.toContain('Loading');expect(invalid).toContain('selection is invalid');expect(invalid).not.toContain('No lessons');
+ });
+ it.each(['en','he'] as const)('keeps a blocked %s family view free of private request rows and mutation controls',locale=>{
+  const html=renderToStaticMarkup(createElement(NativeFamilyRosterV3,{locale,viewKey:'synthetic-private-view',workspaceId:workspace,data:null,accessBlocked:true,disabled:false,saveParticipant:()=>false,onLockChange:()=>undefined}));
+  expect(html).toContain(locale==='he'?'שהגישה אליה מותרת':'accessible saved group');expect(html).not.toContain('<form');expect(html).not.toContain('<select');expect(html).not.toContain(workspace);
+ });
+ it('retains original native-family UNKNOWN across a later rejection, while a first proved rejection unlocks',()=>{
+  const source=nativeFamilyOwnerSourceSchema.parse({version:NATIVE_FAMILY_OWNER_SOURCE_VERSION,kind:'family_source',reference:id(40),expectedEpoch:1,sourceDigest:'a'.repeat(64),
+   guardianName:'Synthetic Guardian',messageLanguage:'en',children:[{id:id(50),name:'Synthetic One',ageYears:11}],contactAdmission:'admitted',association:null});
+  let n=100;const save=prepareNativeFamilySaveV3(source,'Synthetic family',true,workspace,()=>id(n++));
+  const kept=retainNativeFamilyOperationV3({save,uncertain:true},{state:'rejected',code:'UNAUTHENTICATED',requestId:null});
+  expect(kept?.save).toBe(save);expect(kept?.save.serialized).toBe(save.serialized);
+  expect(retainNativeFamilyOperationV3({save,uncertain:false},{state:'rejected',code:'CONFLICT',requestId:null})).toBeNull();
  });
  it.each(['en','he'] as const)('shows actual scheduling facts and readable Florida lessons in %s without paid/active authority',locale=>{
   const value=data(),summary=renderToStaticMarkup(createElement(ProgramSourceSummaryV3,{data:value,locale}));

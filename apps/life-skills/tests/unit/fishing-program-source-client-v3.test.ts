@@ -4,7 +4,13 @@ import {successResponse,failureResponse} from '../../src/lib/http/json.ts';
 import {IdentityClientError,type sessionInfo} from '../../src/features/identity/client.ts';
 import {PROGRAM_SOURCE_V3,programSourceRecordV3Schema,type ProgramSourceRecordV3} from '../../src/features/fishing-billing/program-source-contract-v3.ts';
 import {programSourceGroupDataV3Schema} from '../../src/features/fishing-billing/program-source-owner-contract-v3.ts';
-import {createProgramSourceClientV3,prepareProgramSourceSaveV3,programSourceSavedHeadV3,programSourceSaveMatchesV3,type PreparedProgramSourceSaveV3} from '../../src/features/fishing-billing/program-source-client-v3.ts';
+import {createProgramSourceClientV3,prepareProgramSourceSaveV3,programSourceSavedHeadV3,programSourceSaveMatchesV3,prepareProgramGroupSaveV3,
+ prepareNativeFamilySaveV3,nativeFamilySaveMatchesV3,prepareProgramParticipantSaveV3,type PreparedProgramSourceSaveV3,type PreparedNativeFamilySaveV3} from '../../src/features/fishing-billing/program-source-client-v3.ts';
+import {NATIVE_FAMILY_OWNER_SOURCE_VERSION,nativeFamilyOwnerSourceSchema,type NativeFamilyOwnerSource} from '../../src/features/fishing-billing/native-family-owner-source-contract.ts';
+import {NATIVE_FAMILY_VERSION} from '../../src/features/fishing-billing/native-family-contract-v1.ts';
+import {FISHING_INQUIRY_FAMILY_PROPOSAL_VERSION,fishingInquiryFamilyProposalSchema} from '../../src/features/fishing-billing/inquiry-family-contract-v1.ts';
+import {OWNER_LOCATION_PLANNING_PREFIX,ownerLocationPlanningSource} from '../../src/features/fishing-billing/owner-location-planning-source.ts';
+import {currentTrip390Fields} from '../fixtures/trip390-current.ts';
 
 const id=(n:number)=>'00000000-0000-4000-8000-'+String(n).padStart(12,'0');
 const owner=id(1),workspace=id(2),requestId=id(3),group=id(4),operation=id(5);
@@ -21,6 +27,18 @@ function data(){return programSourceGroupDataV3Schema.parse({version:PROGRAM_SOU
 const ok=(value:unknown)=>successResponse(value,requestId);
 const no=(code:ConstructorParameters<typeof AppError>[0])=>failureResponse(new AppError(code),requestId);
 const saved=(pending:PreparedProgramSourceSaveV3)=>({version:PROGRAM_SOURCE_V3,kind:'recorded_source',record:record(pending),digest:'c'.repeat(64),replayed:false});
+function familySource():NativeFamilyOwnerSource{return nativeFamilyOwnerSourceSchema.parse({version:NATIVE_FAMILY_OWNER_SOURCE_VERSION,kind:'family_source',reference:id(40),expectedEpoch:1,sourceDigest:'a'.repeat(64),
+ guardianName:'Synthetic Guardian',messageLanguage:'en',children:[{id:id(50),name:'Synthetic One',ageYears:11},{id:id(51),name:'Synthetic Two',ageYears:13}],contactAdmission:'admitted',association:null});}
+function preparedFamily(){let n=100;return prepareNativeFamilySaveV3(familySource(),'Synthetic family',true,workspace,()=>id(n++));}
+function familyRecord(p:PreparedNativeFamilySaveV3){
+ const c=p.command,snapshot={version:'synthetic-unapproved',language:'en',textDigest:'b'.repeat(64)};
+ return fishingInquiryFamilyProposalSchema.parse({version:FISHING_INQUIRY_FAMILY_PROPOSAL_VERSION,id:id(200),workspaceId:workspace,
+  command:{operationId:c.operationId,expectedEpoch:c.expectedEpoch,selection:{reference:c.reference,familyId:c.familyId,children:c.children},expectedSourceDigest:c.expectedSourceDigest,expectedNativeDigest:'c'.repeat(64)},
+  recordedBy:owner,recordedAt:'2026-11-10T18:30:00.000Z',guardianPersonId:id(201),messageLanguage:'en',sourceVersion:'synthetic-source',offerVersion:'synthetic-historical',
+  acknowledgment:{version:'synthetic-ack',language:'en',reservationNotice:snapshot,studentConduct:snapshot,whatsapp:false},
+  state:'proposed',guardianVerified:false,recipientVerified:false,financialAcceptance:false,outboundEligible:false});
+}
+function associatedFamily(){const source=familySource();source.association=familyRecord(preparedFamily());return nativeFamilyOwnerSourceSchema.parse(source);}
 afterEach(()=>{vi.useRealTimers();vi.restoreAllMocks();});
 
 describe('native program source browser contract',()=>{
@@ -135,5 +153,120 @@ describe('native program source browser contract',()=>{
   const controller=new AbortController();controller.abort();const transport=vi.fn<typeof fetch>(),lookup=vi.fn(async()=>session);
   expect((await createProgramSourceClientV3({fetch:transport,session:lookup}).save(fresh(),controller.signal)).state).toBe('not_sent');
   expect(lookup).not.toHaveBeenCalled();expect(transport).not.toHaveBeenCalled();
+ });
+});
+
+describe('owner location note and first native group preparation',()=>{
+ it('uses the reviewed helper for an actual normalized owner statement and never invents external venue approval',async()=>{
+  const prepared=await prepareProgramGroupSaveV3({groupId:group,workspaceId:workspace,operationId:operation,inputs:{location:'  Synthetic proposed park  ',state:'forming'}},owner);
+  const note=await ownerLocationPlanningSource({workspaceId:workspace,ownerAccountId:owner,groupId:group,operationId:operation,location:'Synthetic proposed park'});
+  expect(prepared?.command).toMatchObject({kind:'group',expectedRevision:0,fields:{state:'forming',location:'Synthetic proposed park',venueSource:note}});
+  expect(note.id).toBe(OWNER_LOCATION_PLANNING_PREFIX+operation);expect(prepared?.workspaceId).toBe(workspace);
+  expect(prepared?.serialized).not.toMatch(/approved|paid|guardianVerified/);
+ });
+ it('creates a fresh owner note for a new operation even with the same location; unchanged fields prepare no operation',async()=>{
+  const first=await prepareProgramGroupSaveV3({groupId:group,workspaceId:workspace,operationId:operation,inputs:{location:'Synthetic park',state:'forming'}},owner);
+  if(!first||first.command.kind!=='group')throw new Error('FIXTURE');const current=record(first);
+  expect(await prepareProgramGroupSaveV3({groupId:group,workspaceId:workspace,operationId:id(90),current,inputs:{location:'Synthetic park',state:'forming'}},owner)).toBeNull();
+  const next=await prepareProgramGroupSaveV3({groupId:group,workspaceId:workspace,operationId:id(91),current,inputs:{location:'Synthetic park',state:'cancelled'}},owner);
+  expect(next?.command).toMatchObject({expectedRevision:1,fields:{venueSource:{id:OWNER_LOCATION_PLANNING_PREFIX+id(91)}}});
+  expect(next?.serialized).not.toBe(first.serialized);
+ });
+ it('preserves an existing external source when only status changes, and binds a new owner note when location changes',async()=>{
+  const current=record(fresh());
+  const status=await prepareProgramGroupSaveV3({groupId:group,workspaceId:workspace,operationId:id(92),current,inputs:{location:'Synthetic reviewed location',state:'cancelled'}},owner);
+  expect(status?.command).toMatchObject({fields:{venueSource:{id:'synthetic-venue',sha256:'a'.repeat(64)}}});
+  const changed=await prepareProgramGroupSaveV3({groupId:group,workspaceId:workspace,operationId:id(93),current,inputs:{location:'Different proposed place',state:'forming'}},owner);
+  expect(changed?.command).toMatchObject({fields:{venueSource:{id:OWNER_LOCATION_PLANNING_PREFIX+id(93)}}});
+ });
+ it('bounds authenticated planning preparation and never dispatches a POST from a late session response',async()=>{
+  const transport=vi.fn<typeof fetch>(),input={groupId:group,workspaceId:workspace,operationId:operation,inputs:{location:'Synthetic park',state:'forming' as const}};
+  expect((await createProgramSourceClientV3({fetch:transport,session:async()=>session}).prepareGroup(input)).state).toBe('prepared');
+  expect(transport).not.toHaveBeenCalled();
+  vi.useFakeTimers();let release:(value:Session)=>void=()=>undefined;const late=new Promise<Session>(resolve=>{release=resolve;});
+  const attempt=createProgramSourceClientV3({fetch:transport,session:()=>late,timeoutMs:50}).prepareGroup(input);
+  await vi.advanceTimersByTimeAsync(51);expect(await attempt).toMatchObject({state:'failed',code:'UNAVAILABLE'});release(session);await vi.advanceTimersByTimeAsync(1);expect(transport).not.toHaveBeenCalled();
+ });
+});
+
+describe('saved inquiry selection and narrowly scoped native family recovery',()=>{
+ it('reuses the existing strict review decoder, preserving opaque cursors and typed saved city without inferred location',async()=>{
+  const fields=currentTrip390Fields(),cursor='Opaque_'+'a'.repeat(64),transport=vi.fn<typeof fetch>().mockResolvedValue(Response.json({ok:true,data:{items:[{id:id(40),source:'public_group_application',state:'owner_review',receivedAt:'2026-11-10T18:30:00.000Z',fields}],nextCursor:null}}));
+  const result=await createProgramSourceClientV3({fetch:transport}).inquiries('Synthetic Guardian',cursor);
+  expect(result).toMatchObject({state:'ready',value:{items:[{fields:{city:'My Local Neighborhood',postalCode:'01234-5678'}}]}});
+  const url=new URL(String(transport.mock.calls[0]![0]),'https://synthetic.invalid');expect(url.searchParams.get('cursor')).toBe(cursor);expect(url.searchParams.get('search')).toBe('Synthetic Guardian');
+  expect(url.searchParams.has('workspaceId')).toBe(false);expect(url.searchParams.has('expectedEpoch')).toBe(false);
+ });
+ it('rejects a corrupt or mixed inquiry page rather than showing a partial successful list',async()=>{
+  const good={id:id(40),source:'public_group_application',state:'owner_review',receivedAt:'2026-11-10T18:30:00.000Z',fields:currentTrip390Fields()};
+  for(const items of [[good,{...good,id:id(41),source:'retired_sheet'}],[good,good]]){
+   const result=await createProgramSourceClientV3({fetch:async()=>Response.json({ok:true,data:{items,nextCursor:null}})}).inquiries('');
+   expect(result).toMatchObject({state:'failed',code:'UNAVAILABLE'});expect(result).not.toHaveProperty('value');
+  }
+ });
+ it('loads family source by selected saved reference only and refuses a changed reference or partial child data',async()=>{
+  const source=familySource(),transport=vi.fn<typeof fetch>().mockResolvedValue(ok(source));
+  expect(await createProgramSourceClientV3({fetch:transport}).family(source.reference)).toEqual({state:'ready',value:source,requestId});
+  expect(transport.mock.calls[0]![0]).toBe('/api/private/fishing-inquiry-family-proposals?kind=source&reference='+source.reference);
+  for(const value of [{...source,reference:id(99)},{...source,children:[source.children[0],source.children[0]]}])
+   expect(await createProgramSourceClientV3({fetch:async()=>ok(value)}).family(source.reference)).toMatchObject({state:'failed',code:'UNAVAILABLE'});
+ });
+ it('requires explicit review and contact admission, generates fresh child IDs and never creates accounts or financial authority',()=>{
+  expect(()=>prepareNativeFamilySaveV3(familySource(),'Synthetic',false,workspace)).toThrow();
+  expect(()=>prepareNativeFamilySaveV3({...familySource(),contactAdmission:'required'},'Synthetic',true,workspace)).toThrow();
+  expect(()=>prepareNativeFamilySaveV3(associatedFamily(),'Synthetic',true,workspace)).toThrow();
+  const p=preparedFamily();expect(p.command.children).toEqual([{applicationChildId:id(50),nativeChildId:id(102)},{applicationChildId:id(51),nativeChildId:id(103)}]);
+  expect(Object.isFrozen(p.command.children[0])).toBe(true);expect(p.serialized).not.toMatch(/password|activation|subscription|outboundEligible/);
+ });
+ it('retries the same native family creation after unknown with the exact original body and immutable original receipt',async()=>{
+  const p=preparedFamily(),value={version:NATIVE_FAMILY_VERSION,kind:'native_family_created',resultKind:'original_creation_receipt',record:familyRecord(p),replayed:true};
+  const transport=vi.fn<typeof fetch>().mockResolvedValueOnce(no('UNAVAILABLE')).mockResolvedValueOnce(ok(value)),client=createProgramSourceClientV3({fetch:transport,session:async()=>session});
+  expect((await client.saveFamily(p)).state).toBe('unknown');expect(transport).toHaveBeenCalledTimes(1);
+  expect(await client.saveFamily(p)).toMatchObject({state:'saved',record:{guardianVerified:false,recipientVerified:false,financialAcceptance:false,outboundEligible:false},replayed:true});
+  expect(transport.mock.calls.map(call=>call[1]?.body)).toEqual([p.serialized,p.serialized]);
+  expect(nativeFamilySaveMatchesV3(p,familyRecord(p))).toBe(true);
+ });
+ it('accepts only a fully correlated native family rejection as known rejection',async()=>{
+  const p=preparedFamily(),value={version:NATIVE_FAMILY_VERSION,kind:'native_family_rejected',workspaceId:workspace,actorId:owner,command:p.command,code:'CONFLICT'};
+  expect(await createProgramSourceClientV3({fetch:async()=>ok(value),session:async()=>session}).saveFamily(p)).toEqual({state:'rejected',code:'CONFLICT',requestId});
+  for(const forged of [{...value,workspaceId:id(90)},{...value,actorId:id(91)},{...value,command:{...p.command,operationId:id(92)}},{...value,code:'UNAVAILABLE'}])
+   expect((await createProgramSourceClientV3({fetch:async()=>ok(forged),session:async()=>session}).saveFamily(p)).state).toBe('unknown');
+ });
+ it('keeps wrong native-family success identity, actor, workspace or promoted authority uncertain',async()=>{
+  const p=preparedFamily(),r=familyRecord(p),value={version:NATIVE_FAMILY_VERSION,kind:'native_family_created',resultKind:'original_creation_receipt',record:r,replayed:false};
+  for(const changed of [{...r,recordedBy:id(90)},{...r,workspaceId:id(91)},{...r,guardianVerified:true},{...r,command:{...r.command,selection:{...r.command.selection,familyId:id(92)}}}])
+   expect((await createProgramSourceClientV3({fetch:async()=>ok({...value,record:changed}),session:async()=>session}).saveFamily(p)).state).toBe('unknown');
+ });
+});
+
+describe('participant starts use actual native family mapping and saved lesson facts',()=>{
+ function foundationData(){const value=data();for(const sequence of [1,2]){
+  const c=prepareProgramSourceSaveV3({version:PROGRAM_SOURCE_V3,kind:'lesson',groupId:group,id:id(70+sequence),operationId:id(80+sequence),expectedRevision:0,
+   fields:{state:'scheduled',sequence,startsAt:sequence===1?'2026-11-15T15:00:00.000Z':'2026-11-22T15:00:00.000Z',endsAt:sequence===1?'2026-11-15T16:00:00.000Z':'2026-11-22T16:00:00.000Z',timeZone:'America/New_York'}},workspace);
+  value.lessons.push({record:record(c),digest:'d'.repeat(64)});
+ }return value;}
+ it('plans each sibling separately against its real saved native child and the actual first foundation lesson',()=>{
+  const value=foundationData(),source=associatedFamily();
+  for(const [i,child] of source.children.entries()){
+   const p=prepareProgramParticipantSaveV3({data:value,source,applicationChildId:child.id,lessonId:id(71),state:'planned',operationId:id(300+i)});
+   expect(p?.command).toMatchObject({kind:'progression',id:id(102+i),expectedRevision:0,fields:{familyId:id(101),proposalId:id(200),reference:id(40),expectedEpoch:1,
+    eligibleFrom:'2026-11-15T15:00:00.000Z',readiness:'needs_foundation',evidence:null}});
+  }
+ });
+ it('does not infer catch-up, change family mapping or permit a cancelled schedule',()=>{
+  const value=foundationData(),source=associatedFamily(),input={data:value,source,applicationChildId:id(50),lessonId:id(72),state:'planned' as const,operationId:id(300)};
+  expect(()=>prepareProgramParticipantSaveV3(input)).toThrow('ELIGIBLE_SAVED_LESSON_REQUIRED');
+  expect(()=>prepareProgramParticipantSaveV3({...input,lessonId:id(71),applicationChildId:id(99)})).toThrow('SELECTED_CHILD_NOT_ASSOCIATED');
+  expect(()=>prepareProgramParticipantSaveV3({...input,source:{...source,association:null}})).toThrow('CURRENT_NATIVE_FAMILY_REQUIRED');
+  const c=value.group.record.command;if(c.kind!=='group')throw new Error('FIXTURE');c.fields.state='cancelled';
+  expect(()=>prepareProgramParticipantSaveV3({...input,lessonId:id(71)})).toThrow('GROUP_NOT_FORMING');
+ });
+ it('preserves advanced saved evidence and exact eligible instant when withdrawing, even without a remaining scheduled lesson',()=>{
+  const value=foundationData(),source=associatedFamily(),p=prepareProgramParticipantSaveV3({data:value,source,applicationChildId:id(50),lessonId:id(71),state:'planned',operationId:id(300)});
+  if(!p||p.command.kind!=='progression')throw new Error('FIXTURE');
+  const current=record(prepareProgramSourceSaveV3({...p.command,fields:{...p.command.fields,readiness:'verified_catchup',evidence:{id:'synthetic-existing-skill-evidence',sha256:'e'.repeat(64)},eligibleFrom:'2026-11-15T10:00:00.123-05:00'}},workspace));
+  value.progressions.push({record:current,digest:'f'.repeat(64)});value.lessons=[];
+  const next=prepareProgramParticipantSaveV3({data:value,source,applicationChildId:id(50),state:'withdrawn',operationId:id(301)});
+  expect(next?.command).toMatchObject({expectedRevision:1,fields:{state:'withdrawn',readiness:'verified_catchup',eligibleFrom:'2026-11-15T10:00:00.123-05:00',evidence:{id:'synthetic-existing-skill-evidence',sha256:'e'.repeat(64)}}});
  });
 });
