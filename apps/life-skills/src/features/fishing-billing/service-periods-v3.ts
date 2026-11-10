@@ -60,6 +60,24 @@ export function calendarMonthlyChildPeriodV3(raw:z.input<typeof periodInputSchem
 }
 export type CalendarMonthlyChildPeriodV3=ReturnType<typeof calendarMonthlyChildPeriodV3>;
 
+/** Weekly lesson windows follow the first lesson's Florida wall clock. The
+ * final window ends at the child's exact monthly boundary, including a fifth
+ * weekly lesson when the calendar month contains one. Never use 168-hour UTC
+ * buckets across DST, and never guess a nonexistent/ambiguous local boundary. */
+export function childPeriodLessonWeeksV3(raw:z.input<typeof servicePeriodSchema>){
+ const period=servicePeriodSchema.parse(raw),anchor=wallTime(Date.parse(period.startsAt)),end=Date.parse(period.endsAt),endWall=wallTime(end);
+ const windows:{startsAt:string;endsAt:string}[]=[];
+ const marker=(index:number)=>{const at=new Date(utc(anchor));at.setUTCDate(at.getUTCDate()+index*7);return {...anchor,year:at.getUTCFullYear(),month:at.getUTCMonth()+1,day:at.getUTCDate()};};
+ let startsAt=new Date(Date.parse(period.startsAt)).toISOString();
+ for(let index=0;Date.parse(startsAt)<end;index++){
+  requireBilling(index<5,'UNAVAILABLE');const next=marker(index+1);
+  const endsAt=utc(next)>=utc(endWall)?new Date(end).toISOString():resolve(next);
+  requireBilling(Date.parse(endsAt)>Date.parse(startsAt)&&Date.parse(endsAt)<=end,'UNAVAILABLE');
+  windows.push({startsAt,endsAt});startsAt=endsAt;
+ }
+ return windows;
+}
+
 const offerInputSchema=createFamilyOfferSchema.omit({children:true}).extend({
  children:z.array(z.object({
   lineId:billingId,childId:billingId,periodId:billingId,firstEligibleLesson:lessonSchema,
