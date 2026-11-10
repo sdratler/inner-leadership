@@ -332,7 +332,8 @@ export function NativeFamilyRosterV3({locale,viewKey,workspaceId,data,accessBloc
  const loaded=source?.key===key&&!accessBlocked&&!denied?source.result:null;
  const family=loaded?.state==='ready'?loaded.value:null,editing=editor?.key===key?editor:null;
  const recovery=!!pending?.uncertain,held=busy||pending!==null;
- const dirty=reviewed||editing!==null;
+ // A review checkbox belongs only to its currently loaded source context.
+ const dirty=(reviewed&&family!==null)||editing!==null;
  const report=(value:'saved'|'unconfirmed'|ErrorCode)=>{setMessage(value);setFeedbackVersion(n=>n+1);};
  const updatePending=(value:FamilyPending|null)=>{pendingRef.current=value;setPending(value);};
  useEffect(()=>{onLockChange(pending!==null||dirty);},[pending,dirty,onLockChange]);
