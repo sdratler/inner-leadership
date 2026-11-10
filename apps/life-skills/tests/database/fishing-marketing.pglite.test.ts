@@ -1,4 +1,5 @@
 import {createHmac,randomUUID} from "node:crypto";
+import {localMarketingFixture} from "../fixtures/fishing-marketing-local.ts";
 import {readFile} from "node:fs/promises";
 import {afterAll,beforeAll,expect,it,vi} from "vitest";
 import {PGlite} from "@electric-sql/pglite";
@@ -75,6 +76,32 @@ it('retains encrypted rule notes, exact source links and a held destination with
  expect((await db.query('SELECT count(*) FROM ls_identity.people')).rows).toEqual(before);
  const rows=await db.query<{payload_ciphertext:string}>('SELECT payload_ciphertext FROM ls_service_interest.fishing_marketing_snapshot');
  expect(rows.rows).toHaveLength(1);expect(rows.rows[0]!.payload_ciphertext).not.toContain(review.ruleNote);expect(rows.rows[0]!.payload_ciphertext).not.toContain(review.rulesUrl);
+});
+
+it('reloads current campaign evidence through the same encrypted receiver and denies forged, revoked and cross-workspace reads',async()=>{
+ const payload=localMarketingFixture(),clock={now:()=>new Date('2026-11-10T15:01:00Z')};
+ const current=new FishingMarketingStore(adapter,workspace,ring,'synthetic-fishing-private-digest-key',owner,clock);
+ const secret='synthetic-current-campaign-secret-not-real',env={LS_FISHING_MARKETING_ENABLED:'true',LS_FISHING_MARKETING_BRIDGE_SECRET:secret,LS_BNA_OWNER_ACCOUNT_ID:owner};
+ const request=()=>new Request('https://synthetic.invalid/api/private/fishing-marketing',{method:'POST',headers:{'content-type':'application/json','x-fishing-marketing-secret':secret},body:JSON.stringify(payload)});
+ const before=(await db.query('SELECT count(*) FROM ls_identity.people')).rows;
+ const response=await receiveFishingMarketing(request(),env,async()=>current);expect(response.status).toBe(201);
+ expect((await response.json()).data.ackDigest).toBe(createHmac('sha256',secret).update('fishing-marketing-ack/v1\n').update(canonical(payload)).digest('hex'));
+ expect((await receiveFishingMarketing(request(),env,async()=>current)).status).toBe(200);
+ const reloaded=new FishingMarketingStore(adapter,workspace,ring,'synthetic-fishing-private-digest-key',owner,clock);
+ expect((await reloaded.read(ownerActor))?.snapshot).toEqual(payload);
+ await expect(reloaded.read(otherActor)).rejects.toMatchObject({code:'NOT_FOUND'});
+ await expect(reloaded.read({...otherActor,role:'practitioner'})).rejects.toMatchObject({code:'NOT_FOUND'});
+ await expect(reloaded.read({...ownerActor,workspaceId:asId(randomUUID(),'workspace')})).rejects.toMatchObject({code:'NOT_FOUND'});
+ await expect(reloaded.read({...ownerActor,sessionDigest:otherActor.sessionDigest})).rejects.toMatchObject({code:'UNAUTHENTICATED'});
+ await db.query('UPDATE ls_identity.sessions SET revoked_at=$2 WHERE account_id=$1',[owner,clock.now()]);
+ await expect(reloaded.read(ownerActor)).rejects.toMatchObject({code:'UNAUTHENTICATED'});
+ await db.query('UPDATE ls_identity.sessions SET revoked_at=NULL WHERE account_id=$1',[owner]);
+ await db.query("UPDATE ls_identity.accounts SET role='parent' WHERE id=$1",[owner]);
+ await expect(reloaded.read(ownerActor)).rejects.toMatchObject({code:'NOT_FOUND'});
+ await db.query("UPDATE ls_identity.accounts SET role='practitioner' WHERE id=$1",[owner]);
+ expect((await db.query('SELECT count(*) FROM ls_identity.people')).rows).toEqual(before);
+ const rows=await db.query<{payload_ciphertext:string}>('SELECT payload_ciphertext FROM ls_service_interest.fishing_marketing_snapshot');
+ expect(rows.rows).toHaveLength(1);expect(rows.rows[0]!.payload_ciphertext).not.toContain('Synthetic approved');expect(rows.rows[0]!.payload_ciphertext).not.toContain('local_playwright');
 });
 
 it("does not expose an altered or corrupt snapshot",async()=>{

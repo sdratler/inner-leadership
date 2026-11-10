@@ -2,7 +2,7 @@ import {createElement} from "react";
 import {renderToStaticMarkup} from "react-dom/server";
 import {expect,it} from "vitest";
 import {FishingMarketingPanel} from "../../src/features/fishing-marketing/panel.tsx";
-import {fishingMarketingSnapshotSchema} from "../../src/features/fishing-marketing/contract.ts";
+import {fishingMarketingLegacySnapshotSchema as fishingMarketingSnapshotSchema} from "../../src/features/fishing-marketing/contract.ts";
 const h="a".repeat(64),at="2026-10-29T12:00:00Z";
 const snapshot=fishingMarketingSnapshotSchema.parse({schemaVersion:1,program:"fishing",channel:"facebook_group_manual",mode:"assisted",generatedAt:at,
  schedule:{timezone:"America/New_York",dailyCap:5,cooldownDays:30,enabled:true,funnelReady:false,day:"2026-10-29",window:"waiting",nextDue:at,lastRun:null},
