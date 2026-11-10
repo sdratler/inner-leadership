@@ -577,3 +577,38 @@ it('native-family-create authenticates original journal metadata and keeps repla
  await engine.query('UPDATE ls_fishing_billing.commands SET result_ciphertext=$2 WHERE workspace_id=$1 AND operation_id=$3',[f.workspace,'SYNTHETIC CORRUPTION',command.operationId]);
  await expect(f.store().createNativeFamily(f.owner,command)).rejects.toThrow('UNAVAILABLE');
 });
+
+it('owner-http-native-family: saves exact siblings and reloads through a new real owner session',async()=>{
+ const f=await fixture(),command=await nativeFamilyCommand(f),source=await f.source(),before=await f.counts();
+ const http=await ownerHttpHarness(f),created=await http.call({action:'create_native_family',command});
+ expect(created.status).toBe(200);const body=await created.json();
+ expect(body).toMatchObject({ok:true,data:{version:NATIVE_FAMILY_VERSION,kind:'native_family_created',resultKind:'original_creation_receipt',replayed:false}});
+ const original=fishingInquiryFamilyProposalSchema.parse(body.data.record);
+ expect(original.command.selection).toEqual({reference:command.reference,familyId:command.familyId,children:command.children});
+ expect(original).toMatchObject({guardianVerified:false,recipientVerified:false,financialAcceptance:false,outboundEligible:false});
+ const saved=await createdNativeRows(f,command);expect(saved.family).toHaveLength(1);expect(saved.children).toHaveLength(2);expect(saved.journal).toHaveLength(1);
+ const fresh=await ownerHttpHarness(f),loaded=await fresh.call(null,{method:'GET',query:'?'+new URLSearchParams({reference:command.reference,expectedEpoch:'1'})});
+ expect(loaded.status).toBe(200);expect((await loaded.json()).data.record).toEqual(original);
+ expect((await (await fresh.call({action:'create_native_family',command})).json()).data).toMatchObject({replayed:true,record:original});
+ expect(await createdNativeRows(f,command)).toEqual(saved);expect(await f.source()).toEqual(source);
+ const after=await f.counts();for(const field of ['accounts','cases','mail','outbound']as const)expect(after[field]).toBe(before[field]);
+});
+
+it('owner-http-native-family: a real parent session cannot create native siblings despite valid session CSRF',async()=>{
+ const f=await fixture(),command=await nativeFamilyCommand(f),before=await f.counts(),parent=await ownerHttpHarness(f,f.parent);
+ const response=await parent.call({action:'create_native_family',command});
+ expect(response.status).toBe(403);expect(await response.json()).toMatchObject({ok:false,error:{code:'FORBIDDEN'}});
+ expect(await createdNativeRows(f,command)).toEqual({family:[],children:[],journal:[]});expect(await f.counts()).toEqual(before);
+});
+
+it('owner-http-native-family: a lost committed result recovers only the original operation without duplicate records',async()=>{
+ const f=await fixture(),command=await nativeFamilyCommand(f);let lost=true;
+ const uncertain:IdentityStore={transaction:async work=>{const result=await db.transaction(work);if(lost){lost=false;throw new AppError('CONFLICT');}return result;}};
+ const first=await ownerHttpHarness(f,f.owner,db,f.store(uncertain)),response=await first.call({action:'create_native_family',command});
+ expect(response.status).toBe(503);expect(await response.json()).toMatchObject({ok:false,error:{code:'UNAVAILABLE'}});
+ const committed=await createdNativeRows(f,command),before=await f.counts();
+ expect(committed.family).toHaveLength(1);expect(committed.children).toHaveLength(2);expect(committed.journal).toHaveLength(1);
+ const fresh=await ownerHttpHarness(f),retry=await fresh.call({action:'create_native_family',command});
+ expect(retry.status).toBe(200);expect((await retry.json()).data).toMatchObject({resultKind:'original_creation_receipt',replayed:true});
+ expect(await createdNativeRows(f,command)).toEqual(committed);expect(await f.counts()).toEqual(before);
+});
