@@ -92,6 +92,19 @@ it('adopts a genuinely newer same-lineage current head and never falls back to o
  const pause=prepareServiceOwnerStateV4(state.data.current,serviceUiIdV4(600),'pause'),reply=serviceOwnerConfirmedFixtureV4(pause.operation,state.data.current);if(reply.state!=='confirmed')throw Error('FIXTURE');
  expect(s.workflow.currentFor(reply.current)?.quote.revision).toBe(5);expect(s.workflow.currentFor(s.current)?.quote.revision).toBe(5);
 });
+it('retains the initial current read as the floor before any mutation has run',()=>{
+ const s=setup(),cash=serviceOwnerConfirmedFixtureV4(s.cash,s.current);if(cash.state!=='confirmed')throw Error('FIXTURE');
+ const pause=prepareServiceOwnerStateV4(cash.current,serviceUiIdV4(610),'pause'),newer=serviceOwnerConfirmedFixtureV4(pause.operation,cash.current);if(newer.state!=='confirmed')throw Error('FIXTURE');
+ expect(s.workflow.currentFor(newer.current)?.quote.revision).toBe(5);
+ expect(s.workflow.currentFor(s.current)?.quote.revision).toBe(5);
+ expect(s.workflow.currentFor(s.current)?.balance.paidMinor).toBe(20000);expect(s.transport).not.toHaveBeenCalled();
+});
+it('rejects a stale submit basis after the initial current read without dispatching or reserving the operation',async()=>{
+ const s=setup(),cash=serviceOwnerConfirmedFixtureV4(s.cash,s.current);if(cash.state!=='confirmed')throw Error('FIXTURE');
+ const pause=prepareServiceOwnerStateV4(cash.current,serviceUiIdV4(611),'pause'),newer=serviceOwnerConfirmedFixtureV4(pause.operation,cash.current);if(newer.state!=='confirmed')throw Error('FIXTURE');
+ expect(s.workflow.currentFor(newer.current)?.quote.revision).toBe(5);
+ expect(await s.workflow.submit(s.pending,s.current)).toBe(false);expect(s.workflow.getSnapshot()).toEqual({phase:'idle'});expect(s.transport).not.toHaveBeenCalled();
+});
 it('confirms a V4 reversal while retaining original cash bytes and per-child ledger arithmetic',async()=>{
  const s=setup(),cash=serviceOwnerConfirmedFixtureV4(s.cash,s.current);if(cash.state!=='confirmed'||!('result' in cash.receipt))throw Error('FIXTURE');
  const pending=prepareServiceOwnerReversalV4(cash.current,serviceUiIdV4(601),cash.receipt.result.receipt.id,{amount:'50',allocations:{[serviceUiIdV4(10)]:'50'},reason:'SYNTHETIC correction'});

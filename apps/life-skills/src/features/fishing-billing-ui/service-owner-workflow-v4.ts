@@ -37,7 +37,7 @@ export class ServiceOwnerBillingWorkflowV4{
  clear(){if(!this.active||this.busy||this.unresolved())return false;this.set(idle);return true;}
  currentFor(raw:unknown){
   if(!this.active||this.unresolved())return null;const base=serviceOwnerDataV4(raw,this.scope);
-  if(!this.latest)return base;
+  if(!this.latest){this.latest=base;return base;}
   if(this.latest.quote.revision>=base.quote.revision){serviceOwnerProgressV4(base,this.latest);return this.latest;}
   serviceOwnerProgressV4(this.latest,base);this.latest=base;return base;
  }
