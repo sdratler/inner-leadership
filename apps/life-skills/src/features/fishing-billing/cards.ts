@@ -1,7 +1,7 @@
 import 'server-only';
 import {randomUUID,randomInt} from 'node:crypto';
 import {z} from 'zod';
-import {seal,unseal,type Keyring} from '../identity/crypto.ts';
+import {seal,type Keyring} from '../identity/crypto.ts';
 import {one} from '../identity/store.ts';
 import type {Actor} from '../identity/types.ts';
 import {
@@ -14,25 +14,15 @@ import {
  prepareBillingCurrentTestCheckoutV3,
  type BillingStripeSignedReceipt,type BillingStripeInboxAuthority,
 } from './stripe-test.ts';
-import {billingStripeBindingSchema,type BillingStripeBinding} from './card-binding.ts';
+import {type BillingStripeBinding} from './card-binding.ts';
 import {
- CARD_VERSION,prepareCardCommandSchema,cardSelectionSchema,cardAttemptSchema,cardPreparationReceiptSchema,
+ CARD_VERSION,prepareCardCommandSchema,cardAttemptSchema,cardPreparationReceiptSchema,
  cardSessionResultSchema,
- type CardAttempt,type ProviderPaymentSnapshot,type ProviderRefund,
+ type ProviderPaymentSnapshot,type ProviderRefund,
 } from './card-contracts.ts';
 
-const positive=z.number().int().min(1).max(100_000_000);
-const metadataSchema=z.object({billing_quote_id:billingId,billing_attempt_id:billingId}).strict();
-const frozenRequestSchema=z.object({
- binding:billingStripeBindingSchema,operationId:billingId,quoteId:billingId,expectedVersion:z.number().int().positive(),
- allocations:cardSelectionSchema,amountMinor:positive,idempotencyKey:billingId,
- params:z.object({mode:z.literal('payment'),client_reference_id:billingId,payment_method_configuration:z.string().regex(/^pmc_[A-Za-z0-9]+$/),
-  integration_identifier:z.string().regex(/^jlfa_monthly_[a-z]{8}$/),metadata:metadataSchema,
-  payment_intent_data:z.object({metadata:metadataSchema}).strict(),line_items:z.array(z.object({quantity:z.literal(1),price_data:z.object({currency:z.literal('usd'),unit_amount:positive,product_data:z.object({name:z.string().min(1).max(200)}).strict()}).strict()}).strict()).length(1),
- }).strict(),
-}).strict();
-const requestRecordSchema=z.object({version:z.literal('JLFA-FISHING-CHECKOUT-REQUEST-v1'),workspaceId:billingId,attemptId:billingId,quoteId:billingId,actorId:billingId,digest:z.string().regex(/^[a-f0-9]{64}$/),request:frozenRequestSchema}).strict();
-type CheckoutRequest=z.infer<typeof frozenRequestSchema>;
+import {frozenRequestSchema,requestRecordSchema,type CheckoutRequest} from './card-checkout-request.ts';
+
 type Allocation=LedgerReceipt['allocations'][number];
 /** Root's reviewed official-SDK adapter only. It must enforce the current
  * effect-specific test account/service admission immediately before an SDK
@@ -53,7 +43,7 @@ export interface BillingCurrentRefundAllocationAuthorityV3{
   * separately approved native allocation. No inferred or executed refund. */
  allocations(context:BillingLedgerContext,frame:CurrentLedgerFrameV3,refund:ProviderRefund,original:LedgerReceipt):Promise<Allocation[]|null>;
 }
-import {FishingBillingCardEventProcessor,cardRecordCanonical as canonical,cardRecordAad as aad} from './card-event-processor.ts';
+import {FishingBillingCardEventProcessor,cardRecordAad as aad} from './card-event-processor.ts';
 
 export class FishingBillingCards extends FishingBillingCardEventProcessor<CurrentLedgerFrameV3>{
  constructor(
@@ -70,16 +60,6 @@ export class FishingBillingCards extends FishingBillingCardEventProcessor<Curren
    refundAllocations:async(c,frame,refund,original)=>currentRefundAuthority?currentRefundAuthority.allocations(c,frame,refund,original):
     frame.source.kind==='historical_account'&&refundAuthority?refundAuthority.allocations(c,frame.source.quote,refund,original):null,
   },ring,digestKey,configuration.binding,inboxAuthority,provider);
- }
- private async frozenRequest(c:BillingLedgerContext,a:CardAttempt):Promise<CheckoutRequest>{
-  const row=await one<{quoteId:string;ciphertext:string}>(c.tx,'SELECT quote_id AS "quoteId",payload_ciphertext AS ciphertext FROM ls_fishing_billing.card_attempt_requests WHERE workspace_id=$1 AND attempt_id=$2',[c.workspaceId,a.id]);requireBilling(row,'UNAVAILABLE');
-  const record=requestRecordSchema.parse(JSON.parse(unseal(row!.ciphertext,aad('checkout_request',c.workspaceId,a.id),this.ring))),r=record.request;
-  requireBilling(record.workspaceId===c.workspaceId&&record.attemptId===a.id&&record.quoteId===a.quoteId&&row!.quoteId===a.quoteId&&record.actorId===a.actorId&&record.digest===this.digest(r)&&
-   r.operationId===a.id&&r.idempotencyKey===a.id&&r.quoteId===a.quoteId&&r.expectedVersion===a.command.expectedVersion&&
-   r.amountMinor===a.preparation.result.amountMinor&&canonical(r.allocations)===canonical(a.preparation.result.allocations)&&
-   r.params.client_reference_id===a.quoteId&&r.params.metadata.billing_quote_id===a.quoteId&&r.params.metadata.billing_attempt_id===a.id&&
-   canonical(r.params.metadata)===canonical(r.params.payment_intent_data.metadata)&&r.params.line_items[0]!.price_data.unit_amount===r.amountMinor,'UNAVAILABLE');
-  this.sameBinding(r.binding);return r;
  }
  async prepare(actor:Actor,raw:unknown){
   const cmd=prepareCardCommandSchema.parse(raw);

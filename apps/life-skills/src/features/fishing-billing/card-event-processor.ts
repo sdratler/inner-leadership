@@ -13,6 +13,7 @@ import {billingStripeSignedReceiptSchema,type BillingStripeSignedReceipt,type Bi
 import {billingStripeBindingSchema,type BillingStripeBinding} from './card-binding.ts';
 import {CARD_VERSION,cardAttemptSchema,providerPaymentSnapshotSchema,cardExceptionSchema,type CardAttempt,type ProviderPaymentSnapshot,type ProviderRefund} from './card-contracts.ts';
 import type {BillingStripeTestProvider} from './cards.ts';
+import {requestRecordSchema,type CheckoutRequest} from './card-checkout-request.ts';
 
 /** The exact same event/attempt/settlement machinery consumes either genuine
  * native V3 or V4 frames. These structural views do not convert provenance or
@@ -63,6 +64,16 @@ export class FishingBillingCardEventProcessor<Frame>{
    canonical(after.command)===canonical(before.command)&&canonical(after.preparation)===canonical(before.preparation),'UNAVAILABLE');
   const row=await one(c.tx,'UPDATE ls_fishing_billing.card_attempts SET revision=$4,state=$5,payload_ciphertext=$6 WHERE workspace_id=$1 AND id=$2 AND revision=$3 RETURNING id',[c.workspaceId,before.id,before.revision,after.revision,after.state,seal(JSON.stringify(parsed),aad('attempt',c.workspaceId,before.id),this.ring)]);
   requireBilling(row,'CONFLICT');
+ }
+ protected async frozenRequest(c:BillingLedgerContext,a:CardAttempt):Promise<CheckoutRequest>{
+  const row=await one<{quoteId:string;ciphertext:string}>(c.tx,'SELECT quote_id AS "quoteId",payload_ciphertext AS ciphertext FROM ls_fishing_billing.card_attempt_requests WHERE workspace_id=$1 AND attempt_id=$2',[c.workspaceId,a.id]);requireBilling(row,'UNAVAILABLE');
+  const record=requestRecordSchema.parse(JSON.parse(unseal(row!.ciphertext,aad('checkout_request',c.workspaceId,a.id),this.ring))),r=record.request;
+  requireBilling(record.workspaceId===c.workspaceId&&record.attemptId===a.id&&record.quoteId===a.quoteId&&row!.quoteId===a.quoteId&&record.actorId===a.actorId&&record.digest===this.digest(r)&&
+   r.operationId===a.id&&r.idempotencyKey===a.id&&r.quoteId===a.quoteId&&r.expectedVersion===a.command.expectedVersion&&
+   r.amountMinor===a.preparation.result.amountMinor&&canonical(r.allocations)===canonical(a.preparation.result.allocations)&&
+   r.params.client_reference_id===a.quoteId&&r.params.metadata.billing_quote_id===a.quoteId&&r.params.metadata.billing_attempt_id===a.id&&
+   canonical(r.params.metadata)===canonical(r.params.payment_intent_data.metadata)&&r.params.line_items[0]!.price_data.unit_amount===r.amountMinor,'UNAVAILABLE');
+  this.sameBinding(r.binding);return r;
  }
  private async event(eventId:string){
   requireBilling(/^evt_[A-Za-z0-9_]{1,150}$/.test(eventId));
