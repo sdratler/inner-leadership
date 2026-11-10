@@ -1,5 +1,6 @@
 import {planAfterEarlyInquiryOutbox} from './inquiry-outbox-history.ts';
 import {planAfterInquiryEmailControl} from './inquiry-email-control-history.ts';
+import {planAfterFishingGroupPreparation} from './fishing-group-preparation-history.ts';
 export type Migration = Readonly<{ name: string; checksum: string; sql: string }>;
 export type AppliedMigration = Readonly<{ name: string; checksum: string }>;
 export function planMigrations(files: readonly Migration[], applied: readonly AppliedMigration[]): readonly Migration[] {
@@ -15,6 +16,8 @@ export function planMigrations(files: readonly Migration[], applied: readonly Ap
     if (!expected || expected.name !== item.name || expected.checksum !== item.checksum) {
       const selective=planAfterInquiryEmailControl(sorted,applied);
       if(selective)return selective;
+      const preparation=planAfterFishingGroupPreparation(sorted,applied);
+      if(preparation)return preparation;
       const pending=planAfterEarlyInquiryOutbox(sorted,applied);
       if(pending)return pending;
       throw new Error("MIGRATION_HISTORY_DIVERGED");
