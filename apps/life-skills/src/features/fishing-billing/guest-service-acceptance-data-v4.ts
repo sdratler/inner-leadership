@@ -13,6 +13,7 @@ import {serviceGrantLifecycleV4Schema,serviceGuestCurrentEvidenceV4Schema,servic
 import {verifyServiceGrantRecordV4,verifyServiceFinancialAcceptanceV4} from './guest-service-material-v4.ts';
 import {readIssuedServiceQuoteWithRowV4} from './guest-service-quote-readback-v4.ts';
 import {serviceGuestAadV4} from './guest-service-aad-v4.ts';
+import {readServicePreAcceptanceStateV4} from './guest-service-state-data-v4.ts';
 
 const action=SERVICE_FINANCIAL_ACTION_V4,sha=z.string().regex(/^[a-f0-9]{64}$/);
 export type ServiceGuestOperationRowV4={operationId:string;grantId:string;quoteId:string;action:string;materialVersion:string|null;digest:string;receiptId:string;recordedAt:Date;exactTime:boolean;ciphertext:string};
@@ -39,7 +40,7 @@ export function verifyServiceGuestEvidenceV4(raw:unknown,workspaceId:WorkspaceId
   a.recurringPrivateEvidenceId===(a.recurring.kind==='one_time_only'?null:a.id));
  stored(p.workspaceId===workspaceId&&p.familyId===m.familyId&&p.quoteId===m.quoteId&&p.grantId===g.id&&p.offerSnapshotSha256===g.offer.sha256&&p.locale===g.displayBundle.locale&&
   p.issuedByAccountId===g.issuedByAccountId&&p.recipientBindingEvidenceId===g.recipientBindingEvidenceId&&p.financialTermsReleaseEvidenceId===g.displayBundle.financialTerms.releaseEvidenceId&&same(p.admissionPolicy,g.admissionPolicy)&&a.assuranceEvidenceId===p.assuranceEvidenceId);
- stored(r.quoteId===m.quoteId&&r.operationId===command.operationId&&r.acceptedAt===a.acceptedAt&&r.acceptedRevision===m.issuedRevision+1&&!r.replayed);return e;
+ stored(command.expectedQuoteRevision>=m.issuedRevision&&r.quoteId===m.quoteId&&r.operationId===command.operationId&&r.acceptedAt===a.acceptedAt&&r.acceptedRevision===command.expectedQuoteRevision+1&&!r.replayed);return e;
 }
 export function readServiceGuestOperationRowV4(c:BillingLedgerContext,workspaceId:WorkspaceId,id:string){
  stored(c.workspaceId===workspaceId);return one<ServiceGuestOperationRowV4>(c.tx,'SELECT operation_id AS "operationId",grant_id AS "grantId",quote_id AS "quoteId",action,material_version AS "materialVersion",request_digest AS digest,receipt_id AS "receiptId",recorded_at AS "recordedAt",recorded_at=date_trunc(\'milliseconds\',recorded_at) AS "exactTime",receipt_ciphertext AS ciphertext FROM ls_fishing_billing.guest_operations WHERE workspace_id=$1 AND operation_id=$2',[workspaceId,id]);
@@ -56,6 +57,7 @@ async function readPinnedServiceAcceptanceDataV4(c:BillingLedgerContext,workspac
  const frame=await readIssuedServiceQuoteWithRowV4(c,workspaceId,id,ring,sourceKey),q=frame.quote,a=q.acceptance;
  stored(Date.parse(q.createdAt)<=c.now.valueOf()&&q.issuedAt!==null&&Date.parse(q.issuedAt)<=c.now.valueOf());
  if(!a){
+  await readServicePreAcceptanceStateV4(c,workspaceId,q,q.revision,{state:q.state==='cancelled'?'cancelled':'issued',paused:q.paused},ring,sourceKey);
   const existing=await c.tx.query('SELECT 1 FROM ls_fishing_billing.guest_operations WHERE workspace_id=$1 AND quote_id=$2 UNION ALL SELECT 1 FROM ls_fishing_billing.guest_financial_acceptances WHERE workspace_id=$1 AND quote_id=$2 UNION ALL SELECT 1 FROM ls_fishing_billing.obligations WHERE workspace_id=$1 AND quote_id=$2 UNION ALL SELECT 1 FROM ls_fishing_billing.receipts WHERE workspace_id=$1 AND quote_id=$2 LIMIT 1',[workspaceId,id]);
   stored(existing.length===0);return {...frame,original:null};
  }
@@ -74,6 +76,7 @@ async function readPinnedServiceAcceptanceDataV4(c:BillingLedgerContext,workspac
  stored(er&&er.action===action&&er.materialVersion===BILLING_SERVICE_V4&&er.exactTime===true);
  const raw=serviceGuestFinancialEvidenceV4Schema.parse(JSON.parse(unseal(er.ciphertext,serviceGuestAadV4('financial_acceptance',workspaceId,a.id),ring))),expected=serviceGuestCommandDigestV4(workspaceId,g.id,raw.command,commandKey);
  const evidence=verifyServiceGuestEvidenceV4(raw,workspaceId,g,raw.command,expected,r);
+ await readServicePreAcceptanceStateV4(c,workspaceId,q,raw.command.expectedQuoteRevision,{state:'issued',paused:false},ring,sourceKey);
  stored(expected===op.commandDigest&&same(a,evidence.acceptance)&&er.id===a.id&&er.quoteId===q.id&&er.grantId===g.id&&er.operationId===a.operationId&&er.issuedRevision===g.offer.material.financial.issuedRevision&&q.revision>=r.acceptedRevision);instant(er.acceptedAt,r.acceptedAt);
  const obligations=await c.tx.query<{lineId:string;familyId:string;childId:string;periodId:string;startsAt:Date;endsAt:Date;exactTimes:boolean}>('SELECT line_id AS "lineId",family_id AS "familyId",child_id AS "childId",period_id AS "periodId",starts_at AS "startsAt",ends_at AS "endsAt",(starts_at=date_trunc(\'milliseconds\',starts_at) AND ends_at=date_trunc(\'milliseconds\',ends_at)) AS "exactTimes" FROM ls_fishing_billing.obligations WHERE workspace_id=$1 AND quote_id=$2 LIMIT 11',[workspaceId,id]);
  stored(obligations.length===q.lines.length);

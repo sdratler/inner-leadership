@@ -26,7 +26,7 @@ export function verifyServiceFamilyOfferV4(raw:unknown){
  * encrypted evidence/obligation persistence belong to the native consumer. */
 export function acceptServiceFinancialOfferV4(raw:unknown,expectedRevision:number,evidence:unknown,presentation:unknown,recurringPresentation:unknown|null):ServiceFamilyOfferV4{
  const q=verifyServiceFamilyOfferV4(raw),a=verifyServiceFinancialAcceptanceV4(evidence,presentation,recurringPresentation);
- if(q.state!=='issued'||q.paused||q.acceptance!==null||q.revision!==expectedRevision||q.revision!==q.offer.material.financial.issuedRevision||canonical(a.offer)!==canonical(q.offer))throw new AppError('CONFLICT');
+ if(q.state!=='issued'||q.paused||q.acceptance!==null||q.revision!==expectedRevision||q.revision<q.offer.material.financial.issuedRevision||canonical(a.offer)!==canonical(q.offer))throw new AppError('CONFLICT');
  if(q.offer.material.schedule.snapshot.children.some(child=>[...child.weeklyLessons,child.keys.fields,child.local.fields].some(activity=>Date.parse(activity.startsAt)<=Date.parse(a.acceptedAt))))throw new AppError('CONFLICT');
  return serviceFamilyOfferV4Schema.parse({...q,state:'accepted',revision:q.revision+1,acceptance:a});
 }

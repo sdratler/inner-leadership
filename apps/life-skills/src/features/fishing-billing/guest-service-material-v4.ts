@@ -96,9 +96,11 @@ export function serviceRecurringStatementSha256V4(offer:unknown,bundle:unknown,l
  return digest({domain:'separate-recurring-card-statement/v4',offerSnapshotSha256:b.sha256,presentation,lines:selection,
   renewal:b.material.policy.renewal,cancellation:b.material.policy.cancellation,prepaidFirstPeriod:'once_no_renewal_before_start_no_second_charge_at_start'});
 }
-export function validateServiceAcceptCommandV4(offer:unknown,bundle:unknown,raw:unknown,presentation:unknown,recurringPresentation:unknown|null):ServiceAcceptCommandV4{
+export function validateServiceAcceptCommandV4(offer:unknown,bundle:unknown,raw:unknown,presentation:unknown,recurringPresentation:unknown|null,observedQuoteRevision?:number):ServiceAcceptCommandV4{
  const b=verifyServiceOfferBindingV4(offer),display=verifyServiceDisplayBundleV4(b,bundle),command=serviceAcceptCommandV4Schema.parse(raw),p=servicePresentationV4Schema.parse(presentation);
- requireFact(command.expectedQuoteRevision===b.material.financial.issuedRevision&&command.offerSnapshotSha256===b.sha256&&command.displayBundleId===display.id&&command.displayBundleSha256===display.sha256);
+ // Material integrity only. Native current-state admission additionally pins
+ // this exact observed revision and authenticates all prior owner transitions.
+ requireFact(command.expectedQuoteRevision===(observedQuoteRevision??b.material.financial.issuedRevision)&&command.expectedQuoteRevision>=b.material.financial.issuedRevision&&command.offerSnapshotSha256===b.sha256&&command.displayBundleId===display.id&&command.displayBundleSha256===display.sha256);
  serviceFinancialStatementSha256V4(b,display,p);
  if(command.recurring.kind==='one_time_only')requireFact(recurringPresentation===null);
  else{const r=serviceRecurringPresentationV4Schema.parse(recurringPresentation);requireFact(r.grantId===p.grantId);

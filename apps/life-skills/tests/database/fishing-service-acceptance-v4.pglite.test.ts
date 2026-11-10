@@ -11,14 +11,17 @@ import {serviceRecurringStatementSha256V4} from '../../src/features/fishing-bill
 import {FishingServiceGuestGrantResolverV4} from '../../src/features/fishing-billing/guest-service-grant-resolver-v4.ts';
 import {serviceGuestAadV4} from '../../src/features/fishing-billing/guest-service-aad-v4.ts';
 import {seal,unseal} from '../../src/features/identity/crypto.ts';
-import {verifyServiceFamilyOfferV4} from '../../src/features/fishing-billing/guest-service-domain-v4.ts';
 import type {IdentityStore,SqlSession} from '../../src/features/identity/store.ts';
 import type {BillingLedgerContext} from '../../src/features/fishing-billing/native.ts';
 import {AppError} from '../../src/lib/errors.ts';
+import {FishingServiceBillingOwnerV4} from '../../src/features/fishing-billing/guest-service-owner-financial-v4.ts';
+import {FishingProgramSourceNativeV3} from '../../src/features/fishing-billing/program-source-native-v3.ts';
+import {FishingBillingInquiryFamilyProposals} from '../../src/lib/fishing-billing-inquiry-family-proposal.ts';
+import {SERVICE_STATE_ACTION_V4} from '../../src/features/fishing-billing/guest-service-owner-state-contract-v4.ts';
 vi.mock('server-only',()=>({}));
 let engine:PGlite;const network=vi.fn(async()=>{throw Error('NO_NETWORK');});
 beforeAll(async()=>{requirePgliteMemoryEnvironment(process.env);vi.stubGlobal('fetch',network);engine=new PGlite();await initializeProgramSchema(engine);
- for(const name of ['UNNUMBERED_ls_fishing_fulfillment_v1.sql','UNNUMBERED_ls_fishing_service_material_v4.sql','UNNUMBERED_ls_fishing_quote_service_v4.sql'])await engine.exec(await readFile('migrations/proposals/'+name,'utf8'));},20000);
+ for(const name of ['UNNUMBERED_ls_fishing_fulfillment_v1.sql','UNNUMBERED_ls_fishing_service_material_v4.sql','UNNUMBERED_ls_fishing_quote_service_v4.sql','UNNUMBERED_ls_fishing_service_state_v4.sql'])await engine.exec(await readFile('migrations/proposals/'+name,'utf8'));},20000);
 afterEach(()=>{expect(network).not.toHaveBeenCalled();});afterAll(async()=>{try{await engine?.close();}finally{vi.unstubAllGlobals();}});
 // Actual native family/schedule/owner issuer + real acceptance/resolver/SQL/
 // crypto. Grant is RAW SEEDED and guardian/legal/global reservation references
@@ -58,10 +61,8 @@ it('service-acceptance-v4 replays ORIGINAL consent/receipt after new translation
  const f=await ready(),first=await f.store().acceptFinancialOffer(f.token,f.command),before=await evidence(f,first.acceptanceId),displayCalls=f.flags.displayCalls;
  f.presentation.affirmation.financialTermsText='SYNTHETIC replacement wording not the original display';const newAssurance=randomUUID();
  const resolver=f.resolver({...f.guestAuthority,current:async(c,g,mode)=>({...await f.guestAuthority.current(c,g,mode),assuranceEvidenceId:newAssurance})});
- const row=(await engine.query<{ciphertext:string}>('SELECT payload_ciphertext AS ciphertext FROM ls_fishing_billing.quotes WHERE workspace_id=$1 AND id=$2',[f.workspace,f.quote.id])).rows[0]!;
- const q=verifyServiceFamilyOfferV4(JSON.parse(unseal(row.ciphertext,serviceGuestAadV4('quote',f.workspace,f.quote.id),programRing)));
- const cancelled=verifyServiceFamilyOfferV4({...q,revision:q.revision+1,state:'cancelled',paused:true});
- await engine.query('UPDATE ls_fishing_billing.quotes SET revision=$3,payload_ciphertext=$4 WHERE workspace_id=$1 AND id=$2',[f.workspace,q.id,cancelled.revision,seal(JSON.stringify(cancelled),serviceGuestAadV4('quote',f.workspace,q.id),programRing)]);
+ const owner=new FishingServiceBillingOwnerV4(f.workspace,new FishingProgramSourceNativeV3(f.db,f.workspace,programRing,programKey,f.owner.id,f.clock),new FishingBillingInquiryFamilyProposals(f.db,f.workspace,programRing,programKey,f.clock),programRing,programKey,f.commandKey,Buffer.from(programKey),f.clock,{target:async()=>{},authorize:async()=>{}});
+ expect((await owner.setState(f.owner,{version:BILLING_SERVICE_V4,action:SERVICE_STATE_ACTION_V4,operationId:randomUUID(),quoteId:f.quote.id,expectedQuoteRevision:3,cancel:true,paused:true})).state).toBe('committed');
  const replay=await f.store(f.db,resolver).acceptFinancialOffer(f.token,f.command);expect(replay).toEqual({...first,replayed:true});
  expect(await evidence(f,first.acceptanceId)).toEqual(before);expect(f.flags.displayCalls).toBe(displayCalls);expect(await state(f)).toEqual({...accepted,revision:4});
 });
