@@ -104,7 +104,8 @@ export function proxy(request: NextRequest) {
   // public intake/login and foundation preview outside this data-page selector.
   // The explicitly synthetic sample retains its separate preview perimeter and
   // ordinary role gate; it cannot load operational aggregates or real records.
-  const privateDataPage = /^\/(he|en)\/(?:app|family|workspace|parent|client|practitioner|attendance|calendar|checkins|commitments|forms|goals|home-practice|payments|progress|resources|updates)(?:\/|$)/.test(pathname);
+  const privateDataPage = /^\/(he|en)\/(?:app|family|workspace|parent|client|practitioner|attendance|calendar|checkins|commitments|forms|goals|home-practice|payments|progress|resources|updates)(?:\/|$)/.test(pathname)||
+    process.env.LS_FISHING_OWNER_APP_SCOPE_JSON!==undefined&&pathname.startsWith('/api/')&&!pathname.startsWith('/api/public/')&&pathname!=='/api/health';
   // These data pages/APIs depend on strict canonical HTTPS forwarding. Validate the original
   // transport before the request-header rewrite below can hide an invalid chain.
   // Forwarding never grants a session, role, case or audience permission.

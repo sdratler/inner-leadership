@@ -1,4 +1,4 @@
-.root{min-height:100dvh;background:#f3f8fb;color:#092668;font-family:var(--font-heebo),Arial,sans-serif;font-size:1rem;line-height:1.5}
+.root{min-height:100dvh;background:#f3f8fb;color:#092668;font-family:"Heebo",Arial,sans-serif;font-size:1rem;line-height:1.5}
 .header{min-height:64px;display:flex;align-items:center;justify-content:space-between;gap:24px;padding:16px 24px;background:#fff;border-block-end:1px solid #d5e1e8}
 .header a{color:inherit;padding:10px 12px;min-height:44px;display:inline-flex;align-items:center}
 .header a:focus-visible{outline:3px solid #b78000;outline-offset:3px}

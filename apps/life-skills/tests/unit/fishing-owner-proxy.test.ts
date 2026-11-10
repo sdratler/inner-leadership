@@ -41,3 +41,14 @@ it('preserves the separate public inquiry perimeter and actual canonical-transpo
  expect(proxy(new NextRequest(origin+'/api/public/group-applications',{method:'POST'})).headers.get('x-middleware-next')).toBe('1');
  expect(proxy(new NextRequest('http://life-skills.example.invalid/en/app/clients')).status).toBe(503);
 });
+it.each(['/api/private/academy-crm','/api/private/fishing-group-preparations','/api/private/fishing-inquiry-family-proposals','/api/private/fishing-program-sources','/api/private/fishing-marketing'])('%s validates original transport before trusted-header rewriting',path=>{
+ configured();
+ expect(proxy(new NextRequest('http://life-skills.example.invalid'+path,{method:'POST'})).status).toBe(503);
+ for(const headers of [
+  {'x-forwarded-host':'life-skills.example.invalid','x-forwarded-proto':'http'},
+  {'x-forwarded-host':'life-skills.example.invalid','x-forwarded-proto':'https, http'},
+  {'x-forwarded-host':'life-skills.example.invalid, untrusted.invalid','x-forwarded-proto':'https'},
+ ])expect(proxy(new NextRequest(origin+path,{method:'POST',headers})).status).toBe(503);
+ const accepted=proxy(new NextRequest('http://life-skills.example.invalid'+path,{method:'POST',headers:{host:'life-skills.example.invalid','x-forwarded-host':'life-skills.example.invalid','x-forwarded-proto':'https'}}));
+ expect(accepted.headers.get('x-middleware-next')).toBe('1');
+});

@@ -5,10 +5,13 @@ import {readJson,successResponse,failureResponse} from "../../lib/http/json.ts";
 import {canonical} from "../contact-ops/core/validation.ts";
 import {fishingMarketingSnapshotSchema} from "./contract.ts";
 import type {FishingMarketingStore} from "./store.ts";
+import {configuredFishingOwnerAppScope} from '../../lib/fishing-owner-app-scope.ts';
 type Environment=Record<string,string|undefined>;
 /** Dedicated credential and default-off gate, independent of all publishing providers. */
 export function requireFishingMarketingBridge(request:Request,env:Environment){
- const secret=(env.LS_FISHING_MARKETING_BRIDGE_SECRET??"").trim(),owner=env.LS_BNA_OWNER_ACCOUNT_ID??"";
+ const secret=(env.LS_FISHING_MARKETING_BRIDGE_SECRET??"").trim();
+ const selected=env.LS_FISHING_OWNER_APP_SCOPE_JSON===undefined?null:configuredFishingOwnerAppScope(env.LS_IDENTITY_WORKSPACE_ID??'',env);
+ const owner=selected?.binding.accountId??env.LS_BNA_OWNER_ACCOUNT_ID??'';
  if(env.LS_FISHING_MARKETING_ENABLED!=="true"||secret.length<32||secret.length>1024||!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(owner))throw new AppError("UNAVAILABLE");
  const supplied=request.headers.get("X-Fishing-Marketing-Secret")??"";
  const hash=(value:string)=>createHash("sha256").update(value).digest();

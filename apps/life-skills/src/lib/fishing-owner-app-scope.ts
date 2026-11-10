@@ -23,6 +23,7 @@ const apiMethods:Readonly<Record<string,readonly string[]>>=Object.freeze({
  '/api/private/group-applications':['GET','HEAD'],
  '/api/private/people':['GET','HEAD'],
  '/api/private/academy-crm':['GET','HEAD','POST'],
+ '/api/private/fishing-marketing':['POST'],
  '/api/private/fishing-group-preparations':['GET','HEAD','POST'],
  '/api/private/fishing-inquiry-family-proposals':['GET','HEAD','POST'],
  '/api/private/fishing-program-sources':['GET','HEAD','POST'],
