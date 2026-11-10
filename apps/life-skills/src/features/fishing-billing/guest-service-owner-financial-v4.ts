@@ -9,15 +9,14 @@ import {one,type SqlSession} from '../identity/store.ts';
 import type {BillingContext} from './native.ts';
 import {billingId,reminderIntentSchema} from './contracts.ts';
 import {ledgerReceiptV2Schema,dateCashReceiptSchema,newYorkDate,type LedgerReceiptV2} from './contracts-v2.ts';
-import {cardAttemptSchema,cardExceptionSchema} from './card-contracts.ts';
 import {BILLING_SERVICE_V4,type ServiceFamilyOfferV4} from './guest-service-contract-v4.ts';
-import {serviceOwnerSnapshotV4Schema,type ServiceOwnerSnapshotV4} from './guest-service-owner-financial-contract-v4.ts';
+import {type ServiceOwnerSnapshotV4} from './guest-service-owner-financial-contract-v4.ts';
 import {projectServiceBalanceV4} from './guest-service-domain-v4.ts';
 import {FishingProgramSourceNativeV3} from './program-source-native-v3.ts';
 import {FishingBillingInquiryFamilyProposals} from '../../lib/fishing-billing-inquiry-family-proposal.ts';
-import {readProgramSourceInTransactionV3} from './program-source-readback-v3.ts';
 import {readIssuedServiceQuoteV4,readIssuedServiceQuoteWithRowV4} from './guest-service-quote-readback-v4.ts';
 import {readServiceAcceptanceDataV4} from './guest-service-acceptance-data-v4.ts';
+import {readServiceCurrentFamilyDataV4,readServiceFinancialSnapshotV4} from './guest-service-financial-data-v4.ts';
 import {serviceGuestAadV4} from './guest-service-aad-v4.ts';
 import {serviceFamilyOfferV4Schema} from './guest-service-contract-v4.ts';
 import {serviceOwnerMoneyCommandV4Schema,serviceOwnerMoneyReceiptV4Schema,serviceOwnerMoneyOutcomeV4Schema,serviceMoneySnapshotV4,type ServiceOwnerMoneyCommandV4} from './guest-service-owner-money-contract-v4.ts';
@@ -55,14 +54,7 @@ export class FishingServiceBillingOwnerV4{
    await this.authority.authorize(view,scope);stored(view.now.valueOf()===at);
   }
  }
- private async currentFamily(c:Readonly<BillingContext>,q:ServiceFamilyOfferV4){
-  for(const l of q.lines){stored(l.groupId);
-   const p=await readProgramSourceInTransactionV3(c,this.workspaceId,l.groupId,'progression',l.childId,this.ring,this.sourceKey);stored(p&&p.record.command.kind==='progression');
-   const f=p.record.command.fields;stored(f.familyId===q.familyId);
-   const current=await this.families.readCurrentDataInTransaction(c.tx,{proposalId:f.proposalId,reference:f.reference,expectedEpoch:f.expectedEpoch,lock:'shared'});
-   stored(current.proposal.workspaceId===this.workspaceId&&current.proposal.command.selection.familyId===q.familyId&&current.proposal.command.selection.children.some(child=>child.nativeChildId===l.childId));
-  }
- }
+ private currentFamily(c:Readonly<BillingContext>,q:ServiceFamilyOfferV4){return readServiceCurrentFamilyDataV4(c,this.workspaceId,q,this.ring,this.sourceKey,this.families);}
  private async withCurrent<T>(actor:Actor,id:string,work:(c:Readonly<BillingContext>,data:Awaited<ReturnType<typeof readServiceAcceptanceDataV4>>)=>Promise<T>){
   billingId.parse(id);return this.programme.withOwnerTransaction(actor,base=>this.inCurrent(base,id,'read',async(c,data)=>({result:await work(c,data),quote:data.quote})));
  }
@@ -93,31 +85,7 @@ export class FishingServiceBillingOwnerV4{
  async readSnapshot(actor:Actor,id:string):Promise<ServiceOwnerSnapshotV4>{
   return this.withCurrent(actor,id,(c,data)=>this.snapshot(c,data.quote));
  }
- private async snapshot(c:Readonly<BillingContext>,q:ServiceFamilyOfferV4):Promise<ServiceOwnerSnapshotV4>{
-   const id=q.id;
-   const rows=await c.tx.query<{id:string;operationId:string;originalId:string|null;recordedAt:Date;exactTime:boolean;ciphertext:string}>('SELECT id,operation_id AS "operationId",original_receipt_id AS "originalId",recorded_at AS "recordedAt",recorded_at=date_trunc(\'milliseconds\',recorded_at) AS "exactTime",payload_ciphertext AS ciphertext FROM ls_fishing_billing.receipts WHERE workspace_id=$1 AND quote_id=$2 ORDER BY id LIMIT 1001',[this.workspaceId,id]);stored(rows.length<=1000);
-   const receipts=rows.map(row=>{const r=ledgerReceiptV2Schema.parse(JSON.parse(unseal(row.ciphertext,'ls_fishing_billing/v1/receipt/'+this.workspaceId+'/'+row.id,this.ring)));
-    stored(row.exactTime===true&&r.id===row.id&&r.operationId===row.operationId&&r.originalReceiptId===row.originalId&&r.quoteId===q.id&&r.familyId===q.familyId&&Date.parse(r.recordedAt)===row.recordedAt.valueOf()&&Date.parse(r.recordedAt)<=c.now.valueOf());return r;
-   });
-   const attempts=await c.tx.query<{id:string;state:string;revision:number;ciphertext:string}>('SELECT id,state,revision,payload_ciphertext AS ciphertext FROM ls_fishing_billing.card_attempts WHERE workspace_id=$1 AND quote_id=$2 ORDER BY id LIMIT 1001',[this.workspaceId,id]);stored(attempts.length<=1000);
-   const cards=attempts.map(row=>{const a=cardAttemptSchema.parse(JSON.parse(unseal(row.ciphertext,'ls_fishing_billing/card/v1/attempt/'+this.workspaceId+'/'+row.id,this.ring)));
-    stored(a.id===row.id&&a.state===row.state&&a.revision===row.revision&&a.workspaceId===this.workspaceId&&a.quoteId===q.id&&a.familyId===q.familyId&&Date.parse(a.createdAt)<=c.now.valueOf());return a;
-   });
-   const balance=projectServiceBalanceV4(q,receipts,cards.filter(a=>['prepared','unknown','open','pending'].includes(a.state)).map(a=>a.id));
-   // An attempt's claimed paid state is not a money receipt. Retain a review
-   // conflict rather than suggesting another payment or inventing settlement.
-   if(cards.some(a=>a.state==='review_required'||a.state==='paid'&&!receipts.some(r=>r.kind==='card'&&r.provider?.accountId===a.binding.accountId&&r.provider.transactionId===a.paymentIntentId&&r.amountMinor>=a.preparation.result.amountMinor)))balance.state='review_required';
-   const exceptions=await c.tx.query<{id:string;state:string;ciphertext:string}>('SELECT id,state,payload_ciphertext AS ciphertext FROM ls_fishing_billing.card_exceptions WHERE workspace_id=$1 AND quote_id=$2 ORDER BY id LIMIT 1001',[this.workspaceId,id]);stored(exceptions.length<=1000);
-   for(const row of exceptions){const e=cardExceptionSchema.parse(JSON.parse(unseal(row.ciphertext,'ls_fishing_billing/card/v1/exception/'+this.workspaceId+'/'+row.id,this.ring)));
-    stored(e.id===row.id&&e.state===row.state&&e.workspaceId===this.workspaceId&&e.quoteId===q.id&&e.familyId===q.familyId&&Date.parse(e.recordedAt)<=c.now.valueOf());if(e.state==='open')balance.state='review_required';
-   }
-   const reminders=await c.tx.query<{id:string;state:string;intentKey:string;audienceKey:string;scheduledAt:Date;exactTime:boolean;ciphertext:string}>('SELECT id,state,intent_key AS "intentKey",audience_key AS "audienceKey",scheduled_at AS "scheduledAt",scheduled_at=date_trunc(\'milliseconds\',scheduled_at) AS "exactTime",payload_ciphertext AS ciphertext FROM ls_fishing_billing.reminders WHERE workspace_id=$1 AND quote_id=$2 ORDER BY id LIMIT 1001',[this.workspaceId,id]);stored(reminders.length<=1000);
-   const hmac=(v:unknown)=>createHmac('sha256',this.ledgerKey).update(canonical(v)).digest('hex');
-   balance.reminders=reminders.map(row=>{const i=reminderIntentSchema.parse(JSON.parse(unseal(row.ciphertext,'ls_fishing_billing/v1/reminder/'+this.workspaceId+'/'+row.id,this.ring)));
-    stored(row.exactTime===true&&i.id===row.id&&i.state===row.state&&i.quoteId===q.id&&i.familyId===q.familyId&&hmac({key:i.key})===row.intentKey&&hmac({quoteId:q.id,guardianId:i.guardianId})===row.audienceKey&&Date.parse(i.scheduledAt)===row.scheduledAt.valueOf());return {id:i.id,state:i.state};
-   });
-   return serviceOwnerSnapshotV4Schema.parse({version:BILLING_SERVICE_V4,quote:q,balance,receiptId:null});
- }
+ private snapshot(c:Readonly<BillingContext>,q:ServiceFamilyOfferV4){return readServiceFinancialSnapshotV4(c,this.workspaceId,q,this.ring,this.ledgerKey);}
  private hmac(value:unknown){return createHmac('sha256',this.ledgerKey).update(canonical(value)).digest('hex');}
  private moneyDigest(actorId:string,input:ServiceOwnerMoneyCommandV4){return this.hmac({domain:'owner-service-money-command/v4',workspaceId:this.workspaceId,actorId,input});}
  private resultDigest(commandDigest:string,receipt:z.infer<typeof serviceOwnerMoneyReceiptV4Schema>){return this.hmac({domain:'owner-service-money-result/v4',workspaceId:this.workspaceId,commandDigest,receipt});}
