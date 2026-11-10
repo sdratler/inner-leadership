@@ -9,6 +9,7 @@ import {billingId,billingAmount,billingInstant,type FamilyOffer,type BillingBala
 import {requireBilling} from './domain.ts';
 import {billingStripeBindingSchema,type BillingStripeBinding} from './card-binding.ts';
 import {currentLedgerFrameV3Schema,type CurrentLedgerFrameV3} from '../../lib/fishing-billing-current-contract-v3.ts';
+import {serviceOwnerSnapshotV4Schema,type ServiceOwnerSnapshotV4} from './guest-service-owner-financial-contract-v4.ts';
 export type {BillingStripeBinding} from './card-binding.ts';
 
 /** Reuse PR189's reviewed SDK verifier through a server-created closure. This
@@ -100,6 +101,13 @@ export function prepareBillingCurrentTestCheckoutV3(input:Omit<Parameters<typeof
  const frame=currentLedgerFrameV3Schema.parse(input.frame);
  requireBilling(frame.payableBasis!==null&&!['review_required','overpaid'].includes(frame.balance.state),'UNAVAILABLE');
  return prepareTestCheckoutRequest({...input,quote:frame.source.quote,balance:frame.balance});
+}
+/** Explicit V4 native snapshot, using the SAME inert selection/request recipe.
+ * No V3 conversion, provider effect, recurring authority or access admission. */
+export function prepareBillingServiceTestCheckoutV4(input:Omit<Parameters<typeof prepareBillingTestCheckout>[0],'quote'|'balance'>&{frame:ServiceOwnerSnapshotV4}){
+ const frame=serviceOwnerSnapshotV4Schema.parse(input.frame);
+ requireBilling(frame.quote.acceptance!==null&&!['review_required','overpaid'].includes(frame.balance.state),'UNAVAILABLE');
+ return prepareTestCheckoutRequest({...input,quote:frame.quote,balance:frame.balance});
 }
 type TestCheckoutRequestInput=Omit<Parameters<typeof prepareBillingTestCheckout>[0],'quote'>&{
  quote:Pick<FamilyOffer,'id'|'familyId'|'revision'|'state'|'paused'>&{acceptance:unknown|null;definition:Pick<FamilyOffer['definition'],'environment'>};

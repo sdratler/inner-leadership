@@ -4,9 +4,9 @@ import {z} from 'zod';
 import {AppError} from '../../lib/errors.ts';
 import {canonical} from '../contact-ops/core/validation.ts';
 import {seal,unseal,type Keyring} from '../identity/crypto.ts';
-import type {Actor,WorkspaceId,IdentityClock} from '../identity/types.ts';
+import type {Actor,AccountFacts,WorkspaceId,IdentityClock} from '../identity/types.ts';
 import {one,type SqlSession} from '../identity/store.ts';
-import type {BillingContext} from './native.ts';
+import type {BillingContext,BillingLedgerContext} from './native.ts';
 import {billingId,reminderIntentSchema} from './contracts.ts';
 import {ledgerReceiptV2Schema,dateCashReceiptSchema,newYorkDate,type LedgerReceiptV2} from './contracts-v2.ts';
 import {BILLING_SERVICE_V4,type ServiceFamilyOfferV4} from './guest-service-contract-v4.ts';
@@ -22,8 +22,9 @@ import {serviceFamilyOfferV4Schema} from './guest-service-contract-v4.ts';
 import {serviceOwnerMoneyCommandV4Schema,serviceOwnerMoneyReceiptV4Schema,serviceOwnerMoneyOutcomeV4Schema,serviceMoneySnapshotV4,type ServiceOwnerMoneyCommandV4} from './guest-service-owner-money-contract-v4.ts';
 import {serviceStateCommandV4Schema,serviceStateReceiptV4Schema,serviceStateOutcomeV4Schema,type ServiceStateCommandV4} from './guest-service-owner-state-contract-v4.ts';
 import {serviceStateColumnsV4,decodeServiceStateJournalV4,serviceStateCommandDigestV4,serviceStateResultDigestV4,serviceStateJournalV4Schema,type ServiceStateRowV4} from './guest-service-state-data-v4.ts';
+import type {ServiceCurrentCardLedgerV4} from './guest-service-current-card-contract-v4.ts';
 
-export type ServiceOwnerFinancialScopeV4=Readonly<{action:'read'|'cash_date'|'reverse_cash'|'state';programKey:'fishing_monthly_club';quoteId:string;familyId:string;childIds:readonly string[];offerSha256:string}>;
+export type ServiceOwnerFinancialScopeV4=Readonly<{action:'read'|'cash_date'|'reverse_cash'|'state'|'card';programKey:'fishing_monthly_club';quoteId:string;familyId:string;childIds:readonly string[];offerSha256:string}>;
 export interface ServiceOwnerFinancialAuthorityV4{
  /** Actual current Academy/schema/read admission before ANY private lookup.
   * The programme component separately enforces the genuine configured owner,
@@ -34,6 +35,7 @@ export interface ServiceOwnerFinancialAuthorityV4{
  authorize(context:Readonly<BillingContext>,scope:ServiceOwnerFinancialScopeV4):Promise<void>;
 }
 function stored(condition:unknown):asserts condition{if(!condition)throw new AppError('UNAVAILABLE');}
+function freezeCardView<T>(v:T):T{if(v&&typeof v==='object'){for(const x of Object.values(v))freezeCardView(x);Object.freeze(v);}return v;}
 const moneyJournalSchema=z.object({version:z.literal(BILLING_SERVICE_V4),kind:z.literal('owner_service_money'),workspaceId:billingId,actorId:billingId,input:serviceOwnerMoneyCommandV4Schema,
  commandDigest:z.string().regex(/^[a-f0-9]{64}$/),resultDigest:z.string().regex(/^[a-f0-9]{64}$/),receipt:serviceOwnerMoneyReceiptV4Schema}).strict();
 /** Current genuinely authenticated OWNER history/balance and manual cash. No grant token
@@ -58,7 +60,7 @@ export class FishingServiceBillingOwnerV4{
  private async withCurrent<T>(actor:Actor,id:string,work:(c:Readonly<BillingContext>,data:Awaited<ReturnType<typeof readServiceAcceptanceDataV4>>)=>Promise<T>){
   billingId.parse(id);return this.programme.withOwnerTransaction(actor,base=>this.inCurrent(base,id,'read',async(c,data)=>({result:await work(c,data),quote:data.quote})));
  }
- private async inCurrent<T>(base:Readonly<BillingContext>,id:string,action:ServiceOwnerFinancialScopeV4['action'],work:(c:Readonly<BillingContext>,data:Awaited<ReturnType<typeof readServiceAcceptanceDataV4>>)=>Promise<{result:T;quote:ServiceFamilyOfferV4}>){
+ private async inCurrent<T>(base:Readonly<BillingContext>,id:string,action:ServiceOwnerFinancialScopeV4['action'],work:(c:Readonly<BillingContext>,data:Awaited<ReturnType<typeof readServiceAcceptanceDataV4>>)=>Promise<{result:T;quote:ServiceFamilyOfferV4;terminal?:()=>Promise<void>}>){
    const tx=base.tx,physical=tx.query,time=base.now,at=time.valueOf(),query=physical.bind(tx);let open=true;
    const guard=()=>stored(open&&base.workspaceId===this.workspaceId&&base.actor.workspaceId===this.workspaceId&&base.tx===tx&&tx.query===physical&&base.now===time&&time.valueOf()===at&&c.now.valueOf()===currentAt);
    const now=this.now();stored(now instanceof Date&&Number.isFinite(now.valueOf()));
@@ -69,9 +71,12 @@ export class FishingServiceBillingOwnerV4{
     guard();await this.permission(c);const q=await readIssuedServiceQuoteV4(c,this.workspaceId,id,this.ring,this.sourceKey);
     await this.permission(c,q,action);await this.currentFamily(c,q);
     const data=await readServiceAcceptanceDataV4(Object.freeze({...c,now:this.now()}),this.workspaceId,id,this.ring,this.sourceKey,this.commandKey);stored(canonical(data.quote)===canonical(q));
-    const {result,quote:after}=await work(c,data);
+    const {result,quote:after,terminal}=await work(c,data);
     await this.permission(c,after,action);await this.currentFamily(c,after);
     stored(canonical(await readServiceAcceptanceDataV4(Object.freeze({...c,now:this.now()}),this.workspaceId,id,this.ring,this.sourceKey,this.commandKey).then(d=>d.quote))===canonical(after));
+    // Independent terminal decisions follow ALL mutable owner hooks and data
+    // guards. No more awaited financial/native authority IO on the success path.
+    if(terminal)await terminal();
     guard();return result;
    }finally{open=false;}
  }
@@ -84,6 +89,43 @@ export class FishingServiceBillingOwnerV4{
  }
  async readSnapshot(actor:Actor,id:string):Promise<ServiceOwnerSnapshotV4>{
   return this.withCurrent(actor,id,(c,data)=>this.snapshot(c,data.quote));
+ }
+ /** Actual configured-owner native TX for card preparation/read/reservation.
+  * Current owner card permission is mandatory, including original recovery.
+  * This port advances only the quote revision; it CANNOT append any money.
+  * SDK/provider/network work is forbidden inside the borrowed callback. */
+ async withCurrentCardActorV4<T>(actor:Actor,id:string,work:(ledger:ServiceCurrentCardLedgerV4&{actor:Readonly<AccountFacts>})=>Promise<T>,terminal?:(context:Readonly<BillingLedgerContext>,snapshot:ServiceOwnerSnapshotV4)=>Promise<void>):Promise<T>{
+  billingId.parse(id);let callbackFailure:unknown,rejected=false;
+  try{return await this.programme.withOwnerTransaction(actor,async base=>{
+   callbackFailure=undefined;rejected=false;
+   try{return await this.inCurrent(base,id,'card',async(c,data)=>{
+    stored(data.original&&data.quote.acceptance);const q=data.quote,initial=await this.snapshot(c,q),source=await readIssuedServiceQuoteWithRowV4(c,this.workspaceId,id,this.ring,this.sourceKey);
+    const rowKey=(r:typeof source.row)=>canonical({...r,createdAt:r.createdAt.toISOString()});
+    const receiptRows=async()=>{const rows=await c.tx.query<{id:string;operationId:string;originalId:string|null;ciphertext:string;recordedAt:Date}>('SELECT id,operation_id AS "operationId",original_receipt_id AS "originalId",payload_ciphertext AS ciphertext,recorded_at AS "recordedAt" FROM ls_fishing_billing.receipts WHERE workspace_id=$1 AND quote_id=$2 ORDER BY id LIMIT 1001 FOR SHARE',[this.workspaceId,id]);stored(rows.length<=1000);return rows.map(r=>({...r,recordedAt:r.recordedAt.toISOString()}));};
+    const originalReceipts=canonical(await receiptRows());let expected=q,expectedRow=rowKey(source.row),active=true,claimed=false,failed=false,completed=false;
+    const pending=new Set<Promise<unknown>>();
+    const stable=async()=>{const actual=await readIssuedServiceQuoteWithRowV4(c,this.workspaceId,id,this.ring,this.sourceKey);stored(canonical(actual.quote)===canonical(expected)&&rowKey(actual.row)===expectedRow&&canonical(await receiptRows())===originalReceipts);const s=await this.snapshot(c,expected);stored(canonical(s.balance.receipts)===canonical(initial.balance.receipts));return s;};
+    const advance=async()=>{
+     await this.permission(c,q,'card');await this.currentFamily(c,q);await stable();const row=source.row,after=serviceFamilyOfferV4Schema.parse({...q,revision:q.revision+1}),ciphertext=seal(JSON.stringify(after),serviceGuestAadV4('quote',this.workspaceId,id),this.ring);
+     if(!await one(c.tx,'UPDATE ls_fishing_billing.quotes SET revision=$3,payload_ciphertext=$4 WHERE workspace_id=$1 AND id=$2 AND revision=$5 AND payload_ciphertext=$6 AND family_id=$7 AND definition_id=$8 AND created_at=$9 AND material_version=$10 RETURNING id',[this.workspaceId,id,after.revision,ciphertext,row.revision,row.ciphertext,row.familyId,row.definitionId,row.createdAt,BILLING_SERVICE_V4]))throw new AppError('CONFLICT');
+     expected=after;expectedRow=rowKey({...row,revision:after.revision,ciphertext});const s=await stable();await this.suppressQueued(c,after,s.balance);await this.permission(c,after,'card');const result=await stable();completed=true;return freezeCardView(structuredClone(result));
+    };
+    const track=<R,>(task:Promise<R>)=>{const p=task.catch(error=>{failed=true;throw error;});pending.add(p);void p.then(()=>pending.delete(p),()=>pending.delete(p));return p;};
+    const tx:SqlSession=Object.freeze({query:<R extends object>(sql:string,v:readonly unknown[]=[])=>track((async()=>{stored(active);const rows=await c.tx.query<R>(sql,v);stored(active);return rows;})())});
+    const ledger:ServiceCurrentCardLedgerV4&{actor:Readonly<AccountFacts>}={context:Object.freeze({workspaceId:this.workspaceId,tx,now:c.now}),actor:Object.freeze({...c.actor}),frame:freezeCardView(structuredClone(initial)),advance:(raw=[])=>{
+     try{if(!active||claimed)throw new AppError('CONFLICT');claimed=true;stored(raw.length===0);}catch(error){failed=true;return Promise.reject(error);}
+     return track(advance());
+    }};
+    try{
+     await stable();const result=await work(ledger);active=false;if(failed||pending.size||claimed&&!completed)throw new AppError('CONFLICT');
+     const current=await stable();await this.suppressQueued(c,expected,current.balance);await this.permission(c,expected,'card');await stable();
+     if(failed||claimed&&!completed)throw new AppError('CONFLICT');return {result,quote:expected,...(terminal?{terminal:async()=>{
+      const snapshot=await stable(),now=this.now();stored(now instanceof Date&&Number.isFinite(now.valueOf()));
+      await terminal(Object.freeze({workspaceId:this.workspaceId,tx:c.tx,now:new Date(now)}),freezeCardView(structuredClone(snapshot)));
+     }}:{})};
+    }finally{active=false;await Promise.allSettled([...pending]);}
+   });}catch(error){callbackFailure=error;rejected=true;throw error;}
+  });}catch(error){if(rejected&&error===callbackFailure&&error instanceof AppError)throw error;throw new AppError('UNAVAILABLE');}
  }
  private snapshot(c:Readonly<BillingContext>,q:ServiceFamilyOfferV4){return readServiceFinancialSnapshotV4(c,this.workspaceId,q,this.ring,this.ledgerKey);}
  private hmac(value:unknown){return createHmac('sha256',this.ledgerKey).update(canonical(value)).digest('hex');}
