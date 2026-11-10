@@ -18,20 +18,14 @@ export function configuredFishingOwnerAppScope(workspaceId:string,env:FishingOwn
 }
 export type FishingOwnerAppScope=NonNullable<ReturnType<typeof configuredFishingOwnerAppScope>>;
 const read=new Set(['GET','HEAD']);
-const pages=new Set(['group-applications','clients','prospects','fishing-groups','marketing','settings']);
+const pages=new Set(['group-applications','clients','fishing-groups','marketing','settings']);
 const apiMethods:Readonly<Record<string,readonly string[]>>=Object.freeze({
- '/api/private/group-applications':['GET','HEAD','POST'],
+ '/api/private/group-applications':['GET','HEAD'],
  '/api/private/people':['GET','HEAD'],
- '/api/prospects':['GET','HEAD','POST'],
- '/api/private/contact-profiles':['GET','HEAD','POST'],
- '/api/private/contact-lead-command':['POST'],
- '/api/private/contact-acquisition':['GET','HEAD','POST'],
- '/api/private/contact-inbound':['GET','HEAD','POST'],
- '/api/private/whatsapp-group-roster':['GET','HEAD'],
+ '/api/private/academy-crm':['GET','HEAD','POST'],
  '/api/private/fishing-group-preparations':['GET','HEAD','POST'],
  '/api/private/fishing-inquiry-family-proposals':['GET','HEAD','POST'],
  '/api/private/fishing-program-sources':['GET','HEAD','POST'],
- '/api/private/fishing-marketing':['GET','HEAD','POST'],
 });
 const identityMethods:Readonly<Record<string,readonly string[]>>=Object.freeze({
  '/api/identity/csrf':['GET'],

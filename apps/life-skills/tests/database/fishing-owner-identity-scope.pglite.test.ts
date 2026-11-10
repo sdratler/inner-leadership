@@ -6,6 +6,7 @@ import {asId} from '../../src/lib/ids.ts';
 import {requirePgliteMemoryEnvironment} from '../fixtures/pglite-memory-environment.ts';
 import {IdentityAuthService} from '../../src/features/identity/auth-service.ts';
 import {IdentitySessions} from '../../src/features/identity/session-adapter.ts';
+import {IdentityPreferenceService} from '../../src/features/identity/preferences.ts';
 import {accountById} from '../../src/features/identity/data.ts';
 import {issueAuthToken,queueAuthMail} from '../../src/features/identity/auth-mail.ts';
 import type {AuthMailKind} from '../../src/features/identity/auth-mail.ts';
@@ -120,4 +121,18 @@ it('rechecks the real owner role after a non-idempotent reservation commits, bef
  const send=vi.fn(async()=>({providerId:'SYNTHETIC-NOT-SENT'}));
  expect(await dispatchOneAuthMail(store,f.config,clock,{nonIdempotent:true,send},'synthetic@example.invalid')).toBe('canceled');
  expect(send).not.toHaveBeenCalled();
+});
+it('owner contact readback requires the actual selected non-demo account inside its data transaction',async()=>{
+ const f=await setup(),preauth=await f.auth.preauth(),login=await f.auth.login('owner@example.invalid',password,preauth.token,randomUUID()),actor=await f.sessions.actor(login.token);
+ const preferences=new IdentityPreferenceService(f.store,f.config,clock);
+ expect(await preferences.contacts(actor)).toEqual({email:'owner@example.invalid',emailVerified:true,phone:null,phoneVerified:false});
+ await f.markDemo();
+ await expect(preferences.contacts(actor)).rejects.toThrow('FORBIDDEN');
+});
+it('owner contact mutation cannot use an earlier owner actor after its real role is changed',async()=>{
+ const f=await setup(),preauth=await f.auth.preauth(),login=await f.auth.login('owner@example.invalid',password,preauth.token,randomUUID()),actor=await f.sessions.actor(login.token);
+ await engine.query("UPDATE ls_identity.accounts SET role='parent' WHERE workspace_id=$1 AND id=$2",[f.workspace,f.owner]);
+ const preferences=new IdentityPreferenceService(f.store,f.config,clock);
+ await expect(preferences.setUnverifiedPhone(actor,'+12025550123',passwordHash,randomUUID())).rejects.toThrow('FORBIDDEN');
+ expect((await f.account(f.owner)).phoneCiphertext).toBeNull();
 });

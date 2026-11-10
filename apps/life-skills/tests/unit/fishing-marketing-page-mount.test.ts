@@ -1,5 +1,7 @@
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
-const calls=vi.hoisted(()=>({owner:vi.fn(),snapshot:vi.fn(),page:vi.fn(),digest:vi.fn(),read:vi.fn(),creative:vi.fn(),attribution:vi.fn()}));
+const calls=vi.hoisted(()=>({owner:vi.fn(),identity:vi.fn(),fishingOwner:vi.fn(),snapshot:vi.fn(),page:vi.fn(),digest:vi.fn(),read:vi.fn(),creative:vi.fn(),attribution:vi.fn()}));
+vi.mock('../../src/features/identity/runtime.ts',()=>({identityRuntime:calls.identity}));
+vi.mock('../../src/features/integration/page-session.ts',()=>({requireFishingOwnerPage:calls.fishingOwner}));
 vi.mock('server-only',()=>({}));
 vi.mock('next/headers',()=>({headers:async()=>new Headers({cookie:'synthetic-ordinary-session'})}));
 vi.mock('next/navigation',()=>({notFound:()=>{throw Error('PAGE_NOT_FOUND');}}));
@@ -16,12 +18,21 @@ import { AppError } from '../../src/lib/errors.ts';
 
 beforeEach(()=>{
  for(const call of Object.values(calls))call.mockReset();
+ calls.identity.mockResolvedValue({appScope:null});
  calls.owner.mockResolvedValue({actor:{role:'practitioner'},runtime:{config:{workspaceId:'synthetic',keyring:{},lookupKey:Buffer.alloc(32)},store:{},clock:{}}});
  calls.snapshot.mockResolvedValue({source:'unconfigured',fetchedAt:null,creatives:[],publications:[],ads:[],scout:{readyDrafts:null,sourceUrl:null,lastChecked:null,status:'unbound'}});
  calls.page.mockResolvedValue(undefined);calls.read.mockResolvedValue(null);
  vi.stubEnv('LS_FISHING_MARKETING_ENABLED','false');
 });
 afterEach(()=>vi.unstubAllEnvs());
+it.each(['en','he'] as const)('%s selected owner mode returns only Fishing status even with legacy section queries',async locale=>{
+ const runtime={appScope:{binding:{accountId:'synthetic-owner'}},config:{workspaceId:'synthetic',keyring:{},lookupKey:Buffer.alloc(32)},store:{},clock:{now:()=>new Date('2035-01-01T00:00:00Z')}};
+ calls.identity.mockResolvedValue(runtime);calls.fishingOwner.mockResolvedValue({actor:{id:'synthetic-owner'},scope:runtime.appScope});
+ const page=await Page({params:Promise.resolve({locale}),searchParams:Promise.resolve({section:'community',mode:'demo'})});
+ expect(page.type).toBe('main');expect(page.props.children.type).toBe(FishingMarketingPanel);
+ expect(calls.fishingOwner).toHaveBeenCalledOnce();expect(calls.read).toHaveBeenCalledOnce();
+ for(const call of [calls.owner,calls.snapshot,calls.page,calls.digest,calls.creative,calls.attribution])expect(call).not.toHaveBeenCalled();
+});
 
 it.each(['en','he'] as const)('%s disabled Fishing sync stays visible as unavailable without invoking the store',async locale=>{
  for(const section of ['overview','content_calendar']){

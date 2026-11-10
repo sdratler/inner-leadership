@@ -25,7 +25,7 @@ it('propagates only an explicit validated owner scope into existing identity con
 });
 it('preserves the existing useful owner destinations in both languages and redirects only retired default entry routes',()=>{
  for(const locale of ['en','he']){
-  for(const page of ['clients','prospects','group-applications','fishing-groups','marketing','settings'])expect(fishingOwnerPrivateRoute(`/${locale}/app/${page}`,'GET')).toEqual({kind:'allow'});
+  for(const page of ['clients','group-applications','fishing-groups','marketing','settings'])expect(fishingOwnerPrivateRoute(`/${locale}/app/${page}`,'GET')).toEqual({kind:'allow'});
   for(const page of ['', '/app','/app/calendar'])expect(fishingOwnerPrivateRoute(`/${locale}${page}`,'GET')).toEqual({kind:'redirect',pathname:`/${locale}/app/group-applications`});
  }
 });
@@ -34,5 +34,7 @@ it('classifies legacy/parent/demo/BNA/financial paths for denial; actual route/A
   for(const method of ['GET','POST'])expect(fishingOwnerPrivateRoute(path,method)).toEqual({kind:'deny'});
  for(const path of ['/en/app/clients?role=owner','/en/app/%63lients','/en/app/clients#owner'])expect(fishingOwnerPrivateRoute(path,'GET')).toEqual({kind:'deny'});
  expect(fishingOwnerPrivateRoute('/api/private/people','POST')).toEqual({kind:'deny'});
+ for(const path of ['/en/app/prospects','/api/prospects','/api/private/contact-inbound','/api/private/contact-acquisition','/api/private/fishing-marketing'])expect(fishingOwnerPrivateRoute(path,'POST')).toEqual({kind:'deny'});
+ expect(fishingOwnerPrivateRoute('/api/private/academy-crm','POST')).toEqual({kind:'allow'});
  expect(fishingOwnerPrivateRoute('/api/private/fishing-program-sources','POST')).toEqual({kind:'allow'});
 });

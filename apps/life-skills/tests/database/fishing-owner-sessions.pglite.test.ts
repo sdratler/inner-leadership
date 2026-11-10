@@ -3,7 +3,9 @@ import {PGlite} from '@electric-sql/pglite';
 import {beforeAll,afterAll,afterEach,it,expect,vi} from 'vitest';
 import {initializeProgramSchema,nativeProgramFixture,programRing,programClock} from '../fixtures/fishing-native-program-v3.ts';
 import {requirePgliteMemoryEnvironment} from '../fixtures/pglite-memory-environment.ts';
-import {opaqueToken,tokenDigest} from '../../src/features/identity/crypto.ts';
+import {opaqueToken,tokenDigest,seal} from '../../src/features/identity/crypto.ts';
+import {readCutoverState,cutoverStateAad} from '../../src/features/contact-ops/server/cutover-state.ts';
+import {fishingOwnerSurfaceAvailability} from '../../src/lib/fishing-owner-surface-runtime.ts';
 import type {IdentityConfig} from '../../src/features/identity/config.ts';
 import type {IdentityStore} from '../../src/features/identity/store.ts';
 import {configuredFishingOwnerAppScope,FISHING_OWNER_APP_SCOPE_V1} from '../../src/lib/fishing-owner-app-scope.ts';
@@ -57,4 +59,17 @@ it('resolves only the owner, distinguishing missing sessions and purpose denial'
 it('normalizes resolver database failure as unavailable without treating it as a missing login',async()=>{
  const f=await setup(),store:IdentityStore={transaction:async()=>{throw Error('SYNTHETIC_DRIVER_FAILURE');}};
  await expect(f.sessions(store).resolve(f.ownerToken)).rejects.toThrow('UNAVAILABLE');
+});
+it('requires actual admitted native state rather than reviving the retired source when cutover is held',async()=>{
+ const f=await setup(),state=await f.db.transaction(tx=>readCutoverState(tx,f.workspace,f.config.keyring,false));
+ const held={phase:'frozen',epoch:state.epoch,batchId:'SYNTHETIC-HELD',sourceFileId:'SYNTHETIC-NOT-READ',sourceRevision:'SYNTHETIC-HELD',nativeWritesSinceSwitch:0};
+ await engine.query("UPDATE ls_contact_ops.cutover SET phase='frozen',state_ciphertext=$2 WHERE workspace_id=$1",[f.workspace,seal(JSON.stringify(held),cutoverStateAad(f.workspace,state.epoch),f.config.keyring)]);
+ await expect(f.sessions().actor(f.ownerToken)).rejects.toThrow('UNAVAILABLE');
+});
+it('derives only actual native owner work-area availability without initializing absent features',async()=>{
+ const f=await setup(),context={identity:{store:f.db,config:f.config,clock:programClock},scope:f.scope,actor:f.owner} as unknown as Parameters<typeof fishingOwnerSurfaceAvailability>[0];
+ const available=await fishingOwnerSurfaceAvailability(context);
+ expect(available).toMatchObject({inquiries:{state:'available'},family_contacts:{state:'available'},groups_calendar:{state:'available'},marketing:{state:'unavailable',reason:'setup_required'},settings:{state:'available'}});
+ await engine.query('UPDATE ls_identity.sessions SET revoked_at=$3 WHERE workspace_id=$1 AND token_digest=$2',[f.workspace,f.owner.sessionDigest,programClock.now()]);
+ await expect(fishingOwnerSurfaceAvailability(context)).rejects.toThrow('UNAUTHENTICATED');
 });

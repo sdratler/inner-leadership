@@ -12,6 +12,7 @@ import { groupInterestCandidateEnabled } from "./features/group-interest/candida
 import { trip390SkillFiles } from "./features/group-application/academy-trip390-learning-assets.ts";
 import { publicGroupApplicationEnvironmentEnabled } from "./features/group-application/candidate.ts";
 import { canonicalForwardedRequest } from "./features/integration/canonical-forwarded-request.ts";
+import {fishingOwnerPrivateRoute} from './lib/fishing-owner-app-scope.ts';
 
 const intakeIdentityRoutes = new Set([
   "/api/identity/csrf", "/api/identity/login", "/api/identity/session",
@@ -180,6 +181,19 @@ export function proxy(request: NextRequest) {
   }
   if (isolatedPreview && canonicalPrivateOrigin && !ownerPreviewPath && /^\/(he|en)\/preview(?:\/|$)/.test(pathname)) {
     return decorate(new NextResponse(null,{status:404}),headers);
+  }
+  // Only an explicit validated server selection enables this restriction.
+  // It neither initializes native CRM nor replaces fresh owner/CSRF/action
+  // authorization in runtime and handlers. Public guest/provider paths retain
+  // their separate perimeter and are not selected by this private policy.
+  const ownerScopedPath=privatePath||pathname.startsWith('/api/')&&!groupApplicationPath&&!health||/^\/(en|he)(?:\/|$)/.test(pathname)&&!groupApplicationPath;
+  if(ownerScopedPath&&process.env.LS_FISHING_OWNER_APP_SCOPE_JSON!==undefined){
+    try{
+      parseIdentityConfig(process.env);
+      const decision=fishingOwnerPrivateRoute(pathname,request.method);
+      if(decision.kind==='deny')return decorate(new NextResponse(null,{status:404}),headers);
+      if(decision.kind==='redirect')return decorate(NextResponse.redirect(new URL(decision.pathname,env.LS_APP_ORIGIN)),headers);
+    }catch{return decorate(new NextResponse(null,{status:503}),headers);}
   }
   if (!intakePath && !groupApplicationPath && !ownerPreviewPath && ((privatePath && !privateMode && !identityPreview) || (!privatePath && pathname !== "/" && !health && !robots && env.LS_APP_MODE !== "foundation_preview" && !isolatedPreviewPerimeter))) {
     return decorate(NextResponse.json({ ok:false, error:{code:"UNAVAILABLE"}, requestId:crypto.randomUUID() }, {status:503}),headers);

@@ -2,9 +2,18 @@ import { AppError } from "../../lib/errors.ts";
 import type { SqlSession } from "./store.ts";
 import { one } from "./store.ts";
 import type { AccountFacts, AccountId, WorkspaceId, Actor } from "./types.ts";
+import type {IdentityConfig} from './config.ts';
 export interface AccountRow extends AccountFacts {
  emailBlind: string; emailCiphertext: string; emailVerifiedAt: Date | null;
  passwordHash: string | null; phoneCiphertext: string | null; phoneVerifiedAt: Date | null;
+}
+/** Additional restriction inside the actual identity data transaction. The
+ * ordinary session check remains required; this does not grant a role. */
+export async function assertSelectedIdentityOwner(tx:SqlSession,config:IdentityConfig,account:AccountRow):Promise<void>{
+ if(!config.ownerAccountId)return;
+ if(account.workspaceId!==config.workspaceId||account.id!==config.ownerAccountId||account.role!=='practitioner'||account.state!=='active')throw new AppError('FORBIDDEN');
+ const rows=await tx.query<{id:string}>("SELECT a.id FROM ls_identity.accounts a WHERE a.workspace_id=$1 AND a.id=$2 AND a.role='practitioner' AND a.state='active' AND NOT EXISTS(SELECT 1 FROM ls_demo.accounts d WHERE d.workspace_id=a.workspace_id AND d.account_id=a.id)",[config.workspaceId,config.ownerAccountId]);
+ if(rows.length!==1||rows[0]?.id!==config.ownerAccountId)throw new AppError('FORBIDDEN');
 }
 export const ACCOUNT_SELECT = `SELECT a.id,a.workspace_id AS "workspaceId",s.person_id AS "personId",
  a.role,a.state,a.locale,a.email_blind AS "emailBlind",a.email_ciphertext AS "emailCiphertext",

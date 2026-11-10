@@ -26,9 +26,9 @@ export default async function Page({ params, searchParams }: {
   const query = await searchParams;
   const one=(key:string)=>typeof query[key]==="string"?query[key] as string:undefined;
   const returnPath = practitionerReturnPath(locale, "clients", query);
-  let academy=false,accountId="";
+  let academy=false,accountId="",fishingOwner=false;
   try {
-    await requireWorkspaceRole("practitioner");
+    fishingOwner=Boolean((await requireWorkspaceRole("practitioner")).fishingOwner);
     const cookie=(await headers()).get("cookie")??"",token=cookie.split(";").map(value=>value.trim()).find(value=>value.startsWith(SESSION_COOKIE+"="))?.slice(SESSION_COOKIE.length+1);
     if(!token)throw new AppError("UNAUTHENTICATED");
     const runtime=await identityRuntime(),actor=await runtime.services.sessions.actor(token);accountId=actor.id;
@@ -46,6 +46,9 @@ export default async function Page({ params, searchParams }: {
   const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   const inquiryId=one("inquiryId"),validInquiry=inquiryId&&uuid.test(inquiryId)?inquiryId:undefined;
   const personId=one("personId"),validPerson=personId&&uuid.test(personId)?personId:undefined;
+  // Selected owner mode never falls through to BNA flags, sample/practice
+  // panels or retired source views, including through crafted URL parameters.
+  if(fishingOwner){if(!academy)throw new AppError('UNAVAILABLE');return <AcademyCrmWorkspace locale={locale} initialInquiryId={validInquiry} initialPersonId={validPerson}/>;}
   const linksEnabled=process.env.LS_305_INQUIRY_LINK_ENABLED==="true",inboundEnabled=process.env.LS_305_INBOUND_ENABLED==="true";
   const repliesEnabled=process.env.LS_BNA_MAILBOX_REPLIES_ENABLED==='true'&&process.env.LS_BNA_PREFERENCES_ENABLED==='true';
   if(process.env.LS_BNA_COMBINED_PEOPLE_ENABLED==="true"&&process.env.LS_BNA_INQUIRY_ENABLED==="true"&&process.env.LS_305_CLASSIFICATION_ENABLED==="true"&&accountId===process.env.LS_PROVIDER_INDEX_OWNER_ACCOUNT_ID&&!validInquiry&&!validPerson&&one("view")!=="legacy")return <LeadWorkspace locale={locale} linksEnabled={linksEnabled} inboundEnabled={inboundEnabled} preferencesEnabled={process.env.LS_BNA_PREFERENCES_ENABLED==="true"} calendarEnabled={process.env.LS_BNA_OPTIONAL_CALENDAR_ENABLED==="true"&&process.env.LS_BNA_PREFERENCES_ENABLED==="true"} repliesEnabled={repliesEnabled}/>;

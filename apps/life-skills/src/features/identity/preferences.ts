@@ -1,5 +1,5 @@
 import { AppError } from "../../lib/errors.ts";
-import { freshActor,lockWorkspace } from "./data.ts";
+import { freshActor,lockWorkspace,assertSelectedIdentityOwner } from "./data.ts";
 import type { IdentityStore } from "./store.ts";
 import type { IdentityConfig } from "./config.ts";
 import { seal,unseal } from "./crypto.ts";
@@ -51,6 +51,7 @@ export class IdentityPreferenceService {
  async contacts(actor:Actor):Promise<{email:string;emailVerified:boolean;phone:string|null;phoneVerified:boolean}> {
   return this.store.transaction(async tx=>{
    const current=await freshActor(tx,actor,this.clock.now());
+   await assertSelectedIdentityOwner(tx,this.config,current);
    return {email:unseal(current.emailCiphertext,`email:${actor.workspaceId}:${actor.id}`,this.config.keyring),emailVerified:Boolean(current.emailVerifiedAt),
     phone:current.phoneCiphertext ? unseal(current.phoneCiphertext,`phone:${actor.workspaceId}:${actor.id}`,this.config.keyring):null,phoneVerified:Boolean(current.phoneVerifiedAt)};
   });
@@ -61,6 +62,7 @@ export class IdentityPreferenceService {
   await this.store.transaction(async tx=>{
    await lockWorkspace(tx,actor.workspaceId);const current=await freshActor(tx,actor,context.now);
    if(current.passwordHash!==verifiedPasswordHash) throw new AppError("UNAUTHENTICATED");
+   await assertSelectedIdentityOwner(tx,this.config,current);
    await tx.query("UPDATE ls_identity.accounts SET phone_ciphertext=$3,phone_verified_at=NULL,updated_at=$4 WHERE workspace_id=$1 AND id=$2",[actor.workspaceId,actor.id,phone===null?null:seal(phone,`phone:${actor.workspaceId}:${actor.id}`,this.config.keyring),context.now]);
    await recordAction(tx,context,actor.workspaceId,actor.id,'contact_change_queued');
   });

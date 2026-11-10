@@ -17,11 +17,21 @@ import {FishingMarketingStore} from '../../../../features/fishing-marketing/stor
 import {verifiedFishingCreative} from '../../../../features/fishing-marketing/creative.ts';
 import {readTaggedInquiries} from '../../../../features/fishing-marketing/attribution-store.ts';
 import {FishingMarketingPanel} from '../../../../features/fishing-marketing/panel.tsx';
+import {identityRuntime} from '../../../../features/identity/runtime.ts';
+import {requireFishingOwnerPage} from '../../../../features/integration/page-session.ts';
 export const dynamic="force-dynamic";
 export const metadata={title:"Fishing Academy — Marketing",robots:{index:false,follow:false}};
 /** No unverified connections or fabricated live data. Codex binds a separately owner-authorized read model here. */
 export default async function Page({params,searchParams}:{params:Promise<{locale:string}>;searchParams:Promise<Record<string,string|string[]|undefined>>}){
  const {locale}=await params;if(!isLocale(locale))notFound();
+ const identity=await identityRuntime();
+ if(identity.appScope){
+  const {actor,scope}=await requireFishingOwnerPage();
+  let data:Awaited<ReturnType<FishingMarketingStore['read']>>=null,unavailable=false;
+  try{data=await new FishingMarketingStore(identity.store,identity.config.workspaceId,identity.config.keyring,identity.config.lookupKey.toString('hex'),scope.binding.accountId,identity.clock).read(actor);}
+  catch(error){if(error instanceof AppError&&['UNAUTHENTICATED','FORBIDDEN','NOT_FOUND'].includes(error.code))throw error;unavailable=true;}
+  return <main lang={locale} dir={locale==='he'?'rtl':'ltr'}><FishingMarketingPanel locale={locale} data={data} unavailable={unavailable} renderedAt={identity.clock.now().getTime()}/></main>;
+ }
  let context:Awaited<ReturnType<typeof ownerDigestContext>>;
  try{context=await ownerDigestContext((await headers()).get("cookie"));}
  catch(error){if(error instanceof AppError&&["UNAUTHENTICATED","FORBIDDEN","NOT_FOUND"].includes(error.code))notFound();throw error;}
