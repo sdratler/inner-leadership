@@ -12,7 +12,7 @@ const render=(value:FishingOwnerNavigationInput)=>renderToStaticMarkup(createEle
 const unsafe=(value:unknown)=>value as FishingOwnerNavigationInput;
 const hrefs=(html:string)=>[...html.matchAll(/ href="([^"]+)"/g)].map(match=>match[1]);
 
-describe('unmounted Fishing owner work-area navigation',()=>{
+describe('Fishing owner work-area navigation presentation',()=>{
  it.each(['en','he'] as const)('uses only the five admitted existing %s destinations in four useful areas',locale=>{
   const model=fishingOwnerNavigation(input(locale))!;
   expect(model.areas.map(area=>area.key)).toEqual(['families','groups_calendar','marketing','settings']);
@@ -25,8 +25,21 @@ describe('unmounted Fishing owner work-area navigation',()=>{
   expect(html).toContain(locale==='he'?'aria-label="אזורי העבודה של אקדמיית הדיג"':'aria-label="Fishing Academy work areas"');
   expect(html).toContain(locale==='he'?'סביבת ניהול':'Owner workspace');
   expect(html.match(/<a /g)).toHaveLength(5);
-  expect(html).not.toMatch(/<button|<form|tabindex=|role="menu|onclick=|aria-hidden/);
+  expect(html.match(/<button /g)).toHaveLength(1);
+  const controlled=html.match(/aria-controls="([^"]+)"/)?.[1];expect(controlled).toBeTruthy();
+  expect(html).toContain('type="button"');expect(html).toContain('aria-expanded="false"');
+  expect(html).toContain(`<ul id="${controlled}"`);expect(html).toContain('data-expanded="false"');
+  expect(html).toContain(locale==='he'?'הצגת אזורי העבודה':'Show work areas');
+  expect(html.slice(html.indexOf('<ul '))).not.toContain('<button');
+  expect(html).not.toMatch(/<form|tabindex=|role="menu|onclick=|aria-hidden/);
   expect(hrefs(html).join(' ')).not.toMatch(/app\/(calendar|payments|feedback|reports|practice)|\/family(?:\/|$)|\/client(?:\/|$)|student|demo|sample|login|sign-in/);
+ });
+ it('connects each server-rendered disclosure to its own list without duplicate identifiers',()=>{
+  const html=renderToStaticMarkup(createElement('div',null,createElement(FishingOwnerNavigation,input('en')),createElement(FishingOwnerNavigation,input('he'))));
+  const controlled=[...html.matchAll(/aria-controls="([^"]+)"/g)].map(match=>match[1]);
+  expect(controlled).toHaveLength(2);expect(new Set(controlled).size).toBe(2);
+  for(const id of controlled)expect(html.split(`id="${id}"`)).toHaveLength(2);
+  expect(html.match(/aria-expanded="false"/g)).toHaveLength(2);
  });
  it.each([null,{}, {mode:'unavailable',locale:'en'}, {mode:'practitioner',locale:'en',availability:available},
   {role:'practitioner',title:'Fishing Academy',query:{mode:'fishing_owner'},locale:'en',availability:available},
@@ -36,7 +49,8 @@ describe('unmounted Fishing owner work-area navigation',()=>{
  });
  it.each(['en','he'] as const)('keeps missing %s availability closed with a visible reason, without fake controls',locale=>{
   const html=render(unsafe({mode:'fishing_owner',locale}));
-  expect(hrefs(html)).toEqual([]);expect(html).not.toContain('<button');
+  expect(hrefs(html)).toEqual([]);expect(html.match(/<button /g)).toHaveLength(1);
+  expect(html.slice(html.indexOf('<ul '))).not.toContain('<button');
   expect(html.match(/data-availability="unavailable"/g)).toHaveLength(5);
   expect(html).toContain(locale==='he'?'הזמינות באזור הניהול של אקדמיית הדיג טרם אומתה.':'Availability has not been confirmed for this Fishing workspace.');
  });
@@ -54,7 +68,8 @@ describe('unmounted Fishing owner work-area navigation',()=>{
   const model=fishingOwnerNavigation(unsafe(props))!,html=render(unsafe(props));
   expect(model.areas.map(area=>area.key)).toEqual(['overview','families','groups_calendar','billing','communications','marketing','settings']);
   expect(model.areas.filter(area=>area.reason).every(area=>area.items.length===0)).toBe(true);
-  expect(hrefs(html)).toHaveLength(5);expect(html).not.toContain('<button');
+  expect(hrefs(html)).toHaveLength(5);expect(html.match(/<button /g)).toHaveLength(1);
+  expect(html.slice(html.indexOf('<ul '))).not.toContain('<button');
   for(const text of locale==='he'?['סקירה','חיובים ותשלומים','תקשורת','יש להשלים את ההגדרה לפני פתיחת אזור העבודה הזה.']:['Overview','Billing','Communications','Setup is required before this work area can be opened.'])expect(html).toContain(text);
  });
  it('refuses invented future route availability or reasons and ignores unknown areas',()=>{
@@ -64,6 +79,7 @@ describe('unmounted Fishing owner work-area navigation',()=>{
  });
  it('marks only the explicitly selected available destination current',()=>{
   const html=render({...input('en'),currentDestination:'family_contacts'} as FishingOwnerNavigationInput);
+  expect(html).toContain('aria-label="Show work areas: Families &amp; contacts"');
   expect(html.match(/aria-current="page"/g)).toHaveLength(1);expect(html).toContain('href="/en/app/clients" aria-current="page"');
   const blocked=render({...input('en'),availability:{...available,family_contacts:{state:'unavailable',reason:'setup_required'}},currentDestination:'family_contacts'} as FishingOwnerNavigationInput);
   expect(blocked).not.toContain('aria-current');expect(hrefs(blocked)).not.toContain('/en/app/clients');
