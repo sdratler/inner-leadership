@@ -59,7 +59,8 @@ export class FishingServiceCurrentCardV4{
  }
  async withCurrentCardServiceV4<T>(rawBinding:BillingStripeBinding,quoteId:string,work:(ledger:ServiceCurrentCardLedgerV4)=>Promise<T>):Promise<T>{
   billingId.parse(quoteId);const binding=Object.freeze(billingStripeBindingSchema.parse(rawBinding));
-  return this.db.transaction(async physical=>{
+  let callbackFailure:unknown,rejected=false;
+  try{return await this.db.transaction(async physical=>{
    const original=physical.query,query=original.bind(physical),time=this.currentNow(),at=time.valueOf();let open=true,active=true,claimed=false,failed=false,completed=false;
    const guard=()=>fact(open&&physical.query===original&&c.tx===tx&&c.workspaceId===this.workspaceId&&c.now===time&&time.valueOf()===at);
    const tx:SqlSession=Object.freeze({query:async<R extends object>(sql:string,v:readonly unknown[]=[])=>{guard();const rows=await query<R>(sql,v);guard();return rows;}}),c=Object.freeze({workspaceId:this.workspaceId,now:time,tx});
@@ -106,9 +107,15 @@ export class FishingServiceCurrentCardV4{
     // those rows through the common projector, while pinning immutable money.
     await stable();await this.suppressQueued(c,await stable());await this.permission(c,binding,scope);await stable();
     guard();fact(!failed&&(!claimed||completed),'CONFLICT');return result;
-   }finally{
+   }catch(error){callbackFailure=error;rejected=true;throw error;}finally{
     active=false;await Promise.allSettled([...pending,...queries]);open=false;
    }
-  });
+  });}catch(error){
+   // Only the actual callback's own rejected AppError is a known rejection.
+   // Driver/adapter errors, including typed errors AFTER COMMIT, leave the
+   // original outcome uncertain. Preserve it for readback; never imply retry.
+   if(rejected&&error===callbackFailure&&error instanceof AppError)throw error;
+   throw new AppError('UNAVAILABLE');
+  }
  }
 }

@@ -149,3 +149,16 @@ it('card-current-v4 drains detached callback SQL inside the transaction and reje
 it('card-current-v4 requires an independent service authority implementation with no allow-all fallback',async()=>{
  const f=await ready(),ports={...f.authority};Reflect.deleteProperty(ports,'target');expect(()=>f.port(undefined,ports)).toThrow('UNAVAILABLE');
 });
+it.each(['CONFLICT','FORBIDDEN'] as const)('card-current-v4 preserves durable settlement and classifies post-COMMIT typed %s as uncertain',async code=>{
+ const f=await ready(),p=payment(f),calls=vi.fn();let once=true,observed:unknown;
+ const db:IdentityStore={transaction:async work=>{const result=await f.db.transaction(work);if(once){once=false;throw new AppError(code);}return result;}};
+ try{await f.port(db).withCurrentCardServiceV4(f.binding,f.quote.id,async l=>{calls();return l.advance([p]);});}catch(error){observed=error;}
+ // Actual memory SQL COMMIT precedes the injected adapter error. The original
+ // settlement survives; this is neither a known rollback nor a failed charge.
+ expect(calls).toHaveBeenCalledTimes(1);const committed=await raw(f),current=await read(f);
+ expect(current.quote.revision).toBe(4);expect(current.balance).toMatchObject({state:'paid',paidMinor:130000,remainingMinor:0});expect(current.balance.receipts).toEqual([p]);
+ // This DATA port is not the event producer/idempotency resolver. An attempted
+ // second append of the same provider fact is denied, preserving exact bytes.
+ await expect(run(f,l=>l.advance([p]))).rejects.toThrow();expect(await raw(f)).toEqual(committed);
+ expect(observed).toMatchObject({message:'UNAVAILABLE'});
+});

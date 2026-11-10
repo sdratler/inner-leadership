@@ -25,6 +25,9 @@ export interface ServiceCardReconciliationAuthorityV4{
  * Attempt/event writes may precede or follow advance; original receipts and
  * quote material remain pinned. Paused/cancelled agreements may receive late
  * verified financial facts without resuming collection or issuing a refund. */
+// Adapter/driver failure is UNAVAILABLE even if it carries a typed rejection
+// code: COMMIT may have succeeded. Only the actual callback rejection identity
+// can retain its AppError. Recover the original operation; do not auto-retry.
 export type ServiceCurrentCardLedgerV4={
  context:Readonly<BillingLedgerContext>;frame:ServiceOwnerSnapshotV4;
  advance(receipts?:readonly LedgerReceipt[]):Promise<ServiceOwnerSnapshotV4>;
