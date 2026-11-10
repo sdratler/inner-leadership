@@ -62,3 +62,18 @@ it('shows absent and failed reads honestly, with a real retry and no false zero 
   expect(html).toContain('href="?section=content_calendar"');expect(html).toContain('role="status"');expect(html).toContain(`dir="${locale==='he'?'rtl':'ltr'}"`);expect(html).not.toContain('lsw-credit-number');
  }
 });
+
+it('keeps a stopped run and its required action in the first status block',()=>{
+ const snapshot=localMarketingFixture();snapshot.worker.lastRun={id:'synthetic-run',startedAt:'2026-11-10T14:50:00Z',evidenceAt:'2026-11-10T14:59:00Z',endedAt:null,state:'stopped',reason:'composer_unavailable',groupId:'123'};
+ const now=Date.parse(snapshot.generatedAt);expect(localWorkerView(snapshot,now).status).toBe('needs_review');
+ const html=renderToStaticMarkup(createElement(FishingMarketingPanel,{locale:'en',data:{snapshot,receivedAt:snapshot.generatedAt},renderedAt:now}));
+ expect(html.indexOf('Last run needs review')).toBeLessThan(html.indexOf('Facebook login'));
+ expect(html.indexOf('The group composer did not open')).toBeLessThan(html.indexOf('Facebook login'));
+ snapshot.worker.publisher='busy';expect(localWorkerView(snapshot,now).status).toBe('running');
+});
+it('bounds visible history without hiding the matching count or inventing missing outcomes',()=>{
+ const snapshot=localMarketingFixture();snapshot.history=Array.from({length:53},(_,i)=>({...snapshot.history[0]!,id:(i+1).toString(16).padStart(64,'0')}));
+ const html=renderToStaticMarkup(createElement(FishingMarketingPanel,{locale:'en',data:{snapshot,receivedAt:snapshot.generatedAt},renderedAt:Date.parse(snapshot.generatedAt)}));
+ expect(html.match(/<li>/g)).toHaveLength(50);expect(html).toContain('Showing the latest 50 of 53 matching records');
+ expect(localWorkerView(snapshot,Date.parse(snapshot.generatedAt)).counts.published).toBe(53);
+});
