@@ -59,12 +59,20 @@ export async function academyWorkspace(pool:pg.Pool){
  const workspace=asId(randomUUID(),'workspace'),ring={activeKeyId:'synthetic',keys:{synthetic:randomBytes(32)}},digestKey=randomBytes(32).toString('hex'),origin='https://academy.example.invalid';
  const store=poolStore(pool),config:IdentityConfig={enabled:true,origin,workspaceId:workspace,csrfKey:randomBytes(32),lookupKey:randomBytes(32),rateLimitKey:randomBytes(32).toString('hex'),keyring:ring,sessionSeconds:3600};
  await pool.query('INSERT INTO ls_identity.workspaces(id,created_at) VALUES($1,now())',[workspace]);
- async function account(role:AccountRole){
+ async function account(role:AccountRole,demo?:{batchId:string;createdBy:string}){
   const id=asId(randomUUID(),'account'),personId=asId(randomUUID(),'person'),token=opaqueToken(),now=new Date(),expiresAt=now.getTime()+3600000;
   const client=await pool.connect();try{
    await client.query('BEGIN');
    await client.query("INSERT INTO ls_identity.people(id,workspace_id,kind,profile_ciphertext,created_at) VALUES($1,$2,'adult',$3,$4)",[personId,workspace,seal(JSON.stringify({displayName:'Synthetic '+role}),`person:${workspace}:${personId}`,ring),now]);
-   await client.query("INSERT INTO ls_identity.accounts(id,workspace_id,role,state,locale,email_blind,email_ciphertext,email_verified_at,password_hash,created_at,updated_at) VALUES($1,$2,$3,'active','en',$4,$5,$6,'synthetic-non-login-hash',$6,$6)",[id,workspace,role,createHash('sha256').update(id).digest('hex'),seal('synthetic-'+id+'@example.invalid',`email:${workspace}:${id}`,ring),now]);
+   if(demo){
+    // Registered origin enforcement requires the synthetic origin and marker
+    // together at creation. An ordinary account cannot be relabelled later.
+    await client.query('INSERT INTO ls_demo.batches(workspace_id,batch_id,created_by) VALUES($1,$2,$3)',[workspace,demo.batchId,demo.createdBy]);
+    await client.query("INSERT INTO ls_identity.accounts(id,workspace_id,role,state,locale,email_blind,email_ciphertext,email_verified_at,password_hash,created_at,updated_at,demo_batch_id) VALUES($1,$2,$3,'active','en',$4,$5,$6,'synthetic-non-login-hash',$6,$6,$7)",[id,workspace,role,createHash('sha256').update(id).digest('hex'),seal('synthetic-'+id+'@example.invalid',`email:${workspace}:${id}`,ring),now,demo.batchId]);
+    await client.query("INSERT INTO ls_demo.accounts(workspace_id,account_id,batch_id,source_key) VALUES($1,$2,$3,'SYNTHETIC-owner-boundary')",[workspace,id,demo.batchId]);
+   }else{
+    await client.query("INSERT INTO ls_identity.accounts(id,workspace_id,role,state,locale,email_blind,email_ciphertext,email_verified_at,password_hash,created_at,updated_at) VALUES($1,$2,$3,'active','en',$4,$5,$6,'synthetic-non-login-hash',$6,$6)",[id,workspace,role,createHash('sha256').update(id).digest('hex'),seal('synthetic-'+id+'@example.invalid',`email:${workspace}:${id}`,ring),now]);
+   }
    await client.query('INSERT INTO ls_identity.account_subjects(workspace_id,account_id,person_id) VALUES($1,$2,$3)',[workspace,id,personId]);
    await client.query('INSERT INTO ls_identity.sessions(token_digest,workspace_id,account_id,created_at,expires_at) VALUES($1,$2,$3,$4,$5)',[tokenDigest(token),workspace,id,now,new Date(expiresAt)]);
    await client.query('COMMIT');
