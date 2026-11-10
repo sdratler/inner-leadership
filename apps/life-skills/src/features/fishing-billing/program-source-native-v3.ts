@@ -53,7 +53,7 @@ export class FishingProgramSourceNativeV3 implements ChildPeriodNativeAuthorityV
   const row=await one(context.tx,`SELECT a.id FROM ls_identity.accounts a JOIN ls_identity.account_subjects s ON s.workspace_id=a.workspace_id AND s.account_id=a.id
    JOIN ls_identity.people p ON p.workspace_id=s.workspace_id AND p.id=s.person_id
    WHERE a.workspace_id=$1 AND a.id=$2 AND a.state='active' AND a.role='practitioner' AND s.person_id=$3 AND p.kind='adult'
-   AND NOT EXISTS(SELECT 1 FROM ls_demo.accounts d WHERE d.workspace_id=a.workspace_id AND d.account_id=a.id) FOR SHARE OF a,s,p`,[this.workspaceId,this.ownerId,a.personId]);
+   AND NOT EXISTS(SELECT 1 FROM ls_demo.accounts d WHERE d.workspace_id=a.workspace_id AND d.account_id=a.id) FOR UPDATE OF a FOR SHARE OF s,p`,[this.workspaceId,this.ownerId,a.personId]);
   if(!row)fail('FORBIDDEN');
  }
  private async get(tx:SqlSession,groupId:string,kind:Kind,id:string):Promise<Stored|null>{

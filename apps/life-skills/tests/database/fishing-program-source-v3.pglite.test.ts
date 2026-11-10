@@ -2,7 +2,8 @@ import {randomUUID} from 'node:crypto';
 import {PGlite} from '@electric-sql/pglite';
 import {beforeAll,afterAll,afterEach,it,expect,vi} from 'vitest';
 import {requirePgliteMemoryEnvironment} from '../fixtures/pglite-memory-environment.ts';
-import {initializeProgramSchema,nativeProgramFixture,programNow} from '../fixtures/fishing-native-program-v3.ts';
+import {initializeProgramSchema,nativeProgramFixture,programNow,programRing,programKey,programClock} from '../fixtures/fishing-native-program-v3.ts';
+import {FishingProgramSourceNativeV3} from '../../src/features/fishing-billing/program-source-native-v3.ts';
 import type {IdentityStore} from '../../src/features/identity/store.ts';
 import {AppError} from '../../src/lib/errors.ts';
 vi.mock('server-only',()=>({}));
@@ -92,6 +93,21 @@ it('real-program-source preserves uncertain committed recording and rolls back t
  }}))};
  await expect(f.source(revoked).record(f.owner,lesson)).rejects.toThrow('UNAUTHENTICATED');
  expect((await engine.query('SELECT operation_id FROM ls_fishing_billing.program_source_versions WHERE workspace_id=$1 AND operation_id=$2',[f.workspace,lesson.operationId])).rows).toHaveLength(0);
+});
+it('real-program-source enforces the configured owner even for a current practitioner session',async()=>{
+ const f=await nativeProgramFixture(engine);
+ const wrong=new FishingProgramSourceNativeV3(f.db,f.workspace,programRing,programKey,f.parent.id,programClock);
+ await expect(wrong.record(f.owner,f.group())).rejects.toThrow('FORBIDDEN');
+ expect((await engine.query('SELECT operation_id FROM ls_fishing_billing.program_source_versions WHERE workspace_id=$1',[f.workspace])).rows).toHaveLength(0);
+});
+it('real-program-source denies an actual demo account for read, write and native period resolution',async()=>{
+ const f=await scheduled(),before=(await engine.query('SELECT operation_id FROM ls_fishing_billing.program_source_versions WHERE workspace_id=$1',[f.workspace])).rows;
+ await engine.query('INSERT INTO ls_demo.batches(workspace_id,batch_id,created_by) VALUES($1,$2,$3)',[f.workspace,'ls-owner-20350102',f.owner.id]);
+ await engine.query('INSERT INTO ls_demo.accounts(workspace_id,account_id,batch_id,source_key) VALUES($1,$2,$3,$4)',[f.workspace,f.owner.id,'ls-owner-20350102','SYNTHETIC-program-owner']);
+ await expect(f.source().record(f.owner,f.group())).rejects.toThrow('FORBIDDEN');
+ await expect(f.source().readGroup(f.owner,f.groupId)).rejects.toThrow('FORBIDDEN');
+ await expect(f.billing().createAnchoredOffer(f.owner,f.offer([f.first,f.later]))).rejects.toThrow('UNAVAILABLE');
+ expect((await engine.query('SELECT operation_id FROM ls_fishing_billing.program_source_versions WHERE workspace_id=$1',[f.workspace])).rows).toEqual(before);
 });
 it('real-program-source authenticates even a cancelled lesson before selecting the first eligible lesson',async()=>{
  const f=await scheduled();await f.source().record(f.owner,f.lesson(f.second,2,'2035-02-07T21:30:00Z',1,'cancelled'));
