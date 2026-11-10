@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { PGlite } from '@electric-sql/pglite';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { AppError, type ErrorCode } from '../../src/lib/errors.ts';
 import { asId } from '../../src/lib/ids.ts';
 import type { Actor, WorkspaceId } from '../../src/features/identity/types.ts';
 import type { IdentityStore } from '../../src/features/identity/store.ts';
@@ -71,7 +72,7 @@ const version = GROUP_PREPARATION_VERSION;
 function create(groupId = randomUUID() as string) {
   return { version, action: 'create' as const, expectedRevision: 0 as const, operationId: randomUUID(), groupId, fields: fields() };
 }
-function edit(groupId: string, expectedRevision: number, proposed = fields()): GroupPreparationCommand {
+function edit(groupId: string, expectedRevision: number, proposed: Partial<GroupPreparationFields> = fields()): GroupPreparationCommand {
   return { version, action: 'edit', expectedRevision, operationId: randomUUID(), groupId, fields: proposed };
 }
 function makeStore(ws: WorkspaceId, authority: GroupPreparationOwnerAuthority | null = syntheticAuthority, db = binder) {
@@ -159,6 +160,78 @@ describe('owner group preparation in isolated PGlite', () => {
     await expect(store.save(successor, cmd)).rejects.toMatchObject({ code: 'CONFLICT' });
     await expect(store.save(owner, cmd)).rejects.toMatchObject({ code: 'FORBIDDEN' });
     expect(await counts(ws, cmd.groupId)).toEqual({ heads: 1, versions: 1, operations: 1 });
+  });
+
+  async function verifyCommittedCreate(ws: WorkspaceId, owner: Actor, cmd: ReturnType<typeof create>) {
+    const reopened = makeStore(ws);
+    const original = await reopened.read(owner, cmd.groupId);
+    expect(original).toMatchObject({ revision: 1, operationId: cmd.operationId, fields: cmd.fields });
+    expect(await reopened.save(owner, cmd)).toEqual({ replayed: true, record: original });
+    expect(await counts(ws, cmd.groupId)).toEqual({ heads: 1, versions: 1, operations: 1 });
+  }
+
+  it.each(['CONFLICT', 'INVALID_REQUEST', 'FORBIDDEN', 'NOT_FOUND'] as const)(
+    'keeps the save outcome uncertain when the driver reports %s after commit', async code => {
+      const { ws, owner, cmd } = await fixture();
+      const driver: IdentityStore = { async transaction(work) {
+        await binder.transaction(work);
+        throw new AppError(code);
+      } };
+      const outcome = await makeStore(ws, syntheticAuthority, driver).save(owner, cmd).catch((error: unknown) => error);
+      await verifyCommittedCreate(ws, owner, cmd);
+      expect(outcome).toBeInstanceOf(AppError);
+      expect(outcome).toMatchObject({ code: 'UNAVAILABLE' });
+    });
+
+  it('retains the exact callback error for genuine authorization, revision and validation failures', async () => {
+    const { ws, owner, cmd, store } = await fixture();
+    await store.save(owner, { ...cmd, fields: { ...cmd.fields, firstClassLocalDate: '2035-04-03' } });
+    let callbackFailure: unknown;
+    const observing: IdentityStore = { transaction: work => binder.transaction(async tx => {
+      try { return await work(tx); } catch (error) { callbackFailure = error; throw error; }
+    }) };
+    const checked = makeStore(ws, syntheticAuthority, observing);
+    async function expectCallbackFailure(command: GroupPreparationCommand, code: ErrorCode) {
+      callbackFailure = undefined;
+      const outcome = await checked.save(owner, command).catch((error: unknown) => error);
+      expect(callbackFailure).toBeInstanceOf(AppError);
+      expect(callbackFailure).toMatchObject({ code });
+      expect(outcome).toBe(callbackFailure);
+    }
+    await expectCallbackFailure(edit(cmd.groupId, 2), 'CONFLICT');
+    await expectCallbackFailure(edit(cmd.groupId, 1, { firstClassAt: '2035-04-02T15:00:00Z' }), 'INVALID_REQUEST');
+    await engine.query('DELETE FROM synthetic_group_preparation.owner_grant WHERE workspace_id=$1', [ws]);
+    await expectCallbackFailure(edit(cmd.groupId, 1), 'FORBIDDEN');
+    expect(await counts(ws, cmd.groupId)).toEqual({ heads: 1, versions: 1, operations: 1 });
+  });
+
+  it('treats a replacement driver error as uncertain even when its code matches a real rollback', async () => {
+    const { ws, owner, cmd, store } = await fixture();
+    await store.save(owner, cmd);
+    const driver: IdentityStore = { async transaction(work) {
+      try { return await binder.transaction(work); } catch (error) {
+        if (error instanceof AppError) throw new AppError(error.code);
+        throw error;
+      }
+    } };
+    await expect(makeStore(ws, syntheticAuthority, driver).save(owner, edit(cmd.groupId, 2)))
+      .rejects.toMatchObject({ code: 'UNAVAILABLE' });
+    expect(await counts(ws, cmd.groupId)).toEqual({ heads: 1, versions: 1, operations: 1 });
+  });
+
+  it('forgets a prior callback error when the driver invokes the callback again and commits', async () => {
+    const { ws, owner, cmd } = await fixture();
+    const authority = { isCurrentOwner: vi.fn(syntheticAuthority.isCurrentOwner).mockResolvedValueOnce(false) };
+    const driver: IdentityStore = { async transaction(work) {
+      // Only this fault-injection adapter reenters. Each invocation uses its own real transaction.
+      const denied = await binder.transaction(work).catch((error: unknown) => error);
+      expect(denied).toMatchObject({ code: 'FORBIDDEN' });
+      await binder.transaction(work);
+      throw denied;
+    } };
+    const outcome = await makeStore(ws, authority, driver).save(owner, cmd).catch((error: unknown) => error);
+    await verifyCommittedCreate(ws, owner, cmd);
+    expect(outcome).toMatchObject({ code: 'UNAVAILABLE' });
   });
 
   it('requires the current owner port and genuine session independently of a claimed role or ID', async () => {

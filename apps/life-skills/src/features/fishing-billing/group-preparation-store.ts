@@ -104,25 +104,33 @@ export class FishingGroupPreparationStore {
     if (principal.workspaceId !== this.workspaceId) fail('FORBIDDEN');
     if (!this.checkOwner) fail('UNAVAILABLE');
     const scope = Object.freeze({ workspaceId: this.workspaceId, accountId: principal.id, groupId, programKey: GROUP_PREPARATION_PROGRAM, action });
+    let callbackFailure: unknown;
     try {
       return await this.db.transaction(async session => {
-        const tx: SqlSession = Object.freeze({ query: session.query.bind(session) });
-        if (action !== 'read') await lockWorkspace(tx, this.workspaceId);
-        await this.authorize(tx, principal, scope);
-        let result: T;
-        try { result = await work(tx, principal.id); }
-        catch (error) {
-          // Existence and stale-version results are private, too. A failed SQL transaction can only roll back.
-          if (error instanceof AppError && ['NOT_FOUND', 'CONFLICT', 'INVALID_REQUEST'].includes(error.code)) {
-            await this.authorize(tx, principal, scope);
+        callbackFailure = undefined;
+        try {
+          const tx: SqlSession = Object.freeze({ query: session.query.bind(session) });
+          if (action !== 'read') await lockWorkspace(tx, this.workspaceId);
+          await this.authorize(tx, principal, scope);
+          let result: T;
+          try { result = await work(tx, principal.id); }
+          catch (error) {
+            // Existence and stale-version results are private, too. A failed SQL transaction can only roll back.
+            if (error instanceof AppError && ['NOT_FOUND', 'CONFLICT', 'INVALID_REQUEST'].includes(error.code)) {
+              await this.authorize(tx, principal, scope);
+            }
+            throw error;
           }
+          await this.authorize(tx, principal, scope);
+          return result;
+        } catch (error) {
+          callbackFailure = error;
           throw error;
         }
-        await this.authorize(tx, principal, scope);
-        return result;
       });
     } catch (error) {
-      if (error instanceof AppError) throw error;
+      // A driver error can arrive after COMMIT. Only the callback's own rejection is definitive.
+      if (error instanceof AppError && error === callbackFailure) throw error;
       return fail('UNAVAILABLE');
     }
   }
