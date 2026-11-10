@@ -219,6 +219,24 @@ export class FishingBillingGuestOwnerStore{
    await this.current(c,actor,'read',scope(quote));return result;
   },true);
  }
+ /** Read-only origin for the explicit NEW V4 issuer in its real configured-
+  * owner transaction. It does not admit issuance or weaken planning callbacks.
+  * V4 authority must independently resolve current family/recipient/legal/
+  * capacity policy in this same TX. Never decode an issued V3 basis as V4. */
+ async readPristineServiceBasisInTransactionV4(context:Readonly<BillingContext>,actor:Actor,id:string):Promise<AnchoredPlanningDataV3>{
+  requireFact(context.workspaceId===this.workspaceId&&actor.workspaceId===this.workspaceId&&context.actor.id===actor.id&&context.actor.personId===actor.personId);
+  const c:BillingContext={tx:context.tx,workspaceId:this.workspaceId,actor:await freshActor(context.tx,actor,this.now()),now:this.now()};this.transactions.set(c,c.tx);
+  try{
+   await this.owner(c,actor);
+   const metadata=await one<{materialVersion:string|null}>(c.tx,'SELECT material_version AS "materialVersion" FROM ls_fishing_billing.quotes WHERE workspace_id=$1 AND id=$2 FOR UPDATE',[this.workspaceId,billingId.parse(id)]);
+   if(!metadata)throw new AppError('NOT_FOUND');if(metadata.materialVersion!==null)throw new AppError('CONFLICT');
+   const q=await this.quote(c,id);if(q.state!=='draft'||q.acceptance!==null||q.issuedAt!==null||q.paused)throw new AppError('CONFLICT');
+   await this.current(c,actor,'read',scope(q));const original=await this.anchoredRecord(c,q);requireFact(original);if(!original)throw unavailable();
+   const effects=await c.tx.query('SELECT 1 FROM ls_fishing_billing.guest_grants WHERE workspace_id=$1 AND quote_id=$2 UNION ALL SELECT 1 FROM ls_fishing_billing.guest_operations WHERE workspace_id=$1 AND quote_id=$2 UNION ALL SELECT 1 FROM ls_fishing_billing.obligations WHERE workspace_id=$1 AND quote_id=$2 UNION ALL SELECT 1 FROM ls_fishing_billing.receipts WHERE workspace_id=$1 AND quote_id=$2 LIMIT 1',[this.workspaceId,id]);
+   if(effects.length)throw new AppError('CONFLICT');await this.current(c,actor,'read',scope(q));
+   return frozenPlanning({classification:'original_scheduling_data_only' as const,quote:structuredClone(q),original:structuredClone(original.receipt)});
+  }finally{this.transactions.delete(c);}
+ }
  async issueAnchoredOffer(actor:Actor,raw:unknown){return this.issueOfferInternal(actor,raw,true);}
  async createOffer(actor:Actor,raw:unknown):Promise<Receipt>{
   const cmd=createFamilyOfferSchema.parse(raw);

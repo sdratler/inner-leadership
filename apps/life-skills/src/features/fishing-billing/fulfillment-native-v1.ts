@@ -161,6 +161,10 @@ export class FishingFulfillmentNativeV1{
    const plan=await this.planData(c,data);return work(c,data,plan);
   });
  }
+ /** Caller owns the real authenticated owner TX and exact pristine basis.
+  * Source joins are re-read; caller's existing financial-state guard remains
+  * responsible for admitting any subsequent write. Not a browser authority. */
+ async readPlanInTransaction(c:Readonly<BillingContext>,data:AnchoredPlanningDataV3){return this.planData(c,data);}
  private async planData(c:Readonly<BillingContext>,data:AnchoredPlanningDataV3){
    const quoteId=data.quote.id;
    this.context(c);for(const group of new Set(data.quote.lines.map(line=>line.groupId)))if(group)await this.programme.readGroupDataInTransaction(c,group);else fail();

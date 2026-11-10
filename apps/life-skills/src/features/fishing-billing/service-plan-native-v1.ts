@@ -6,7 +6,7 @@ import {privateDigest} from '../contact-ops/server/digests.ts';
 import {childPeriodLessonWeeksV3} from './service-periods-v3.ts';
 import {FishingProgramSourceNativeV3} from './program-source-native-v3.ts';
 import {FishingFulfillmentNativeV1} from './fulfillment-native-v1.ts';
-import {SERVICE_PLAN_V1,servicePlanPreviewV1Schema,servicePlanSnapshotV1Schema,type ServicePlanSnapshotV1} from './service-plan-contract-v1.ts';
+import {SERVICE_PLAN_V1,servicePlanPreviewV1Schema,servicePlanSnapshotV1Schema,type ServicePlanSnapshotV1,type ServicePlanPreviewV1} from './service-plan-contract-v1.ts';
 import type {BillingContext} from './native.ts';
 import type {AnchoredPlanningDataV3} from '../../lib/fishing-billing-guest-owner-store.ts';
 
@@ -32,9 +32,18 @@ export class FishingServicePlanNativeV1{
  async withPreview<T>(actor:Actor,raw:unknown,work:(c:Readonly<BillingContext>,data:AnchoredPlanningDataV3,preview:NativeServicePlanV1)=>Promise<T>){
   const command=servicePlanPreviewV1Schema.parse(raw);
   return this.fulfillment.withPlanData(actor,command.quoteId,async(c,data,planning)=>{
+   return work(c,data,await this.inspect(c,data,command,planning));
+  });
+ }
+ /** Caller owns genuine owner/session/financial-state admission in this TX.
+  * Re-read all actual plan/source joins, never trust a browser preview hash. */
+ async previewInTransaction(c:Readonly<BillingContext>,data:AnchoredPlanningDataV3,raw:unknown):Promise<NativeServicePlanV1>{
+  return this.inspect(c,data,servicePlanPreviewV1Schema.parse(raw),await this.fulfillment.readPlanInTransaction(c,data));
+ }
+ private async inspect(c:Readonly<BillingContext>,data:AnchoredPlanningDataV3,command:ServicePlanPreviewV1,planning:Awaited<ReturnType<FishingFulfillmentNativeV1['readPlan']>>):Promise<NativeServicePlanV1>{
    if(c.workspaceId!==this.workspaceId||c.actor.workspaceId!==this.workspaceId)fail('FORBIDDEN');
    const q=data.quote,stored=planning.plan;
-   if(q.state!=='draft'||q.acceptance!==null||q.revision!==command.expectedQuoteRevision||stored.record.kind!=='plan'||planning.departureSourceState!=='unchanged'||
+   if(q.id!==command.quoteId||q.state!=='draft'||q.acceptance!==null||q.revision!==command.expectedQuoteRevision||stored.record.kind!=='plan'||planning.departureSourceState!=='unchanged'||
     stored.record.revision!==command.tripPlan.expectedRevision||stored.digest!==command.tripPlan.expectedDigest)fail();
    const live=await this.programme.firstEligibleLessons(c,{quoteId:q.id,familyId:q.familyId,children:data.original.periods.map(p=>({lineId:p.lineId,childId:p.childId,periodId:p.period.id,
     groupId:p.lesson.groupId,firstEligibleLessonId:p.lesson.id,expectedLessonRevision:p.lesson.revision,dueAt:q.lines.find(line=>line.id===p.lineId)!.dueAt}))});
@@ -76,7 +85,6 @@ export class FishingServicePlanNativeV1{
      progression:{revision:progress.record.revision,digest:progress.digest,eligibleFrom:p.eligibleFrom,readiness:p.readiness,evidence:p.evidence},weeklyLessons:lessons,foundation});
    }
    const parsed=servicePlanSnapshotV1Schema.parse(snapshot);
-   return work(c,data,{version:SERVICE_PLAN_V1,snapshot:parsed,digest:this.hash({domain:'prospective-service-plan/v1',snapshot:parsed})});
-  });
+   return {version:SERVICE_PLAN_V1,snapshot:parsed,digest:this.hash({domain:'prospective-service-plan/v1',snapshot:parsed})};
  }
 }

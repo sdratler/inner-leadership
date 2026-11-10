@@ -105,10 +105,19 @@ export class FishingProgramSourceNativeV3 implements ChildPeriodNativeAuthorityV
  /** Trusted server composition only. Reuses the existing owner transaction,
   * row locks and terminal session check; no nested DB or browser capability. */
  async withOwnerTransaction<T>(actor:Actor,work:(c:Readonly<BillingContext>)=>Promise<T>){
-  return this.transaction(actor,async c=>{
+  return this.transaction(actor,c=>this.boundedOwnerWork(c,work));
+ }
+ private async boundedOwnerWork<T>(c:BillingContext,work:(c:Readonly<BillingContext>)=>Promise<T>){
    let open=true;const tx:SqlSession=Object.freeze({query:<R extends object>(sql:string,v:readonly unknown[]=[])=>{if(!open)fail();return c.tx.query<R>(sql,v);}});
    try{return await work(Object.freeze({...c,tx,actor:Object.freeze({...c.actor}),now:new Date(c.now)}));}finally{open=false;}
-  });
+ }
+ /** Native writer composition only. Correlate this outcome with the writer's
+  * exact command. Rejection describes THIS attempt, not resolution of any
+  * previously UNKNOWN invocation. Driver/post-COMMIT errors stay uncertain. */
+ async withOwnerTransactionOutcome<T>(actor:Actor,work:(c:Readonly<BillingContext>)=>Promise<T>){
+  try{return {state:'committed' as const,result:await this.transaction(actor,c=>this.boundedOwnerWork(c,work),error=>{
+   if(error.code==='CONFLICT'||error.code==='FORBIDDEN'||error.code==='NOT_FOUND'||error.code==='UNAUTHENTICATED'||error.code==='INVALID_REQUEST')throw new NativeRecordRejection(error.code);throw error;
+  })};}catch(error){if(error instanceof NativeRecordRejection)return {state:'rejected_current_attempt' as const,code:error.code};throw error;}
  }
  /** Scheduling data in an already authenticated caller's real transaction.
   * This does not supply financial/guardian/seat or operational authority. */
