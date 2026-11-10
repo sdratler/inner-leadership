@@ -27,6 +27,7 @@
 .cancel summary{min-block-size:44px;cursor:pointer;font-weight:650}
 .cancel input{flex:none}
 .notice{display:grid;gap:14px}
+.feedback{display:grid;gap:20px;scroll-margin-block:24px}
 .workspace :is(input,button,summary,a){scroll-margin-block:24px}
 @media(max-width:1100px){.columns{grid-template-columns:minmax(0,1fr)}}
 @media(max-width:520px){.workspace{padding:20px 16px;gap:20px}.header{display:grid;gap:12px}.columns{gap:20px}.fieldPair{grid-template-columns:minmax(0,1fr)}.facts>div{grid-template-columns:minmax(0,1fr);gap:4px}.history{align-items:stretch}.history>div{flex-basis:100%}.history button{flex:1 1 140px}.boundary{padding:14px 16px}}
