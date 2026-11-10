@@ -11,12 +11,14 @@ import type {IdentitySessions} from '../features/identity/session-adapter.ts';
 import {canonicalForwardedRequest} from '../features/integration/canonical-forwarded-request.ts';
 import {FISHING_INQUIRY_FAMILY_PROPOSAL_VERSION,fishingFamilyProposalCommandSchema,
  fishingInquiryFamilyProposalSchema,fishingInquiryFamilyProposalPreviewSchema,type FishingBillingInquiryFamilyProposals} from './fishing-billing-inquiry-family-proposal.ts';
+import {NATIVE_FAMILY_VERSION,nativeFamilyCreateCommandSchema} from '../features/fishing-billing/native-family-contract-v1.ts';
 
 export const FISHING_INQUIRY_FAMILY_PROPOSAL_OWNER_PATH='/api/private/fishing-inquiry-family-proposals';
 const command=z.discriminatedUnion('action',[
  z.object({action:z.literal('preview'),expectedEpoch:fishingFamilyProposalCommandSchema.shape.expectedEpoch,
   selection:fishingFamilyProposalCommandSchema.shape.selection}).strict(),
  z.object({action:z.literal('propose'),command:fishingFamilyProposalCommandSchema}).strict(),
+ z.object({action:z.literal('create_native_family'),command:nativeFamilyCreateCommandSchema}).strict(),
 ]);
 const read=z.object({reference:z.uuid(),expectedEpoch:fishingFamilyProposalCommandSchema.shape.expectedEpoch}).strict();
 export type FishingInquiryFamilyProposalOwnerHttpDependencies={
@@ -24,7 +26,7 @@ export type FishingInquiryFamilyProposalOwnerHttpDependencies={
 };
 const equal=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
 
-/** UNMOUNTED owner-only adapter for proposed associations, not financial or
+/** Owner-only adapter for proposed associations, not financial or
  * guardian approval. The mandatory real store rechecks current owner/source/
  * native facts in its transaction, including the terminal session check.
  * No actor-free data port, runtime, provider, sender or default dependency is
@@ -61,6 +63,16 @@ export async function fishingInquiryFamilyProposalOwnerHttp(request:Request,
     const preview=fishingInquiryFamilyProposalPreviewSchema.parse(await d.store.preview(actor,{expectedEpoch:input.expectedEpoch,selection:input.selection}));
     if(!equal(preview.selection,input.selection))throw new AppError('UNAVAILABLE');
     response=successResponse({version:FISHING_INQUIRY_FAMILY_PROPOSAL_VERSION,kind:'preview',preview},requestId);
+   }else if(input.action==='create_native_family'){
+    // Once invoked, a lost driver/commit response cannot prove rollback.
+    proposalInvoked=true;
+    const saved=await d.store.createNativeFamily(actor,input.command),record=fishingInquiryFamilyProposalSchema.parse(saved.record);
+    const c=input.command,choice=record.command.selection;
+    if(saved.version!==NATIVE_FAMILY_VERSION||saved.resultKind!=='original_creation_receipt'||typeof saved.replayed!=='boolean'||
+     record.workspaceId!==actor.workspaceId||record.recordedBy!==actor.id||record.command.operationId!==c.operationId||
+     record.command.expectedEpoch!==c.expectedEpoch||record.command.expectedSourceDigest!==c.expectedSourceDigest||
+     choice.reference!==c.reference||choice.familyId!==c.familyId||!equal(choice.children,c.children))throw new AppError('UNAVAILABLE');
+    response=successResponse({version:NATIVE_FAMILY_VERSION,kind:'native_family_created',resultKind:saved.resultKind,record,replayed:saved.replayed},requestId);
    }else{
     // The transaction adapter may fail after COMMIT. Once invoked, no typed
     // error proves rollback; retain the original operation for read/replay.
