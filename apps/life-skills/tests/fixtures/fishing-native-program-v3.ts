@@ -34,10 +34,10 @@ export async function initializeProgramSchema(engine:PGlite){
  await engine.exec(await readFile('migrations/0153_ls_fishing_group_preparations.sql','utf8'));
  await engine.exec(await readFile('migrations/proposals/UNNUMBERED_ls_fishing_program_source_v3.sql','utf8'));
 }
-export async function nativeProgramFixture(engine:PGlite){
+export async function nativeProgramFixture(engine:PGlite,integrityKey=programKey){
  const db:IdentityStore={transaction:work=>engine.transaction(tx=>work({query:async<T extends object>(sql:string,v:readonly unknown[]=[])=>
   (await tx.query<T>(sql,[...v])).rows} as SqlSession))};
- const workspace=asId(randomUUID(),'workspace'),ring=programRing,key=programKey,clock=programClock;
+ const workspace=asId(randomUUID(),'workspace'),ring=programRing,key=integrityKey,clock=programClock;
  await engine.query('INSERT INTO ls_identity.workspaces VALUES($1,$2)',[workspace,programNow]);
  async function actor(role:'practitioner'|'parent'){
   const id=asId(randomUUID(),'account'),personId=asId(randomUUID(),'person'),digest=createHash('sha256').update(id).digest('hex');
