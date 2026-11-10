@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "review_type": "Scoped guarded CI/control transition admission review; preparation only",
+  "result": "PASS",
+  "receipt_id": "R-SYS042-WATCHDOG-20260913-v1",
+  "receipt_status": "Integration approved",
+  "reviewer": "Codex /root — scoped watchdog admission reviewer",
+  "reviewed_at": "2026-09-13T19:28:06.307Z",
+  "expires_at": "2026-09-14T19:28:06.307Z",
+  "work_id": "SYS-042",
+  "prior_manifest_canonical_sha256": "d94f94c2b236fc75aabb0a7c983709d01c4e373526fe3b49df3c608a3384fe1b",
+  "result_policy_canonical_sha256": "6319269155243a56629b30d41f19a69f0c61bd41ed4ee2c47b42f41e54e080bf",
+  "bound_base_head": "9956e396dfb19d5ae6e3ce2a1136b107027679b7",
+  "dependency": {
+    "pull_request": 22,
+    "head": "4dd9d1cb8b7d12a3be29081db6ef46da4feeb2d8",
+    "merge_required_before_installation": true
+  },
+  "source_refresh": {
+    "transaction": "SOURCE-COORD-20260913-02",
+    "versions": {
+      "registry": "3.6",
+      "website": "3.2",
+      "operating": "2.8",
+      "prompts": "3.0",
+      "mkt060": "1.9",
+      "handoff": "5.8"
+    },
+    "review6_checker_tests": "230/230 PASS",
+    "changed_fingerprints_accepted_automatically": false
+  },
+  "prior_natural_schedule_receipt": {
+    "run_id": 34105683645,
+    "url": "https://github.com/sdratler/inner-leadership/actions/runs/34105683645",
+    "event": "schedule",
+    "head": "b4276f563240bd3337366aa1d24de2216eb9fb55",
+    "result": "FAIL",
+    "failure_scope": "obsolete credentialed live source audit blocked on changed canonical/control fingerprints",
+    "installation_proof": false
+  },
+  "reviewed_repair": {
+    "type": "secret-free local operator watchdog workflow",
+    "model_calls": 0,
+    "provider_calls": 0,
+    "provider_credentials": false,
+    "writes_repository_or_provider_state": false,
+    "expected_guard": "trusted-control-review blocks the workflow-file PR until a separately recorded owner-authorized CI/control transition",
+    "installation_rule": "Only a successful natural event=schedule run on main with run URL and watchdog JSON proves installation."
+  },
+  "owned_paths": [
+    ".github/workflows/life-skills-watchdog.yml",
+    "evidence/watchdog/**"
+  ],
+  "denied_effects": {
+    "merge": false,
+    "scheduler_installation": false,
+    "workflow_dispatch": false,
+    "deploy": false,
+    "provider_mutations": false,
+    "paid_actions": false,
+    "messaging": false,
+    "automatic_whatsapp_replies": false,
+    "private_data": false
+  }
+}
