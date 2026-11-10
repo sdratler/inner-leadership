@@ -11,7 +11,7 @@ const owner=id(1),workspace=id(2),requestId=id(3),group=id(4),operation=id(5);
 type Session=Awaited<ReturnType<typeof sessionInfo>>;
 const session:Session={accountId:owner,role:'practitioner',locale:'en',expiresAt:'2030-01-01T00:00:00.000Z',csrfToken:'x'.repeat(43)};
 const fresh=()=>prepareProgramSourceSaveV3({version:PROGRAM_SOURCE_V3,kind:'group',groupId:group,id:group,operationId:operation,expectedRevision:0,
- fields:{state:'forming',location:'Synthetic reviewed location',venueSource:{id:'synthetic-venue',sha256:'a'.repeat(64)}}});
+ fields:{state:'forming',location:'Synthetic reviewed location',venueSource:{id:'synthetic-venue',sha256:'a'.repeat(64)}}},workspace);
 function record(pending:PreparedProgramSourceSaveV3,patch:Partial<ProgramSourceRecordV3>={}){
  return programSourceRecordV3Schema.parse({version:PROGRAM_SOURCE_V3,workspaceId:workspace,revision:pending.command.expectedRevision+1,
   recordedBy:owner,recordedAt:'2026-11-10T18:30:00.000Z',previousDigest:pending.command.expectedRevision===0?null:'b'.repeat(64),command:pending.command,...patch});
@@ -37,9 +37,9 @@ describe('native program source browser contract',()=>{
  });
  it.each(['selected_group','workspace','wrong_kind','duplicate_lesson','corrupt_row'] as const)('rejects %s corruption without displaying a partial or empty schedule',async mismatch=>{
   const value=data(),lesson=prepareProgramSourceSaveV3({version:PROGRAM_SOURCE_V3,kind:'lesson',groupId:group,id:id(20),operationId:id(21),expectedRevision:0,
-   fields:{state:'scheduled',sequence:1,startsAt:'2026-11-15T15:00:00.000Z',endsAt:'2026-11-15T16:00:00.000Z',timeZone:'America/New_York'}});
+   fields:{state:'scheduled',sequence:1,startsAt:'2026-11-15T15:00:00.000Z',endsAt:'2026-11-15T16:00:00.000Z',timeZone:'America/New_York'}},workspace);
   const item={record:record(lesson),digest:'d'.repeat(64)};
-  const corrupt=mismatch==='selected_group'?{...value,group:{...value.group,record:record(prepareProgramSourceSaveV3({...fresh().command,groupId:id(90),id:id(90)}))}}:
+  const corrupt=mismatch==='selected_group'?{...value,group:{...value.group,record:record(prepareProgramSourceSaveV3({...fresh().command,groupId:id(90),id:id(90)},workspace))}}:
    mismatch==='workspace'?{...value,lessons:[{...item,record:{...item.record,workspaceId:id(91)}}]}:
    mismatch==='wrong_kind'?{...value,lessons:[value.group]}:mismatch==='duplicate_lesson'?{...value,lessons:[item,item]}:
    {...value,lessons:[{...item,record:{...item.record,revision:99}}]};
@@ -66,6 +66,25 @@ describe('native program source browser contract',()=>{
   expect(await client.save(p)).toEqual({state:'saved',value,requestId});
   expect(transport.mock.calls.map(call=>call[1]?.body)).toEqual([p.serialized,p.serialized]);
  });
+ it('recognizes the strictly correlated native rollback receipt as rejection, then saves a corrected new operation',async()=>{
+  const p=fresh(),rejection={version:PROGRAM_SOURCE_V3,kind:'rejected_source',workspaceId:workspace,actorId:owner,command:p.command,code:'CONFLICT'};
+  if(p.command.kind!=='group')throw new Error('FIXTURE_KIND');
+  const corrected=prepareProgramSourceSaveV3({...p.command,operationId:id(88),fields:{...p.command.fields,location:'Corrected synthetic location'}},workspace);
+  const transport=vi.fn<typeof fetch>().mockResolvedValueOnce(ok(rejection)).mockResolvedValueOnce(ok(saved(corrected)));
+  const client=createProgramSourceClientV3({fetch:transport,session:async()=>session});
+  expect(await client.save(p)).toEqual({state:'rejected',code:'CONFLICT',requestId});
+  expect(await client.save(corrected)).toMatchObject({state:'saved',value:{record:{command:{operationId:id(88)}}}});
+  expect(transport.mock.calls.map(call=>call[1]?.body)).toEqual([p.serialized,corrected.serialized]);
+ });
+ it.each(['workspace','actor','command','code','missing'] as const)('retains uncertainty for a %s-forged native rejection correlation',async mismatch=>{
+  const p=fresh(),value={version:PROGRAM_SOURCE_V3,kind:'rejected_source',workspaceId:workspace,actorId:owner,command:p.command,code:'CONFLICT'};
+  const forged=mismatch==='workspace'?{...value,workspaceId:id(99)}:mismatch==='actor'?{...value,actorId:id(99)}:
+   mismatch==='command'?{...value,command:{...p.command,operationId:id(99)}}:mismatch==='code'?{...value,code:'UNAVAILABLE'}:
+   {version:value.version,kind:value.kind,command:value.command,code:value.code};
+  const transport=vi.fn<typeof fetch>().mockResolvedValue(ok(forged));
+  expect((await createProgramSourceClientV3({fetch:transport,session:async()=>session}).save(p)).state).toBe('unknown');
+  expect(transport).toHaveBeenCalledTimes(1);
+ });
  it.each(['command','actor','revision','version','kind','digest'] as const)('keeps a %s-mismatched POST success uncertain',async mismatch=>{
   const p=fresh(),value=saved(p),changed=mismatch==='command'?{...value,record:{...value.record,command:{...p.command,operationId:id(99)}}}:
    mismatch==='actor'?{...value,record:{...value.record,recordedBy:id(99)}}:mismatch==='revision'?{...value,record:{...value.record,revision:2}}:
@@ -76,7 +95,7 @@ describe('native program source browser contract',()=>{
  });
  it('confirms only an exact saved head; a later version never resolves an earlier unknown',()=>{
   const p=fresh(),value=data();expect(programSourceSavedHeadV3(p,value)?.record).toEqual(record(p));
-  const later=prepareProgramSourceSaveV3({...p.command,expectedRevision:1,operationId:id(99)});
+  const later=prepareProgramSourceSaveV3({...p.command,expectedRevision:1,operationId:id(99)},workspace);
   value.group.record=record(later);
   expect(programSourceSaveMatchesV3(p,value.group.record)).toBe(false);expect(programSourceSavedHeadV3(p,value)).toBeNull();
  });

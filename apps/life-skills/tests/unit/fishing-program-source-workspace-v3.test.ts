@@ -57,7 +57,7 @@ describe('native owner program readable views',()=>{
   expect(html).not.toContain('synthetic-skill');expect(html).not.toContain('Paid');
  });
  it('retains an earlier uncertain operation after later known rejection and clears it only on an authenticated saved result',()=>{
-  const save=prepareProgramSourceSaveV3(lesson().command),pending={save,uncertain:true};
+  const save=prepareProgramSourceSaveV3(lesson().command,workspace),pending={save,uncertain:true};
   expect(retainProgramSourceOperationV3(pending,{state:'rejected',code:'FORBIDDEN',requestId:null})?.save).toBe(save);
   expect(retainProgramSourceOperationV3({save,uncertain:false},{state:'not_sent',code:'INVALID_REQUEST',requestId:null})).toBeNull();
   expect(retainProgramSourceOperationV3(pending,{state:'saved',requestId:id(3),value:{version:PROGRAM_SOURCE_V3,kind:'recorded_source',record:record(save.command),digest:'a'.repeat(64),replayed:true}})).toBeNull();
@@ -81,10 +81,10 @@ describe('owner lesson edits preserve reviewed Florida time facts',()=>{
  });
  it('creates only explicit valid ordered lesson facts with a stable caller-supplied operation, and refuses another selected record',()=>{
   const inputs={sequence:'1',startsAt:'2026-11-15T10:00',endsAt:'2026-11-15T11:00',state:'scheduled' as const};
-  expect(prepareProgramLessonSaveV3(group,id(20),id(80),inputs)?.command).toMatchObject({kind:'lesson',operationId:id(80),expectedRevision:0,
+  expect(prepareProgramLessonSaveV3(group,id(20),id(80),inputs,undefined,workspace)?.command).toMatchObject({kind:'lesson',operationId:id(80),expectedRevision:0,
    fields:{startsAt:'2026-11-15T15:00:00.000Z',endsAt:'2026-11-15T16:00:00.000Z'}});
   expect(()=>prepareProgramLessonSaveV3(id(99),id(21),id(80),inputs,lesson())).toThrow('LESSON_SELECTION_MISMATCH');
-  expect(()=>prepareProgramLessonSaveV3(group,id(20),id(80),{...inputs,endsAt:'2026-11-15T09:00'})).toThrow();
-  expect(()=>prepareProgramLessonSaveV3(group,id(20),id(80),{...inputs,sequence:'1.5'})).toThrow();
+  expect(()=>prepareProgramLessonSaveV3(group,id(20),id(80),{...inputs,endsAt:'2026-11-15T09:00'},undefined,workspace)).toThrow();
+  expect(()=>prepareProgramLessonSaveV3(group,id(20),id(80),{...inputs,sequence:'1.5'},undefined,workspace)).toThrow();
  });
 });
