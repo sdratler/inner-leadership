@@ -1,20 +1,12 @@
 import 'server-only';
-import { z } from 'zod';
 import { AppError } from './errors.ts';
 import { freshActor } from '../features/identity/data.ts';
 import type { SqlSession } from '../features/identity/store.ts';
 import type { Actor, IdentityClock } from '../features/identity/types.ts';
 
-export type FishingOwnerEnvironment = Readonly<Record<string, string | undefined>>;
-const id = z.uuid().refine(value => value === value.toLowerCase());
-
-/** The existing server owner binding is a restriction, never a role grant. */
-export function configuredFishingOwnerBinding(workspaceId: string, env: FishingOwnerEnvironment) {
-  const workspace = id.safeParse(workspaceId), account = id.safeParse(env.LS_PROVIDER_INDEX_OWNER_ACCOUNT_ID);
-  if (!workspace.success || !account.success) throw new AppError('UNAVAILABLE');
-  return Object.freeze({ workspaceId: workspace.data, accountId: account.data });
-}
-export type FishingOwnerBinding = ReturnType<typeof configuredFishingOwnerBinding>;
+import type {FishingOwnerBinding} from './fishing-owner-binding.ts';
+export {configuredFishingOwnerBinding} from './fishing-owner-binding.ts';
+export type {FishingOwnerBinding,FishingOwnerEnvironment} from './fishing-owner-binding.ts';
 
 export function boundFishingOwner(binding: FishingOwnerBinding, actor: Actor): Readonly<Actor> {
   const owner = Object.freeze({ ...actor });

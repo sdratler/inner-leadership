@@ -2,7 +2,7 @@ import { AppError } from "../../lib/errors.ts";
 import type { IdentityStore } from "../../features/identity/store.ts";
 import { one } from "../../features/identity/store.ts";
 import { accountById,accountByEmail,lockWorkspace } from "../../features/identity/data.ts";
-import { issueAuthToken } from "../../features/identity/auth-mail.ts";
+import { issueAuthToken,authAccountScopeAllowed } from "../../features/identity/auth-mail.ts";
 import type { AuthMailKind,AuthMailPayload } from "../../features/identity/auth-mail.ts";
 import { recordAction } from "../../features/identity/history.ts";
 import type { IdentityConfig } from "../../features/identity/config.ts";
@@ -19,7 +19,7 @@ export async function processResetRequest(store:IdentityStore,config:IdentityCon
   await lockWorkspace(tx,config.workspaceId); const now=clock.now();
   const row=await one<{id:string;emailBlind:string;createdAt:Date}>(tx,`SELECT id,email_blind AS "emailBlind",created_at AS "createdAt" FROM ls_identity.reset_requests WHERE workspace_id=$1 AND request_id=$2 AND processed_at IS NULL FOR UPDATE`,[config.workspaceId,requestId]);
   if(!row) return null;
-  const account=await accountByEmail(tx,config.workspaceId,row.emailBlind);
+  const account=await accountByEmail(tx,config.workspaceId,row.emailBlind,config.ownerAccountId);
   if(now.getTime()-new Date(row.createdAt).getTime()<=15*60*1000 && account?.state==='active' && account.emailVerifiedAt){
    await issueAuthToken(tx,config,account,{now,requestId},'reset');
    const queued=await one<{id:string}>(tx,`SELECT id FROM ls_identity.auth_mail_outbox WHERE workspace_id=$1 AND account_id=$2 AND kind='reset' AND state='queued' ORDER BY created_at DESC,id DESC LIMIT 1 FOR UPDATE`,[config.workspaceId,account.id]);
@@ -39,7 +39,7 @@ export async function processResetRequests(store:IdentityStore,config:IdentityCo
    const row=await one<{id:string;emailBlind:string;requestId:string;createdAt:Date}>(tx,`SELECT id,email_blind AS "emailBlind",request_id AS "requestId",created_at AS "createdAt"
     FROM ls_identity.reset_requests WHERE workspace_id=$1 AND processed_at IS NULL ORDER BY created_at,id LIMIT 1 FOR UPDATE`,[config.workspaceId]);
    if(!row) return false;
-   const now=clock.now(),account=await accountByEmail(tx,config.workspaceId,row.emailBlind);
+   const now=clock.now(),account=await accountByEmail(tx,config.workspaceId,row.emailBlind,config.ownerAccountId);
    if(now.getTime()-new Date(row.createdAt).getTime()<=15*60*1000 && account?.state==='active' && account.emailVerifiedAt){
     const context={now,requestId:row.requestId};await issueAuthToken(tx,config,account,context,'reset');
     await recordAction(tx,context,config.workspaceId,null,'reset_queued');
@@ -64,11 +64,14 @@ export async function dispatchOneAuthMail(store:IdentityStore,config:IdentityCon
   await lockWorkspace(tx,config.workspaceId);
   const now=clock.now();
   const row=await one<MailRow>(tx,`SELECT id,account_id AS "accountId",token_digest AS "tokenDigest",kind,payload_ciphertext AS ciphertext,expires_at AS "expiresAt",attempts
-   FROM ls_identity.auth_mail_outbox WHERE workspace_id=$1 AND state='queued' AND next_attempt_at<=$2 AND ($3::uuid IS NULL OR id=$3) ORDER BY created_at,id LIMIT 1 FOR UPDATE`,[config.workspaceId,now,outboxId ?? null]);
+   FROM ls_identity.auth_mail_outbox WHERE workspace_id=$1 AND state='queued' AND next_attempt_at<=$2 AND ($3::uuid IS NULL OR id=$3)
+    AND ($4::uuid IS NULL OR (account_id=$4 AND kind=ANY(ARRAY['reset','email_change','security_notice']::text[])))
+   ORDER BY created_at,id LIMIT 1 FOR UPDATE`,[config.workspaceId,now,outboxId ?? null,config.ownerAccountId ?? null]);
   if(!row) return 'idle';
   const finish=async(state:'canceled'|'failed')=>{await tx.query("UPDATE ls_identity.auth_mail_outbox SET state=$3,payload_ciphertext=NULL,completed_at=$4 WHERE workspace_id=$1 AND id=$2",[config.workspaceId,row.id,state,now]);return state;};
   const account=await accountById(tx,config.workspaceId,row.accountId);
   if(!account || account.state==='revoked' || new Date(row.expiresAt).getTime()<=now.getTime() || row.attempts>=6) return finish('canceled');
+  if(!authAccountScopeAllowed(config,account,row.kind))return finish('canceled');
   if(row.kind==='invite' ? account.state!=='invited' : account.state!=='active') return finish('canceled');
   if(row.tokenDigest && !await one(tx,"SELECT token_digest FROM ls_identity.auth_tokens WHERE workspace_id=$1 AND account_id=$2 AND token_digest=$3 AND purpose=$4 AND used_at IS NULL AND revoked_at IS NULL AND expires_at>GREATEST($5::timestamptz,clock_timestamp())",[config.workspaceId,account.id,row.tokenDigest,row.kind,now])) return finish('canceled');
   let payload:AuthMailPayload;
@@ -80,6 +83,7 @@ export async function dispatchOneAuthMail(store:IdentityStore,config:IdentityCon
    payload=value as unknown as AuthMailPayload;
   }catch{ return finish('failed'); }
   if(await demoAccountBatch(tx,config.workspaceId,account.id)){
+   if(config.ownerAccountId)return finish('canceled');
    let accountEmail:string;try{accountEmail=unseal(account.emailCiphertext,`email:${config.workspaceId}:${account.id}`,config.keyring);}catch{return finish('failed');}
    if(!demoSetupMailAllowed(row.kind,payload.recipient,accountEmail,config.demoSetupRecipients))return finish('canceled');
   }
@@ -104,8 +108,15 @@ async function dispatchNonIdempotent(store:IdentityStore,config:IdentityConfig,c
  const prepared=await store.transaction(async tx=>{
   await lockWorkspace(tx,config.workspaceId);
   const row=await one<MailRow>(tx,`SELECT id,account_id AS "accountId",token_digest AS "tokenDigest",kind,payload_ciphertext AS ciphertext,expires_at AS "expiresAt",attempts
-   FROM ls_identity.auth_mail_outbox WHERE workspace_id=$1 AND state='queued' AND next_attempt_at<=$2 AND ($3::uuid IS NULL OR id=$3) ORDER BY created_at,id LIMIT 1 FOR UPDATE`,[config.workspaceId,clock.now(),outboxId ?? null]);
+   FROM ls_identity.auth_mail_outbox WHERE workspace_id=$1 AND state='queued' AND next_attempt_at<=$2 AND ($3::uuid IS NULL OR id=$3)
+    AND ($4::uuid IS NULL OR (account_id=$4 AND kind=ANY(ARRAY['reset','email_change','security_notice']::text[])))
+   ORDER BY created_at,id LIMIT 1 FOR UPDATE`,[config.workspaceId,clock.now(),outboxId ?? null,config.ownerAccountId ?? null]);
   if(!row) return null;
+  const account=await accountById(tx,config.workspaceId,row.accountId);
+  if(!account||!authAccountScopeAllowed(config,account,row.kind)||config.ownerAccountId&&await demoAccountBatch(tx,config.workspaceId,account.id)){
+   await tx.query("UPDATE ls_identity.auth_mail_outbox SET state='canceled',payload_ciphertext=NULL,completed_at=$3 WHERE workspace_id=$1 AND id=$2",[config.workspaceId,row.id,clock.now()]);
+   return 'canceled' as const;
+  }
   let payload:AuthMailPayload;
   try{
    const parsed:unknown=JSON.parse(unseal(row.ciphertext,`auth-mail:${config.workspaceId}:${row.id}`,config.keyring));
@@ -122,7 +133,7 @@ async function dispatchNonIdempotent(store:IdentityStore,config:IdentityConfig,c
   return {row,payload};
  });
  if(prepared===null) return 'idle';
- if(prepared==='failed') return prepared;
+ if(prepared==='failed'||prepared==='canceled') return prepared;
  const {row,payload}=prepared;
  try{
   return await store.transaction(async tx=>{
@@ -132,9 +143,11 @@ async function dispatchNonIdempotent(store:IdentityStore,config:IdentityConfig,c
    const now=clock.now(),account=await accountById(tx,config.workspaceId,row.accountId);
    const cancel=async()=>{await tx.query("UPDATE ls_identity.auth_mail_outbox SET state='canceled',completed_at=$3 WHERE workspace_id=$1 AND id=$2",[config.workspaceId,row.id,now]);return 'canceled' as const;};
    if(!account || account.state==='revoked' || new Date(row.expiresAt).getTime()<=now.getTime() || row.attempts>=6) return cancel();
+   if(!authAccountScopeAllowed(config,account,row.kind))return cancel();
    if(row.kind==='invite' ? account.state!=='invited' : account.state!=='active') return cancel();
    if(row.tokenDigest && !await one(tx,"SELECT token_digest FROM ls_identity.auth_tokens WHERE workspace_id=$1 AND account_id=$2 AND token_digest=$3 AND purpose=$4 AND used_at IS NULL AND revoked_at IS NULL AND expires_at>GREATEST($5::timestamptz,clock_timestamp())",[config.workspaceId,account.id,row.tokenDigest,row.kind,now])) return cancel();
    if(await demoAccountBatch(tx,config.workspaceId,account.id)){
+    if(config.ownerAccountId)return cancel();
     let accountEmail:string;try{accountEmail=unseal(account.emailCiphertext,`email:${config.workspaceId}:${account.id}`,config.keyring);}catch{return cancel();}
     if(!demoSetupMailAllowed(row.kind,payload.recipient,accountEmail,config.demoSetupRecipients))return cancel();
    }

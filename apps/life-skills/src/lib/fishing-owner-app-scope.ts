@@ -1,7 +1,6 @@
-import 'server-only';
 import {z} from 'zod';
 import {AppError} from './errors.ts';
-import {configuredFishingOwnerBinding,type FishingOwnerEnvironment} from './fishing-owner-boundary.ts';
+import {configuredFishingOwnerBinding,type FishingOwnerEnvironment} from './fishing-owner-binding.ts';
 
 export const FISHING_OWNER_APP_SCOPE_V1='JLFA-FISHING-OWNER-APP-SCOPE-v1' as const;
 const id=z.uuid().refine(v=>v===v.toLowerCase());
@@ -34,6 +33,24 @@ const apiMethods:Readonly<Record<string,readonly string[]>>=Object.freeze({
  '/api/private/fishing-program-sources':['GET','HEAD','POST'],
  '/api/private/fishing-marketing':['GET','HEAD','POST'],
 });
+const identityMethods:Readonly<Record<string,readonly string[]>>=Object.freeze({
+ '/api/identity/csrf':['GET'],
+ '/api/identity/login':['POST'],
+ '/api/identity/reset/request':['POST'],
+ '/api/identity/reset/complete':['POST'],
+ '/api/identity/email/confirm':['POST'],
+ '/api/identity/session':['GET'],
+ '/api/identity/logout':['POST'],
+ '/api/identity/logout-all':['POST'],
+ '/api/identity/contacts':['GET'],
+ '/api/identity/contacts/email':['POST'],
+ '/api/identity/contacts/phone':['PUT'],
+});
+/** Purpose-specific owner credential maintenance; never invites, clinical
+ * preferences, cases, guardian/account administration or learner accounts. */
+export function fishingOwnerIdentityRoute(pathname:string,method:string):boolean{
+ return identityMethods[pathname]?.includes(method)===true;
+}
 /** Called ONLY for a path already classified as private by the existing
  * perimeter. Public inquiry/confirmation/guest/provider purposes keep their
  * separate guards. An allowed path still needs fresh owner/session, CSRF,
@@ -48,9 +65,7 @@ export function fishingOwnerPrivateRoute(pathname:string,method:string):
   if(path==='login')return {kind:'allow'};
   if(path.startsWith('app/')&&pages.has(path.slice(4)))return {kind:'allow'};
  }
- if(apiMethods[pathname]?.includes(method))return {kind:'allow'};
- // Identity endpoints and future guest/financial/service endpoints are NOT
- // enabled by a broad prefix. Their exact purpose/adapters must be integrated
- // and reviewed separately before this currently unmounted policy is enabled.
+ if(apiMethods[pathname]?.includes(method)||fishingOwnerIdentityRoute(pathname,method))return {kind:'allow'};
+ // Future guest/financial/service endpoints are not enabled by a broad prefix.
  return {kind:'deny'};
 }

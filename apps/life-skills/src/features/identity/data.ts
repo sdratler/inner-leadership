@@ -17,8 +17,9 @@ export async function lockWorkspace(tx: SqlSession, workspaceId: WorkspaceId): P
 export function accountById(tx: SqlSession, workspace: WorkspaceId, id: AccountId): Promise<AccountRow | null> {
  return one<AccountRow>(tx,ACCOUNT_SELECT+" WHERE a.workspace_id=$1 AND a.id=$2",[workspace,id]);
 }
-export function accountByEmail(tx: SqlSession, workspace: WorkspaceId, emailBlind: string): Promise<AccountRow | null> {
- return one<AccountRow>(tx,ACCOUNT_SELECT+" WHERE a.workspace_id=$1 AND a.email_blind=$2",[workspace,emailBlind]);
+export function accountByEmail(tx: SqlSession, workspace: WorkspaceId, emailBlind: string,restrictedAccountId?:AccountId): Promise<AccountRow | null> {
+ return restrictedAccountId===undefined?one<AccountRow>(tx,ACCOUNT_SELECT+" WHERE a.workspace_id=$1 AND a.email_blind=$2",[workspace,emailBlind]):
+  one<AccountRow>(tx,ACCOUNT_SELECT+" WHERE a.workspace_id=$1 AND a.email_blind=$2 AND a.id=$3",[workspace,emailBlind,restrictedAccountId]);
 }
 /** Recheck a captured server actor inside the same transaction as every mutation/read. */
 export async function freshActor(tx: SqlSession, actor: Actor, now: Date): Promise<AccountRow> {

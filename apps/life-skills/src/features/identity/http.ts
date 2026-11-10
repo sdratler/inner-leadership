@@ -18,6 +18,7 @@ import type { IdentityAccountService } from "./account-service.ts";
 import type { IdentityPreferenceService } from "./preferences.ts";
 import type { IdentitySessions } from "./session-adapter.ts";
 import type { CaseService } from "../cases/service.ts";
+import {fishingOwnerIdentityRoute} from '../../lib/fishing-owner-app-scope.ts';
 const PREAUTH_COOKIE='__Host-ls-preauth';
 const email=z.string().email().max(254).transform(canonicalEmail);
 const password=z.string().min(1).max(512);
@@ -72,6 +73,7 @@ export class IdentityHttp {
    const url=new URL(request.url),path=url.pathname;
    const methods=(identityRouteMethods as Record<string,readonly string[]>)[path];
    if(!methods || !methods.includes(request.method)) throw new AppError("NOT_FOUND");
+   if(this.config.ownerAccountId&&!fishingOwnerIdentityRoute(path,request.method))throw new AppError('NOT_FOUND');
    if(url.origin!==this.config.origin || (url.search && !(['/api/identity/audiences','/api/identity/case-access','/api/identity/cases'].includes(path) && request.method==='GET'))) throw new AppError("INVALID_REQUEST");
    const network=this.trustedNetworkHint(request);
    if(typeof network!=='string' || network.length<1 || network.length>128) throw new AppError("UNAVAILABLE");

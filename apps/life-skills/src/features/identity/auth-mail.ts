@@ -10,8 +10,16 @@ import { demoSetupMailAllowed } from '../demo/mail-policy.ts';
 export type AuthTokenPurpose = "invite" | "reset" | "email_change";
 export type AuthMailKind = AuthTokenPurpose | "security_notice" | "case_notice";
 export interface AuthMailPayload { recipient: string; locale: "he" | "en"; token: string | null; }
+export function authAccountScopeAllowed(config:IdentityConfig,account:AccountRow,kind:AuthMailKind):boolean{
+ return config.ownerAccountId===undefined||(account.workspaceId===config.workspaceId&&account.id===config.ownerAccountId&&
+  account.role==='practitioner'&&account.state==='active'&&['reset','email_change','security_notice'].includes(kind));
+}
+async function assertAuthAccountScope(tx:SqlSession,config:IdentityConfig,account:AccountRow,kind:AuthMailKind){
+ if(!authAccountScopeAllowed(config,account,kind)||config.ownerAccountId&&await demoAccountBatch(tx,config.workspaceId,account.id))throw new AppError('FORBIDDEN');
+}
 export async function queueAuthMail(tx: SqlSession, config: IdentityConfig, account: AccountRow, context: RequestContext,
  kind: AuthMailKind, token: string | null, recipientOverride?: string): Promise<void> {
+ await assertAuthAccountScope(tx,config,account,kind);
  const id=randomUUID(), now=context.now;
  const accountEmail=unseal(account.emailCiphertext,`email:${account.workspaceId}:${account.id}`,config.keyring);
  const recipient=recipientOverride ?? accountEmail;
@@ -26,6 +34,7 @@ export async function queueAuthMail(tx: SqlSession, config: IdentityConfig, acco
 /** The token is returned only to the internal encrypted outbox, never in an HTTP response. */
 export async function issueAuthToken(tx:SqlSession,config:IdentityConfig,account:AccountRow,context:RequestContext,
  purpose:AuthTokenPurpose,target?:{email:string;blind:string}):Promise<void> {
+ await assertAuthAccountScope(tx,config,account,purpose);
  if ((purpose==='email_change') !== Boolean(target)) throw new AppError("INTERNAL");
  await tx.query("UPDATE ls_identity.auth_tokens SET revoked_at=$4,target_email_blind=NULL,target_email_ciphertext=NULL WHERE workspace_id=$1 AND account_id=$2 AND purpose=$3 AND used_at IS NULL AND revoked_at IS NULL",[config.workspaceId,account.id,purpose,context.now]);
  await tx.query("UPDATE ls_identity.auth_mail_outbox SET state='canceled',payload_ciphertext=NULL,completed_at=$4 WHERE workspace_id=$1 AND account_id=$2 AND kind=$3 AND state='queued'",[config.workspaceId,account.id,purpose,context.now]);

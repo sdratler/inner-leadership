@@ -8,6 +8,7 @@ import { opaqueToken,csrfSecret } from '../../src/features/identity/crypto.ts';
 import type { IdentityConfig } from '../../src/features/identity/config.ts';
 import type { Actor } from '../../src/features/identity/types.ts';
 import {accountRead} from '../../src/features/identity/client.ts';
+import {fishingOwnerIdentityRoute} from '../../src/lib/fishing-owner-app-scope.ts';
 function fixture(role:Actor['role']='parent'){
  const config:IdentityConfig={enabled:true,origin:'https://app.example.invalid',workspaceId:asId(randomUUID(),'workspace'),csrfKey:randomBytes(32),lookupKey:randomBytes(32),rateLimitKey:opaqueToken(),keyring:{activeKeyId:'test',keys:{test:randomBytes(32)}},sessionSeconds:28800};
  const token=opaqueToken(),preauth=opaqueToken(),actor:Actor={id:asId(randomUUID(),'account'),workspaceId:config.workspaceId,personId:asId(randomUUID(),'person'),role,state:'active',locale:'he',sessionDigest:'a'.repeat(64),expiresAt:Date.now()+60000};
@@ -18,6 +19,16 @@ function fixture(role:Actor['role']='parent'){
 }
 for(const path of ['/api/identity/child/login','/api/identity/student/reset','/api/identity/register','/api/identity/bootstrap'])test(`route is absent: ${path}`,async()=>{
  const {http,config}=fixture();const response=await http.handle(new Request(config.origin+path,{method:'POST'}));assert.ok(response.status===404);
+});
+test('selected Fishing scope rejects every retired identity purpose before service or account work',async()=>{
+ const f=fixture('practitioner'),config={...f.config,ownerAccountId:f.actor.id},http=new IdentityHttp(config,{now:()=>new Date()},f.services);
+ for(const [path,methods] of Object.entries(identityRouteMethods))for(const method of methods){
+  if(fishingOwnerIdentityRoute(path,method))continue;
+  const response=await http.handle(new Request(config.origin+path,{method}));
+  assert.equal(response.status,404,`${method} ${path}`);
+ }
+ assert.equal(f.list.mock.calls.length,0);
+ assert.equal((f.services.preferences.replace as ReturnType<typeof vi.fn>).mock.calls.length,0);
 });
 test('protected API denies missing session before any body mutation',async()=>{const f=fixture(),response=await f.http.handle(new Request(f.config.origin+'/api/identity/cases'));assert.ok(response.status===401 && response.headers.get('Cache-Control')==='private, no-store');});
 

@@ -6,9 +6,10 @@ import { accountByEmail, accountById, lockWorkspace, freshActor, revokeSessions,
 import { opaqueToken, tokenDigest, blindEmail, canonicalEmail, hashPassword, verifyPassword, dummyPasswordHash, csrfSecret, seal, unseal } from "./crypto.ts";
 import type { IdentityConfig } from "./config.ts";
 import type { AccountId, Actor, IdentityClock, RequestContext } from "./types.ts";
-import { issueAuthToken, queueAuthMail } from "./auth-mail.ts";
+import { issueAuthToken, queueAuthMail,authAccountScopeAllowed } from "./auth-mail.ts";
 import type { AuthTokenPurpose } from "./auth-mail.ts";
 import { recordAction } from "./history.ts";
+import {demoAccountBatch} from '../demo/provenance.ts';
 interface TokenRow {accountId:AccountId;purpose:AuthTokenPurpose;targetBlind:string|null;targetCiphertext:string|null;}
 export class IdentityAuthService {
  constructor(private readonly store:IdentityStore,private readonly config:IdentityConfig,private readonly clock:IdentityClock) {}
@@ -24,7 +25,7 @@ export class IdentityAuthService {
  }
  async login(email:string,password:string,preauthToken:string,requestId:string):Promise<{token:string;expiresAt:string}> {
   const emailBlind=blindEmail(email,this.config.lookupKey);
-  const candidate=await this.store.transaction(tx=>accountByEmail(tx,this.config.workspaceId,emailBlind));
+  const candidate=await this.store.transaction(tx=>accountByEmail(tx,this.config.workspaceId,emailBlind,this.config.ownerAccountId));
   // Unknown, invited and revoked accounts all use an expensive dummy verifier.
   const eligible=candidate?.state==='active' && Boolean(candidate.emailVerifiedAt) && Boolean(candidate.passwordHash);
   const encoded=eligible ? candidate!.passwordHash! : await dummyPasswordHash();
@@ -34,6 +35,7 @@ export class IdentityAuthService {
   await this.store.transaction(async tx=>{
    await lockWorkspace(tx,this.config.workspaceId);
    const current=await accountById(tx,this.config.workspaceId,candidate.id);
+   if(this.config.ownerAccountId&&(!current||current.id!==this.config.ownerAccountId||current.role!=='practitioner'||await demoAccountBatch(tx,this.config.workspaceId,current.id)))throw new AppError('UNAUTHENTICATED');
    if (!current || current.state!=='active' || current.passwordHash!==encoded || current.emailBlind!==emailBlind || !current.emailVerifiedAt) throw new AppError("UNAUTHENTICATED");
    const consumed=await tx.query("DELETE FROM ls_identity.preauth_sessions WHERE workspace_id=$1 AND token_digest=$2 AND expires_at>GREATEST($3::timestamptz,clock_timestamp()) RETURNING token_digest",[this.config.workspaceId,tokenDigest(preauthToken),context.now]);
    if (consumed.length!==1) throw new AppError("FORBIDDEN");
@@ -61,6 +63,7 @@ export class IdentityAuthService {
    if (!tokenRow) throw new AppError("INVALID_REQUEST");
    const account=await accountById(tx,this.config.workspaceId,tokenRow.accountId);
    if (!account || account.state!==(purpose==='invite'?'invited':'active')) throw new AppError("INVALID_REQUEST");
+   if(this.config.ownerAccountId&&(!authAccountScopeAllowed(this.config,account,purpose)||await demoAccountBatch(tx,this.config.workspaceId,account.id)))throw new AppError('INVALID_REQUEST');
    // Every subject behind an account is DB-enforced adult, including a parent of a minor.
    await tx.query("UPDATE ls_identity.auth_tokens SET used_at=$3,target_email_blind=NULL,target_email_ciphertext=NULL WHERE workspace_id=$1 AND token_digest=$2",[this.config.workspaceId,digest,context.now]);
    await tx.query("UPDATE ls_identity.accounts SET password_hash=$3,state='active',email_verified_at=COALESCE(email_verified_at,$4),updated_at=$4 WHERE workspace_id=$1 AND id=$2",[this.config.workspaceId,account.id,passwordHash,context.now]);
