@@ -104,3 +104,30 @@ it('rejects a cross-workspace context and a modified material hash before claimi
  await expect(f.reserve({...f.quote.offer,sha256:'f'.repeat(64)})).rejects.toThrow();expect(await counts(f.workspace)).toEqual([{kind:'claims',count:0},{kind:'reservations',count:0}]);
  expect(fishingSeatScopeV1(f.quote.offer).children).toHaveLength(2);
 });
+for(const point of ['target_tx','resource_tx','terminal_tx','terminal_query','terminal_clock','history_tx'] as const){
+ it('rejects context substitution at '+point+' without a foreign SQL query or partial commit',async()=>{
+  const f=await setup(),saved=point==='history_tx'?await f.reserve():null,before=await counts(f.workspace);
+  const foreign=vi.fn(async()=>{throw Error('FOREIGN_TRANSACTION_MUST_NOT_BE_USED');});
+  let original:BillingLedgerContext|null=null,calls=0;
+  const flip=()=>{if(!original)throw Error('MISSING_ACTUAL_CONTEXT');
+   if(point==='terminal_query')original.tx.query=foreign;
+   else if(point==='terminal_clock')original.now.setTime(original.now.valueOf()+1);
+   else original.tx={query:foreign};
+  };
+  const target=f.authority.target,access=f.authority.access,admission=f.authority.resources;
+  f.authority.target=async c=>{await target(c);if(point==='target_tx'||point==='history_tx')flip();};
+  f.authority.resources=async(c,o,rs)=>{const a=await admission(c,o,rs);if(point==='resource_tx'&&++calls===2)flip();return a;};
+  f.authority.access=async(c,o,mode)=>{await access(c,o,mode);if(mode==='current'&&point.startsWith('terminal_'))flip();};
+  await expect(f.tx(async c=>{original=c;return saved?f.store.validateInTransaction(c,f.quote.offer,saved.reference,'history'):f.store.reserveInTransaction(c,f.quote.offer);})).rejects.toThrow('FORBIDDEN');
+  expect(foreign).not.toHaveBeenCalled();expect(await counts(f.workspace)).toEqual(before);
+  if(!saved)expect((await engine.query('SELECT count(*)::int AS count FROM ls_fishing_billing.seat_reservation_locks WHERE workspace_id=$1',[f.workspace])).rows).toEqual([{count:0}]);
+ });
+}
+it('bounds the authority SQL view to the store invocation without closing the caller transaction',async()=>{
+ const f=await setup();let retained:BillingLedgerContext|null=null;const admission=f.authority.resources;
+ f.authority.resources=async(c,o,rs)=>{retained=c;expect(Object.isFrozen(c)).toBe(true);expect(Object.isFrozen(c.tx)).toBe(true);return admission(c,o,rs);};
+ await f.tx(async c=>{await f.store.reserveInTransaction(c,f.quote.offer);if(!retained)throw Error('MISSING_AUTHORITY_VIEW');
+  await expect((retained as BillingLedgerContext).tx.query('SELECT 1')).rejects.toThrow('FORBIDDEN');
+  expect(await c.tx.query('SELECT 1 AS value')).toEqual([{value:1}]);
+ });
+});

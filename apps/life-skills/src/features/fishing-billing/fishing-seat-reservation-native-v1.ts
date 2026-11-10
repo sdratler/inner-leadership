@@ -3,7 +3,7 @@ import {z} from 'zod';
 import {canonical} from '../contact-ops/core/validation.ts';
 import {privateDigest} from '../contact-ops/server/digests.ts';
 import {seal,unseal,type Keyring} from '../identity/crypto.ts';
-import {one} from '../identity/store.ts';
+import {one,type SqlSession} from '../identity/store.ts';
 import type {WorkspaceId,IdentityClock} from '../identity/types.ts';
 import {AppError} from '../../lib/errors.ts';
 import type {BillingLedgerContext} from './native.ts';
@@ -64,6 +64,20 @@ export class FishingSeatReservationNativeV1{
  constructor(private readonly workspaceId:WorkspaceId,private readonly ring:Keyring,private readonly integrityKey:string,
   private readonly clock:IdentityClock,private readonly authority:FishingSeatReservationAuthorityV1){billingId.parse(workspaceId);if(integrityKey.length<32||!authority)fail();}
  private context(c:BillingLedgerContext){if(c.workspaceId!==this.workspaceId)fail('FORBIDDEN');}
+ private frame(original:BillingLedgerContext){
+  this.context(original);const workspaceId=original.workspaceId,tx=original.tx,query=tx.query,at=original.now;
+  if(!(at instanceof Date)||!Number.isFinite(at.valueOf()))fail();const millis=at.valueOf(),clockView=new Date(millis);let active=true;
+  const check=()=>{if(!active||original.workspaceId!==workspaceId||original.tx!==tx||tx.query!==query||original.now!==at||at.valueOf()!==millis||clockView.valueOf()!==millis)fail('FORBIDDEN');};
+  // The immutable view always calls the captured physical transaction. A
+  // closed-over mutation of the caller's context/query is rejected before a
+  // later SQL statement can escape its rollback boundary.
+  const guarded:SqlSession=Object.freeze({query:async<T extends object>(sql:string,values:readonly unknown[]=[])=>{
+   check();const rows=await query.call(tx,sql,values) as T[];check();return rows;
+  }});
+  const context:BillingLedgerContext=Object.freeze({workspaceId,tx:guarded,now:clockView});
+  const port=async<T>(work:()=>Promise<T>)=>{check();const value=await work();check();return value;};
+  check();return {context,check,port,close:()=>{active=false;}};
+ }
  private now(){const d=this.clock.now();if(!(d instanceof Date)||!Number.isFinite(d.valueOf()))fail();return d.toISOString();}
  private aad(quote:string){return `ls_fishing_billing/seat_reservation/v1/${this.workspaceId}/${quote}`;}
  private hash(r:SeatReservationRecordV1){return privateDigest({domain:SEAT_RESERVATION_V1,record:r},this.integrityKey);}
@@ -83,8 +97,9 @@ export class FishingSeatReservationNativeV1{
   if(rows.some(x=>x.digest!==row.digest)||!same(rows.map(x=>({poolId:x.poolId,childId:x.childId,kind:x.kind,resourceId:x.resourceId,startsAt:x.startsAt.toISOString(),endsAt:x.endsAt.toISOString()})).sort((a,b)=>canonical(a).localeCompare(canonical(b))),r.claims.map(rowClaim).sort((a,b)=>canonical(a).localeCompare(canonical(b)))))fail();
   return r;
  }
- private async admitted(c:BillingLedgerContext,offer:ServiceOfferBindingV4,scope:SeatScopeV1){
-  const expected=resources(scope),a=z.array(seatResourceAdmissionV1Schema).min(1).max(120).parse(await this.authority.resources(c,offer,freeze(structuredClone(expected))));
+ private async admitted(c:BillingLedgerContext,offer:ServiceOfferBindingV4,scope:SeatScopeV1,check:()=>void){
+  check();const expected=resources(scope),raw=await this.authority.resources(c,offer,freeze(structuredClone(expected)));check();
+  const a=z.array(seatResourceAdmissionV1Schema).min(1).max(120).parse(raw);
   a.sort((a,b)=>key(a.resource).localeCompare(key(b.resource)));for(const x of a)x.pools.sort((a,b)=>a.id.localeCompare(b.id));
   if(!same(a.map(x=>x.resource),expected))fail();
   const pools=new Map<string,unknown>();for(const x of a)for(const p of x.pools){const old=pools.get(p.id);if(old&&!same(old,p))fail();pools.set(p.id,p);}
@@ -105,10 +120,11 @@ export class FishingSeatReservationNativeV1{
    }
   }
  }
- async reserveInTransaction(c:BillingLedgerContext,raw:unknown){
-  this.context(c);await this.authority.target(c);const offer=freeze(verifyServiceOfferBindingV4(raw)),scope=fishingSeatScopeV1(offer);if(scope.workspaceId!==this.workspaceId)fail('FORBIDDEN');
-  await this.authority.access(c,offer,'reserve');const before=await this.admitted(c,offer,scope),poolIds=[...new Set(before.flatMap(a=>a.pools.map(p=>p.id)))];
-  await this.lock(c,scope,poolIds,true);const a=await this.admitted(c,offer,scope);if(!same(a,before))fail('CONFLICT');
+ async reserveInTransaction(original:BillingLedgerContext,raw:unknown){
+  const frame=this.frame(original),c=frame.context;try{
+  await frame.port(()=>this.authority.target(c));const offer=freeze(verifyServiceOfferBindingV4(raw)),scope=fishingSeatScopeV1(offer);if(scope.workspaceId!==this.workspaceId)fail('FORBIDDEN');
+  await frame.port(()=>this.authority.access(c,offer,'reserve'));const before=await this.admitted(c,offer,scope,frame.check),poolIds=[...new Set(before.flatMap(a=>a.pools.map(p=>p.id)))];
+  await this.lock(c,scope,poolIds,true);const a=await this.admitted(c,offer,scope,frame.check);if(!same(a,before))fail('CONFLICT');
   const previous=await this.load(c,scope.quoteId),selected=claims(scope,a);
   if(previous){if(!same(previous.scope,scope)||!same(previous.admissions,a))fail('CONFLICT');}
   else if(resources(scope).some(r=>Date.parse(r.startsAt)<=Date.parse(this.now())))fail('CONFLICT');
@@ -117,19 +133,22 @@ export class FishingSeatReservationNativeV1{
   if(!previous){const sha=this.hash(record);await c.tx.query('INSERT INTO ls_fishing_billing.seat_reservations(workspace_id,quote_id,family_id,offer_sha256,record_digest,created_at,payload_ciphertext) VALUES($1,$2,$3,$4,$5,$6,$7)',[this.workspaceId,scope.quoteId,scope.familyId,scope.offerSha256,sha,record.createdAt,seal(JSON.stringify(record),this.aad(scope.quoteId),this.ring)]);
    for(const x of selected)await c.tx.query('INSERT INTO ls_fishing_billing.seat_reservation_claims(workspace_id,quote_id,record_digest,pool_id,child_id,resource_kind,resource_id,starts_at,ends_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',[this.workspaceId,scope.quoteId,sha,x.poolId,x.childId,x.resource.kind,x.resource.id,x.resource.startsAt,x.resource.endsAt]);
   }
-  await this.authority.target(c);await this.authority.access(c,offer,'current');if(!same(await this.admitted(c,offer,scope),a)||!same(await this.load(c,scope.quoteId),record)||
+  await frame.port(()=>this.authority.target(c));await frame.port(()=>this.authority.access(c,offer,'current'));if(!same(await this.admitted(c,offer,scope,frame.check),a)||!same(await this.load(c,scope.quoteId),record)||
    !previous&&resources(scope).some(r=>Date.parse(r.startsAt)<=Date.parse(this.now())))fail('CONFLICT');
-  return freeze({reference:this.ref(record),record,replayed:previous!==null});
+  frame.check();return freeze({reference:this.ref(record),record,replayed:previous!==null});
+  }finally{frame.close();}
  }
- async validateInTransaction(c:BillingLedgerContext,raw:unknown,reference:unknown,mode:'current'|'history'){
+ async validateInTransaction(original:BillingLedgerContext,raw:unknown,reference:unknown,mode:'current'|'history'){
   z.enum(['current','history']).parse(mode);
-  this.context(c);await this.authority.target(c);const offer=freeze(verifyServiceOfferBindingV4(raw)),scope=fishingSeatScopeV1(offer),expected=sourceReferenceSchema.parse(reference);
-  if(scope.workspaceId!==this.workspaceId)fail('FORBIDDEN');await this.authority.access(c,offer,mode);
+  const frame=this.frame(original),c=frame.context;try{
+  await frame.port(()=>this.authority.target(c));const offer=freeze(verifyServiceOfferBindingV4(raw)),scope=fishingSeatScopeV1(offer),expected=sourceReferenceSchema.parse(reference);
+  if(scope.workspaceId!==this.workspaceId)fail('FORBIDDEN');await frame.port(()=>this.authority.access(c,offer,mode));
   const before=await this.load(c,scope.quoteId);if(!before||!same(before.scope,scope)||!same(this.ref(before),expected))fail('FORBIDDEN');
   await this.lock(c,scope,[...new Set(before.claims.map(x=>x.poolId))],false);const r=await this.load(c,scope.quoteId);if(!r||!same(r,before))fail();
-  if(mode==='current'){const a=await this.admitted(c,offer,scope);if(!same(a,r.admissions))fail('CONFLICT');await this.room(c,scope,a,r.claims);}
-  await this.authority.target(c);await this.authority.access(c,offer,mode);
-  if(mode==='current'&&!same(await this.admitted(c,offer,scope),r.admissions))fail('CONFLICT');
-  return freeze({reference:this.ref(r),record:r});
+  if(mode==='current'){const a=await this.admitted(c,offer,scope,frame.check);if(!same(a,r.admissions))fail('CONFLICT');await this.room(c,scope,a,r.claims);}
+  await frame.port(()=>this.authority.target(c));await frame.port(()=>this.authority.access(c,offer,mode));
+  if(mode==='current'&&!same(await this.admitted(c,offer,scope,frame.check),r.admissions))fail('CONFLICT');
+  frame.check();return freeze({reference:this.ref(r),record:r});
+  }finally{frame.close();}
  }
 }
