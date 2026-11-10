@@ -68,9 +68,22 @@ if(!runtimePath){
  async function selectedOwnerRoutes(page:Page,locale:"en"|"he",returnPath:string){
   const owner=fixture.credentials.find(value=>value.role==="practitioner")!;
   await ownerFrame(page,locale);
-  await page.goto(runtime.origin+"/"+locale+"/app/settings");
+  const nav=page.locator('[data-fishing-owner-navigation="true"]');
+  const mobileToggle=nav.getByRole("button",{name:locale==="he"?/^הצגת אזורי העבודה:/:/^Show work areas:/});
+  if(await mobileToggle.isVisible()){
+   await expect(mobileToggle).toHaveAttribute("aria-expanded","false");
+   await mobileToggle.press("Space");
+   await expect(mobileToggle).toHaveAttribute("aria-expanded","true");
+  }
+  await nav.locator('[data-fishing-owner-destination="settings"]').click();
+  await expect(page).toHaveURL(runtime.origin+"/"+locale+"/app/settings");
   await ownerFrame(page,locale);
-  await expect(page.getByRole("heading",{name:t(locale,"Settings","הגדרות"),exact:true})).toBeVisible();
+  const heading=page.getByRole("heading",{name:t(locale,"Settings","הגדרות"),exact:true});
+  await expect(heading).toBeVisible();
+  const headingBox=await heading.boundingBox(),viewport=page.viewportSize();
+  if(!headingBox||!viewport)throw Error("OWNER_SETTINGS_INITIAL_VIEWPORT_REQUIRED");
+  expect(headingBox.y).toBeGreaterThanOrEqual(0);
+  expect(headingBox.y+headingBox.height).toBeLessThanOrEqual(viewport.height);
   await expect(page.locator("main").getByText(owner.email,{exact:true})).toBeVisible();
   await expect(page.locator("main").getByText(fixture.credentials.find(value=>value.role==="parent")!.email,{exact:true})).toHaveCount(0);
   const contacts=await page.request.get(runtime.origin+"/api/identity/contacts");
