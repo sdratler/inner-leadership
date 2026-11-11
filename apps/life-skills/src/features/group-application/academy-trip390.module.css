@@ -292,18 +292,26 @@
 }
 @media(max-width:767px){
  .page .hero img{object-position:30% center}
+}
+@media(max-width:999px){
  /* For enlarged type the original occupies its own natural-width plane.
     Extend the sky and water at their edges behind the text, keeping the
     full photograph, including the people, at its original proportions. */
  .page[data-text-reflow=true] .hero{
-  grid-template-rows:minmax(45.5vw,auto) 75.25vw minmax(58.5vw,1fr);
+  --photo-sky:calc(100vw * 520 / 1143);
+  --photo-people:calc(100vw * 860 / 1143);
+  --photo-water:calc(100vw * 668 / 1143);
+  --photo-original:url("/groups/academy/hero-mobile-20261018.png");
+  --sky-slice:1528;
+  --water-slice:1380;
+  grid-template-rows:minmax(var(--photo-sky),auto) var(--photo-people) minmax(var(--photo-water),1fr);
   padding:0;
   overflow:clip;
  }
  .page[data-text-reflow=true] .hero picture{grid-row:2;inset:0}
  .page[data-text-reflow=true] .hero img{
   position:absolute;
-  inset-block-start:-45.5vw;
+  inset-block-start:calc(-1 * var(--photo-sky));
   block-size:auto;
  }
  .page[data-text-reflow=true] .hero::before,
@@ -312,19 +320,30 @@
   position:absolute;
   inset-inline:0;
   z-index:-1;
-  border-image-source:url("/groups/academy/hero-mobile-20261018.png");
+  border-image-source:var(--photo-original);
   border-image-width:0;
   transform:scaleY(-1);
  }
- /* Only sky above y=520 and water below y=1380 can fill extra space. */
- .page[data-text-reflow=true] .hero::before{grid-row:1;inset-block:0 45.45vw;border-image-slice:0 0 1528 0 fill}
- .page[data-text-reflow=true] .hero::after{grid-row:3;inset-block:58.38vw 0;border-image-slice:1380 0 0 0 fill}
+ /* The decorative edges sample only sky and water outside the registered people band. */
+ .page[data-text-reflow=true] .hero::before{grid-row:1;inset-block:0 calc(var(--photo-sky) - 1px);border-image-slice:0 0 var(--sky-slice) 0 fill}
+ .page[data-text-reflow=true] .hero::after{grid-row:3;inset-block:calc(var(--photo-water) - 1px) 0;border-image-slice:var(--water-slice) 0 0 0 fill}
  .page[data-text-reflow=true] .hero .heroText,
  .page[data-text-reflow=true] .hero .heroAction{align-self:center;padding:12px}
  .page[data-text-reflow=true] .heroAction .action{inline-size:100%;padding:8px 4px}
 }
 @media(min-width:768px) and (max-width:999px){
+ .page[data-text-reflow=true] .valuesGrid{grid-template-columns:1fr}
  .page .hero{min-block-size:calc(100svh - var(--header-height));grid-template-rows:auto minmax(42vw,1fr) auto}
+}
+@media(min-width:768px) and (max-width:999px) and (orientation:landscape){
+ .page[data-text-reflow=true] .hero{
+  --photo-sky:calc(100vw * 300 / 2048);
+  --photo-people:calc(100vw * 600 / 2048);
+  --photo-water:calc(100vw * 243 / 2048);
+  --photo-original:url("/groups/academy/hero-desktop-20261018.png");
+  --sky-slice:843;
+  --water-slice:900;
+ }
 }
 @media(prefers-reduced-motion:reduce){.page *{scroll-behavior:auto}}
 

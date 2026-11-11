@@ -20,7 +20,7 @@ export function primaryActionMode(s:PrimaryActionSnapshot):'initial'|'scroll'|'u
  const qualified=short||s.declaredEnlargedText&&s.pageFontSize>=34;
  const proportional=s.photo.naturalWidth>0&&s.photo.naturalHeight>0&&Math.abs(s.photo.width/s.photo.height-s.photo.naturalWidth/s.photo.naturalHeight)<.005;
  const admittedFlow=qualified&&s.reflow&&s.actionPosition==='static'&&proportional&&s.action.top>=s.photo.bottom-1;
- if(s.enlargedPhotoFrame&&s.declaredEnlargedText&&s.pageFontSize>=34&&proportional&&s.viewport.width<=767)return s.initialPrimaryVisible?'initial':'scroll';
+ if(s.enlargedPhotoFrame&&s.declaredEnlargedText&&s.pageFontSize>=34&&proportional&&s.viewport.width<=999)return s.initialPrimaryVisible?'initial':'scroll';
  const photoOverlay=s.photoBackedGrid&&s.viewport.width<=999&&s.actionPosition==='static'&&containsRect(s.photo,s.action);
  if(photoOverlay)return s.initialPrimaryVisible?'initial':qualified?'scroll':'unreachable';
  if(s.actionPosition==='static'&&!admittedFlow)return 'unreachable';
@@ -135,7 +135,7 @@ export async function inspectLanding(page:Page,options:{declaredShortCase?:strin
   const action=hero.querySelector<HTMLElement>('[data-hero-action]')!,cta=action.querySelector<HTMLAnchorElement>('a')!;
   let actionPainted=true;for(let n:HTMLElement|null=cta;n;n=n.parentElement){const s=getComputedStyle(n);if(s.display==='none'||s.visibility==='hidden'||s.opacity==='0'||n.hidden||n.getAttribute('aria-hidden')==='true')actionPainted=false;}
   const photoEdges=['::before','::after'].map(edge=>getComputedStyle(hero,edge));
-  const enlargedPhotoFrame=declaredEnlargedText&&getComputedStyle(hero).display==='grid'&&photoEdges.every(edge=>edge.borderImageSource.includes('hero-mobile-20261018.png'))&&Math.abs(ib.width-hb.width)<1;
+  const enlargedPhotoFrame=declaredEnlargedText&&getComputedStyle(hero).display==='grid'&&photoEdges.every(edge=>edge.borderImageSource.includes(new URL(photo.currentSrc).pathname))&&Math.abs(ib.width-hb.width)<1;
   const primaryAction:PrimaryActionSnapshot={viewport:{width:innerWidth,height:innerHeight},hero:rect(hb),photo:{...rect(ib),naturalWidth:photo.naturalWidth,naturalHeight:photo.naturalHeight},action:rect(box(action)),cta:rect(box(cta)),
    enlargedPhotoFrame,photoBackedGrid:getComputedStyle(hero).display==='grid'&&Math.abs(ib.top-hb.top)<1&&Math.abs(ib.bottom-hb.bottom)<1&&getComputedStyle(photo).objectFit==='cover',
    painted:actionPainted,initialPrimaryVisible,reflow:hero.getAttribute('data-reflow')==='true',actionPosition:getComputedStyle(action).position,declaredShortCase,declaredEnlargedText,pageFontSize:parseFloat(getComputedStyle(hero.closest('div[lang]')!).fontSize)};

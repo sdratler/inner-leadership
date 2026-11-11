@@ -297,10 +297,11 @@ test('landing matrix, native dialog interactions and independent holdout regress
   diagnostics.push({locale,faqPositions});
   // 200% text-size emulation is explicitly not physical-device/browser zoom.
   await page.goto('/'+locale+'/florida');await page.emulateMedia({reducedMotion:'reduce'});
-  await page.evaluate(()=>{
+  const enlargeText=()=>page.evaluate(()=>{
    const sizes=[...document.querySelectorAll<HTMLElement>('body *')].map(node=>({node,size:parseFloat(getComputedStyle(node).fontSize)}));
    sizes.forEach(({node,size})=>node.style.setProperty('font-size',`${size*2}px`,'important'));
   });
+  await enlargeText();
   await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
   await expect.poll(()=>page.locator('[data-text-reflow="true"]').count()).toBe(1);
   const enlargedPortrait=page.locator('img[src="/groups/people/founder-head.jpg"]');await enlargedPortrait.scrollIntoViewIfNeeded();
@@ -338,6 +339,13 @@ test('landing matrix, native dialog interactions and independent holdout regress
    await expect.poll(async()=>(await inspectBodyContact(page)).findings).toEqual([]);
    await expect.poll(async()=>(await inspectContactRestoration(page,blockedContact!)).findings).toEqual([]);
    await blockedContact!.dispose();
+  }
+  for(const viewport of [{width:768,height:1024},{width:844,height:390}]){
+   await page.setViewportSize(viewport);
+   await page.goto('/'+locale+'/florida');
+   await enlargeText();
+   await scrollLandingToTop(page);
+   await requireLanding({declaredEnlargedText:true},`${locale}-200percent-tablet-${viewport.width}`);
   }
   await page.emulateMedia({reducedMotion:'no-preference'});
  }
