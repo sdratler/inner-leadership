@@ -1,6 +1,7 @@
 'use client';
 import {useEffect,useId,useLayoutEffect,useRef,useSyncExternalStore} from 'react';
 import {Button,Input,Textarea} from '../../ui/workspace/controls.tsx';
+import {restoreDialogOpenerFocus} from '../../ui/workspace/dialogs.tsx';
 import {money,unallocatedAmount} from './model.ts';
 import {ServiceOwnerPanelStateV4,type ServiceOwnerPanelSnapshotV4} from './service-owner-panel-state-v4.ts';
 import styles from './panel.module.css';
@@ -103,7 +104,22 @@ function AcceptanceProvenance({locale,snapshot}:{locale:Locale;snapshot:ServiceO
 function EntryDialog({locale,store,snapshot}:{locale:Locale;store:ServiceOwnerPanelStateV4;snapshot:ServiceOwnerPanelSnapshotV4}){
  const ref=useRef<HTMLDialogElement>(null),headingRef=useRef<HTMLHeadingElement>(null),id=useId(),draft=snapshot.draft!,data=snapshot.data!,t=(en:string,he:string)=>text(locale,en,he);
  const review=draft.review,op=review?.operation,done=snapshot.flow.phase==='confirmed',reviewing=Boolean(review&&op),lastReviewing=useRef(reviewing);
- useEffect(()=>{const node=ref.current;if(node&&!node.open)node.showModal();return()=>{if(node?.open)node.close();};},[]);
+ useEffect(()=>{
+  const node=ref.current;if(!node)return;
+  const doc=node.ownerDocument,active=doc.activeElement;
+  const opener=active instanceof HTMLElement&&active!==doc.body&&active!==doc.documentElement&&!node.contains(active)?active:undefined;
+  if(!node.open)node.showModal();
+  return()=>{
+   const wasFocused=doc.hasFocus();
+   if(node.open)node.close();
+   const current=store.getSnapshot();
+   if(!wasFocused||!doc.hasFocus()||current.state!=='ready'||!current.data||!current.subject||!opener?.isConnected||doc.querySelector(':modal')||opener.matches(':disabled')||opener.closest('[hidden],[inert],[aria-hidden="true"],[aria-disabled="true"]')||!opener.getClientRects().length)return;
+   if([...doc.querySelectorAll('[aria-modal="true"]')].some(other=>other!==node&&other.getClientRects().length>0))return;
+   const css=doc.defaultView?.getComputedStyle(opener);
+   if(!css||css.display==='none'||css.visibility==='hidden'||css.visibility==='collapse')return;
+   restoreDialogOpenerFocus(node,opener);
+  };
+ },[store]);
  useLayoutEffect(()=>{
   const previous=lastReviewing.current;lastReviewing.current=reviewing;
   const node=ref.current,heading=headingRef.current;
@@ -111,9 +127,10 @@ function EntryDialog({locale,store,snapshot}:{locale:Locale;store:ServiceOwnerPa
   const doc=node.ownerDocument;
   if(doc.hasFocus()&&doc.activeElement===doc.body)heading.focus({preventScroll:true});
  },[reviewing]);
- return <dialog ref={ref} className={styles.dialog} aria-labelledby={`${id}-title`} onCancel={event=>{event.preventDefault();store.closeForm();}}>
-  <header className={styles.dialogHeader}><h2 ref={headingRef} tabIndex={-1} id={`${id}-title`}>{draft.kind==='cash'?t('Record cash received','רישום מזומן שהתקבל'):draft.kind==='reversal'?t('Correct cash entry','תיקון רישום מזומן'):t('Review billing state','בדיקת מצב החיוב')}</h2><Button variant="quiet" onClick={()=>store.closeForm()} aria-label={t('Close dialog','סגירת החלון')}>×</Button></header>
-  <div className={styles.dialogBody}>{done?<><p role="status">{t('Original operation confirmed; current details refreshed.','הפעולה המקורית אושרה; הפרטים העדכניים רועננו.')}</p><Button onClick={()=>store.closeForm()}>{t('Done','סיום')}</Button></>:review&&op?<>
+ const closeEntry=()=>{if(ref.current?.open)ref.current.close();store.closeForm();};
+ return <dialog ref={ref} className={styles.dialog} aria-labelledby={`${id}-title`} onCancel={event=>{event.preventDefault();closeEntry();}}>
+  <header className={styles.dialogHeader}><h2 ref={headingRef} tabIndex={-1} id={`${id}-title`}>{draft.kind==='cash'?t('Record cash received','רישום מזומן שהתקבל'):draft.kind==='reversal'?t('Correct cash entry','תיקון רישום מזומן'):t('Review billing state','בדיקת מצב החיוב')}</h2><Button variant="quiet" onClick={closeEntry} aria-label={t('Close dialog','סגירת החלון')}>×</Button></header>
+  <div className={styles.dialogBody}>{done?<><p role="status">{t('Original operation confirmed; current details refreshed.','הפעולה המקורית אושרה; הפרטים העדכניים רועננו.')}</p><Button onClick={closeEntry}>{t('Done','סיום')}</Button></>:review&&op?<>
    {op.action==='state'?<><p>{op.command.cancel?t('Cancel future billing. Existing entries and original acceptance remain.','ביטול חיובים עתידיים. הרישומים הקיימים והאישור המקורי נשמרים.'):op.command.paused?t('Pause billing. Existing entries remain.','השהיית החיוב. הרישומים הקיימים נשמרים.'):t('Resume billing under the existing recorded terms.','חידוש החיוב לפי התנאים שנרשמו.')}</p><p>{t('This changes the recorded billing state. External subscription updates are unavailable here.','פעולה זו משנה את מצב החיוב הרשום. עדכון מנויים אצל ספק חיצוני אינו זמין כאן.')}</p></>:<>
     <strong className={`${styles.confirmAmount} ${styles.money}`}>{money(op.command.amountMinor,locale)}</strong>
     <dl className={styles.confirmFacts}>{op.command.allocations.map(a=><div key={a.lineId}><dt><bdi>{snapshot.subject!.children.find(c=>c.id===data.quote.lines.find(l=>l.id===a.lineId)!.childId)!.name}</bdi></dt><dd className={styles.money}>{money(a.amountMinor,locale)}</dd></div>)}</dl>
@@ -129,7 +146,7 @@ function EntryDialog({locale,store,snapshot}:{locale:Locale;store:ServiceOwnerPa
     <fieldset className={styles.allocationFields}><legend>{t('Allocate to children and periods','חלוקה לילדים ולתקופות')}</legend>{Object.keys(draft.allocations).map((lineId,i)=>{const line=data.quote.lines.find(l=>l.id===lineId)!;return <Input key={lineId} id={`${id}-allocation-${i}`} label={`${snapshot.subject!.children.find(c=>c.id===line.childId)!.name} · ${when(line.period.startsAt,locale)}`} inputMode="decimal" dir="ltr" value={draft.allocations[lineId]??''} onChange={event=>store.updateDraft({allocations:{...draft.allocations,[lineId]:event.target.value}})}/>;})}<p className={styles.help}>{t('Any unallocated money stays separate from each child’s balance.','כסף שלא הוקצה נשאר בנפרד מיתרתו של כל ילד.')}</p></fieldset>
     {draft.kind==='reversal'&&<Textarea id={`${id}-reason`} label={t('Correction reason','סיבת התיקון')} required rows={3} maxLength={500} value={draft.reason} onChange={event=>store.updateDraft({reason:event.target.value})}/>}
    </>}
-   <div className={styles.actions}><Button type="submit">{t('Review entry','בדיקת הרישום')}</Button><Button variant="secondary" onClick={()=>store.closeForm()}>{t('Close','סגירה')}</Button></div>
+   <div className={styles.actions}><Button type="submit">{t('Review entry','בדיקת הרישום')}</Button><Button variant="secondary" onClick={closeEntry}>{t('Close','סגירה')}</Button></div>
   </form>}</div>
  </dialog>;
 }
