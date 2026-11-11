@@ -229,7 +229,7 @@ describe('CONTACT-SCROLL-R01 actual layout-hook event lifecycle',()=>{
   current.setPaintedTop(400);current.scroll();expect(current.link.dataset.contactReady).toBe('false');expect(current.link.style.visibility).toBe('hidden');expect(current.lift()).toBe(0);
   current.setPaintedTop(null);current.scroll();expect(current.link.dataset.contactReady).toBe('true');expect(current.lift()).toBe(0);current.cleanup();
  });
- it('uses the actual Hebrew left-corner clear slot instead of the observed physical-right whole-viewport jump',()=>{
+ it('stays at physical bottom-right in Hebrew and hides over the occupied corner',()=>{
   // Public c3b HE390x844/scrollY3376 painted Range/icon/control rectangles.
   // Replaying this geometry tests the actual hook, not a browser CSS engine.
   const targets:Target[]=[
@@ -246,27 +246,32 @@ describe('CONTACT-SCROLL-R01 actual layout-hook event lifecycle',()=>{
   ];
   const at=(left:number,right:number)=>({left,right,top:770,height:844,targets});
   const before=mounted(false,17,390,true,at(301,357));before.flush();expect(before.lift()).toBeGreaterThan(224);before.cleanup();
-  let logicalEnd=false,physicalRight=false,rtlSafeArea=false;
-  css.walkRules(rule=>{if(rule.selector==='.page .whatsapp')rule.walkDecls(d=>{if(d.prop==='inset-inline-end')logicalEnd=true;if(d.prop==='right')physicalRight=true;});if(rule.selector==='.page[dir=rtl] .whatsapp')rule.walkDecls('inset-inline-end',d=>{rtlSafeArea=d.value.includes('safe-area-inset-left');});});
-  expect(logicalEnd).toBe(true);expect(physicalRight).toBe(false);expect(rtlSafeArea).toBe(true);
-  const current=mounted(false,17,390,false,logicalEnd&&!physicalRight?at(18,74):at(301,357));current.flush();
-  expect(current.link.dataset.contactReady).toBe('true');expect(current.lift()).toBe(0);expect(current.link.getBoundingClientRect().left).toBe(18);
+  let mobileRight=false;
+  css.walkRules(rule=>{
+   if(rule.parent?.type==='atrule'&&rule.parent.params==='(max-width:999px)'&&rule.selector.includes('.page[dir=rtl] .whatsapp')){
+    rule.walkDecls('right',d=>{mobileRight=d.value.includes('safe-area-inset-right');});
+   }
+  });
+  expect(mobileRight).toBe(true);
+  const current=mounted(false,17,390,false,at(301,357));current.flush();
+  expect(current.link.dataset.contactReady).toBe('false');expect(current.link.tabIndex).toBe(-1);expect(current.lift()).toBe(0);
   const priorTop=current.link.getBoundingClientRect().top;current.scroll();expect(current.link.getBoundingClientRect().top).toBe(priorTop);current.cleanup();
  });
  it('preserves higher same-node restoration in the desktop enlarged text-reflow layout',()=>{
   const current=mounted(false,34,1280),sameLink=current.link;current.flush();current.setPaintedTop(400);current.scroll();
   expect(current.link).toBe(sameLink);expect(current.link.dataset.contactReady).toBe('true');expect(current.link.style.visibility).toBe('');expect(current.lift()).toBeGreaterThan(224);expect(current.link.getBoundingClientRect().top).toBeGreaterThan(92);current.cleanup();
  });
- it('keeps the mobile contact link still, available and focusable across scroll and viewport changes at enlarged text',()=>{
+ it('hides the fixed mobile contact over content and restores its focusability when clear',()=>{
   const current=mounted(false,34,390);
-  const origin=current.link.getBoundingClientRect(),queries=current.queries();
+  const origin=current.link.getBoundingClientRect();
   current.transitions.length=0;
   current.setBlocked(true);current.setPaintedTop(400);
   for(let i=0;i<20;i++)current.scroll();
   current.resize();
   expect(current.link.getBoundingClientRect()).toEqual(origin);
-  expect(current.queries()).toBe(queries);
-  expect(current.transitions).not.toContain('false');
+  expect(current.link.tabIndex).toBe(-1);expect(current.link.ariaHidden).toBe('true');
+  current.setBlocked(false);current.setPaintedTop(null);current.scroll();
+  expect(current.link.getBoundingClientRect()).toEqual(origin);
   expect(current.link.tabIndex).toBe(0);
   expect(current.link.dataset.contactReady).toBe('true');
   current.cleanup();

@@ -1,5 +1,6 @@
 /* eslint-disable @next/next/no-img-element -- consume protected original asset bytes */
 'use client';
+import {AcademyWhatsAppIcon} from "./academy-whatsapp-icon.tsx";
 import React, {useEffect, useLayoutEffect, useRef, useState} from 'react';
 import {trip390CitySuggestions, trip390CommandSchema, TRIP390_INTEREST_VERSION, TRIP390_NOTICE_VERSION, TRIP390_DRIVING_VERSION, TRIP390_OFFER, type Trip390Command} from './academy-trip390-contract.ts';
 import site from './academy-site.module.css';
@@ -102,7 +103,6 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, reser
  const savedSummary = useRef<HTMLDivElement>(null);
  const hero = useRef<HTMLElement>(null);
  const page = useRef<HTMLDivElement>(null);
- const readingPane = useRef<HTMLDivElement>(null);
  const header = useRef<HTMLElement>(null);
  const dialog = useRef<HTMLDialogElement>(null);
  const dialogTitle = useRef<HTMLHeadingElement>(null);
@@ -123,26 +123,14 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, reser
  const consentCopy=trip390Copy[documentLocale].form;
  const interestLabel=copy.hero.interest_cta;
 
- function scrollSurface(){
-  const pane=readingPane.current;
-  return pane?.clientHeight?pane:document.documentElement;
- }
- function rememberReadingPosition(){
-  const pane=readingPane.current;
-  if(!pane?.clientHeight)return;
-  const url=window.location.pathname+window.location.search;
-  const state=window.history.state;
-  if(state?.academyReadingPosition?.url===url&&state.academyReadingPosition.top===pane.scrollTop)return;
-  window.history.replaceState({...state,academyReadingPosition:{url,top:pane.scrollTop}},'');
- }
  function openInterest(event?:React.MouseEvent<HTMLElement>) {
   event?.preventDefault();
   if (dialog.current?.open) return;
   const url=new URL(window.location.href);
   const pushed=url.hash!=='#interest'&&url.hash!=='#academy-form';
-  const surface=scrollSurface();
+  const surface=document.documentElement;
   dialogReturn.current={element:event?.currentTarget??(document.activeElement instanceof HTMLElement?document.activeElement:null),x:surface.scrollLeft,y:surface.scrollTop,url:url.pathname+url.search+url.hash,pushed};
-  if(pushed){rememberReadingPosition();url.hash='interest';window.history.pushState({...window.history.state,academyTrip390Dialog:true},'',url.pathname+url.search+url.hash);}
+  if(pushed){url.hash='interest';window.history.pushState({...window.history.state,academyTrip390Dialog:true},'',url.pathname+url.search+url.hash);}
   setMenuOpen(false);setDialogOpen(true);
  }
  function openPrivacy(event:React.MouseEvent<HTMLElement>) {
@@ -171,21 +159,6 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, reser
   else if(!event.shiftKey&&(active===last||!tabbables.includes(active as HTMLElement))){event.preventDefault();first.focus();}
  }
 
- useEffect(()=>{
-  const pane=readingPane.current;
-  if(!pane)return;
-  // Browsers restore the document on Back/reload. Preserve the mobile reading
-  // pane alongside that entry, including the position before a menu jump.
-  const restore=()=>{
-   const saved=window.history.state?.academyReadingPosition;
-   if(pane.clientHeight&&saved?.url===window.location.pathname+window.location.search&&Number.isFinite(saved.top))pane.scrollTop=saved.top;
-  };
-  restore();
-  pane.addEventListener('scrollend',rememberReadingPosition);
-  window.addEventListener('pagehide',rememberReadingPosition);
-  window.addEventListener('popstate',restore);
-  return()=>{pane.removeEventListener('scrollend',rememberReadingPosition);window.removeEventListener('pagehide',rememberReadingPosition);window.removeEventListener('popstate',restore);};
- },[]);
  useEffect(()=>{
   if(!initialOpen)return;
   // Apply the route hint after hydration/layout; it is not a controlled open
@@ -216,22 +189,19 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, reser
    if(state.ariaHidden)link.setAttribute('aria-hidden','true');else link.removeAttribute('aria-hidden');
   };
   const invalidate=()=>readiness(initialContactDock);
-  // The mobile contact row has its own space. Its position and availability
-  // are independent of every paragraph, picture and button scrolling past it.
-  const mobileDock=window.matchMedia('(max-width: 999px)');
+  const mobile = window.matchMedia('(max-width: 999px)');
   invalidate();
   const measure=()=>{
    frame=0;
    if(dialog.current?.open)return; // Native modal makes all background controls inert.
-   if(mobileDock.matches){
-    lift=0;
-    link.style.removeProperty('--contact-lift');
-    link.style.visibility='';
-    readiness(contactDockState(false,false,menuOpen?'blocked':'clear'));
+   // Keep the phone's fixed contact corner clear of the opening photo.
+   const heroBox=hero.current?.getBoundingClientRect();
+   const headerBottom=header.current?.getBoundingClientRect().bottom ?? 0;
+   if(mobile.matches && (menuOpen || (heroBox && heroBox.bottom>headerBottom))){
+    invalidate();
     return;
    }
    const image=hero.current?.querySelector('img'),asset=image&&registeredHero(image);
-   const heroBox=hero.current?.getBoundingClientRect();
    const photoVisible=Boolean(heroBox&&heroBox.bottom>0&&heroBox.top<window.innerHeight);
    const photoReady=Boolean(image?.complete&&asset);
    if(photoVisible&&!photoReady){invalidate();return;}
@@ -265,6 +235,19 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, reser
    page.current?.querySelectorAll<SVGSVGElement>('[data-jlfa-values] article svg').forEach(icon=>{
     addContentRect(icon.getBoundingClientRect());
    });
+   if(mobile.matches){
+    const intersects=(rect:DOMRect|ContactObstacle)=>
+     rect.left<box.right+gap && rect.right>box.left-gap &&
+     rect.top<box.bottom+gap && rect.bottom>box.top-gap;
+    const mediaAndFooter=page.current?.querySelectorAll('main img,main summary,footer') ?? [];
+    const blocked=obstacles.some(intersects) ||
+     Array.from(mediaAndFooter).some(node=>intersects(node.getBoundingClientRect()));
+    lift=0;
+    link.style.removeProperty('--contact-lift');
+    link.style.visibility='';
+    readiness(contactDockState(false,false,blocked?'blocked':'clear'));
+    return;
+   }
    if(image&&asset){
     // The source rectangle is defined in original pixels.
     const {original,region}=asset;
@@ -277,7 +260,7 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, reser
      if(visible.right>visible.left&&visible.bottom>visible.top&&visible.left<box.right+gap&&visible.right>box.left-gap)obstacles.push({...visible,gap,kind:'photo'});
     }
    }
-   const headerFloor=(header.current?.getBoundingClientRect().bottom??0)+gap;
+   const headerFloor=headerBottom+gap;
    // Match the existing text-reflow layout, not an ordinary scroll position.
    // Only enlarged text may need R08's higher same-node body restoration.
    const textReflow=Boolean(page.current&&parseFloat(getComputedStyle(page.current).fontSize)>=26);
@@ -314,11 +297,11 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, reser
   // Invalidate synchronously at geometry changes, before the queued measure.
   // Layout-effect cleanup also closes the gap before a reflow commit paints.
   const schedule=()=>{invalidate();if(!frame)frame=requestAnimationFrame(measure);};
-  const layoutChanged=()=>{if(mobileDock.matches)measure();else schedule();};
+  const layoutChanged=()=>{if(mobile.matches)measure();else schedule();};
   // A scroll changes obstacle positions without changing the layout. Resolve
   // it in this event, before paint, rather than hiding a still-safe dock until
   // the next frame. Structural reflow still invalidates synchronously above.
-  const scroll=()=>{if(mobileDock.matches)return;cancelAnimationFrame(frame);frame=0;measure();};
+  const scroll=()=>{cancelAnimationFrame(frame);frame=0;measure();};
   const observer=typeof ResizeObserver==='undefined'?null:new ResizeObserver(layoutChanged);
   if(page.current)observer?.observe(page.current);
   const image=hero.current?.querySelector('img');
@@ -331,7 +314,7 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, reser
   const node=dialog.current;
   if(!node)return;
   if(!dialogOpen){if(node.open)node.close();return;}
-  const root=scrollSurface();
+  const root=document.documentElement;
   if(!dialogReturn.current)dialogReturn.current={element:null,x:root.scrollLeft,y:root.scrollTop,url:window.location.pathname+window.location.search,pushed:false};
   const fallbackFocus=menuButton.current?.getClientRects().length?menuButton.current:header.current?.querySelector<HTMLElement>('a');
   const overflow=root.style.overflow;
@@ -386,10 +369,8 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, reser
   const schedule=()=>{if(!frame)frame=requestAnimationFrame(measure);};
   const observer=typeof ResizeObserver==='undefined'?null:new ResizeObserver(schedule);
   if(page.current)observer?.observe(page.current);
-  const pane=readingPane.current;
-  pane?.addEventListener('scroll',schedule,{passive:true});
   window.addEventListener('scroll',schedule,{passive:true});window.addEventListener('resize',schedule);measure();
-  return()=>{cancelAnimationFrame(frame);observer?.disconnect();pane?.removeEventListener('scroll',schedule);window.removeEventListener('scroll',schedule);window.removeEventListener('resize',schedule);};
+  return()=>{cancelAnimationFrame(frame);observer?.disconnect();window.removeEventListener('scroll',schedule);window.removeEventListener('resize',schedule);};
  }, []);
  useEffect(() => {
   const node=hero.current;
@@ -399,9 +380,16 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, reser
   if (!node || !image || !heading || !action) return;
   const measure=()=>{
    if (!image.naturalWidth) return;
+   // Mobile composes the photograph and overlays in CSS from first paint.
+   if(window.matchMedia('(max-width:999px)').matches){
+    delete node.dataset.photoFit;
+    delete node.dataset.desktopBands;
+    setHeroReflow(false);
+    return;
+   }
    // Use the intended first-screen height, not the reflowed image height: the
    // latter would make enlarged-text mode oscillate between two layouts.
-   const height=Math.max(1,scrollSurface().clientHeight-(header.current?.getBoundingClientRect().height??80));
+   const height=Math.max(1,document.documentElement.clientHeight-(header.current?.getBoundingClientRect().height??80));
    // A tall viewport must not enlarge the original beyond the full width:
    // retain its natural image height and continue the navy hero below it.
    node.dataset.photoFit=node.getBoundingClientRect().width*image.naturalHeight/image.naturalWidth<=height?'width':'cover';
@@ -507,8 +495,8 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, reser
   event.preventDefault();setMenuOpen(false);setActiveSection(key);
   const target=document.getElementById(key);
   if(!target)return;
-  if(window.location.hash!=='#'+key){rememberReadingPosition();window.history.pushState(window.history.state,'','#'+key);}
-  const surface=scrollSurface();
+  if(window.location.hash!=='#'+key){window.history.pushState(window.history.state,'','#'+key);}
+  const surface=document.documentElement;
   surface.scrollTo({top:surface.scrollTop+target.getBoundingClientRect().top-(header.current?.getBoundingClientRect().height??80)-20,behavior:'instant'});
  }}>{copy.nav[key]}</a>);
  const invalid = (id:string) => errorTarget===id ? {'aria-invalid':true as const,'aria-describedby':id+'-error'} : {};
@@ -516,7 +504,6 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, reser
  const privacyPanel=<details name="trip390-notice" ref={privacyDisclosure} onToggle={oneInformationPanel}><summary>{reservationNotice.title}<span aria-hidden="true">+</span></summary><div className={styles.agreementPanel} tabIndex={0} role="region" aria-label={reservationNotice.title} data-reservation-notice-version={reservationNotice.version} data-reservation-notice-digest={reservationNotice.textDigest} lang={documentLocale}>{reservationNotice.paragraphs.map((paragraph,index)=><p key={index}>{paragraph}</p>)}</div></details>;
 
  return <div className={`${site.site} ${styles.page}`} ref={page} lang={locale} dir={locale==='he'?'rtl':'ltr'}>
-  <div className={styles.readingPane} ref={readingPane} data-academy-reading-pane="">
   <a className={site.skip} href="#main">{t('Skip to content','דלגו לתוכן')}</a>
   <header className={styles.header} ref={header}><div className={styles.headerInner}>
    <a className={styles.logo} href="#main" aria-label={copy.brand}><img src="/groups/brand/jlfa-logo-locked-v1.png" width="72" height="72" alt={copy.brand}/></a>
@@ -591,9 +578,6 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, reser
    </div></dialog>
   </main>
   <footer className={styles.footer}><a href="#main" className={styles.footerBrand}><img src="/groups/brand/jlfa-logo-locked-v1.png" width="64" height="64" alt=""/><span>{copy.brand}</span></a><p className={styles.affiliation}>{copy.footer.affiliation}</p><nav className={styles.footerLinks} aria-label={t('Contact and privacy','יצירת קשר ופרטיות')}><a href={ACADEMY_CONTACT.telephone}>{copy.footer.contact}</a><a href={'https://wa.me/13054916674?text='+encodeURIComponent(copy.whatsapp_inquiry)} rel="noopener noreferrer" referrerPolicy="no-referrer">{copy.footer.whatsapp}</a><a href="#interest" onClick={openPrivacy}>{copy.footer.privacy}</a></nav></footer>
-  </div>
-  <div className={styles.contactBar} hidden={dialogOpen||menuOpen}>
-   <a className={styles.whatsapp} ref={contact} data-contact-ready={initialContactDock.ready} hidden={dialogOpen} tabIndex={initialContactDock.tabIndex} aria-hidden={initialContactDock.ariaHidden} href={'https://wa.me/13054916674?text='+encodeURIComponent(copy.whatsapp_inquiry)} aria-label={t('Contact us on WhatsApp','דברו איתנו בוואטסאפ')} rel="noopener noreferrer" referrerPolicy="no-referrer"><span className={styles.contactLabel} aria-hidden="true">{copy.footer.whatsapp}</span><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M26 15a11 11 0 0 1-16.5 9.5L4 26l1.6-5.3A11 11 0 1 1 26 15Z"/><path d="m10.4 9.4 2.1-.2 1.5 3-1.4 1.5c1 2 2.5 3.4 4.6 4.3l1.5-1.4 3 1.5-.3 2c-.2 1.4-2.3 1.6-3.5 1.1-4.9-1.8-8.4-5.4-9-9.1-.2-1.3.2-2.4 1.5-2.7Z"/></svg></a>
-  </div>
+   <a className={styles.whatsapp} ref={contact} data-contact-ready={initialContactDock.ready} hidden={dialogOpen||menuOpen} tabIndex={initialContactDock.tabIndex} aria-hidden={initialContactDock.ariaHidden} href={'https://wa.me/13054916674?text='+encodeURIComponent(copy.whatsapp_inquiry)} aria-label={t('Contact us on WhatsApp','דברו איתנו בוואטסאפ')} rel="noopener noreferrer" referrerPolicy="no-referrer"><AcademyWhatsAppIcon/></a>
  </div>;
 }
