@@ -1,4 +1,4 @@
-import {randomUUID,createHash} from 'node:crypto';
+import {randomUUID,createHash,createHmac} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
 import {PGlite} from '@electric-sql/pglite';
 import {beforeAll,afterAll,afterEach,it,expect,vi} from 'vitest';
@@ -21,14 +21,17 @@ import {seal,unseal} from '../../src/features/identity/crypto.ts';
 import {ledgerReceiptSchema} from '../../src/features/fishing-billing/contracts.ts';
 import {AppError} from '../../src/lib/errors.ts';
 import type {IdentityStore} from '../../src/features/identity/store.ts';
+import type {BillingLedgerContext} from '../../src/features/fishing-billing/native.ts';
 import type {PrepareCardCommand,ProviderPaymentSnapshot} from '../../src/features/fishing-billing/card-contracts.ts';
+import type {CheckoutRequest} from '../../src/features/fishing-billing/card-checkout-request.ts';
+import type {ServiceCheckoutEffectAuthorityV4} from '../../src/features/fishing-billing/guest-service-checkout-effect-v4.ts';
 import type {ServiceCardReservationAuthorityV4} from '../../src/features/fishing-billing/guest-service-card-reservation-v4.ts';
 import {serviceGuestAadV4} from '../../src/features/fishing-billing/guest-service-aad-v4.ts';
 vi.mock('server-only',()=>({}));
 let engine:PGlite;const network=vi.fn(async()=>{throw Error('NO_NETWORK');});
 beforeAll(async()=>{requirePgliteMemoryEnvironment(process.env);vi.stubGlobal('fetch',network);engine=new PGlite();await initializeProgramSchema(engine);
  for(const name of ['UNNUMBERED_ls_fishing_fulfillment_v1.sql','UNNUMBERED_ls_fishing_service_material_v4.sql','UNNUMBERED_ls_fishing_quote_service_v4.sql','UNNUMBERED_ls_fishing_service_money_v4.sql','UNNUMBERED_ls_fishing_service_state_v4.sql'])await engine.exec(await readFile('migrations/proposals/'+name,'utf8'));
- await engine.exec('CREATE SCHEMA synthetic_owner_card4; CREATE TABLE synthetic_owner_card4.service(workspace_id uuid PRIMARY KEY,active boolean NOT NULL DEFAULT true)');
+ await engine.exec('CREATE SCHEMA synthetic_owner_card4; CREATE TABLE synthetic_owner_card4.service(workspace_id uuid PRIMARY KEY,active boolean NOT NULL DEFAULT true,create_allowed boolean NOT NULL DEFAULT true)');
 },20000);
 afterEach(()=>expect(network).not.toHaveBeenCalled());afterAll(async()=>{try{await engine?.close();}finally{vi.unstubAllGlobals();}});
 // Actual configured-owner/session/native family/source/issuer/V4 acceptance,
@@ -40,9 +43,11 @@ afterEach(()=>expect(network).not.toHaveBeenCalled());afterAll(async()=>{try{awa
 async function ready(accept=true){
  const f=await serviceGuestFixtureV4(engine);if(accept)await new FishingServiceGuestNativeV4(f.db,f.workspace,programRing,programKey,f.commandKey,f.clock,f.resolver()).acceptFinancialOffer(f.token,f.command);
  await engine.query('INSERT INTO synthetic_owner_card4.service(workspace_id) VALUES($1)',[f.workspace]);
- const controls={denyTarget:false,denyCard:false,denyService:false,clock:false,failRequest:false,failCAS:false,postCommit:false,retry:false,retryGate:false,privateBeforeTarget:0,holdQuery:null as Promise<void>|null,queryEntered:()=>{},revokeAtOwnerTarget:false,revokeAtOwnerTerminal:false,afterReserveOwnerChecks:0,terminalDone:false,terminalAuthorizations:0,reservationClock:false};
+ const controls={denyTarget:false,denyCard:false,denyService:false,clock:false,failRequest:false,failCAS:false,postCommit:false,retry:false,retryGate:false,privateBeforeTarget:0,holdQuery:null as Promise<void>|null,queryEntered:()=>{},revokeAtOwnerTarget:false,revokeAtOwnerTerminal:false,afterReserveOwnerChecks:0,terminalDone:false,terminalAuthorizations:0,reservationClock:false,nativeDepth:0,effectAuthorizations:0,effectClock:false,modeledPosts:0,createError:null as Error|null,beforeCreate:null as ((request:CheckoutRequest)=>Promise<void>)|null,afterCreate:null as ((request:CheckoutRequest)=>Promise<void>)|null,resultFails:false,resultPostCommit:false,sessionPatch:{} as {accountId?:string;amountMinor?:number;url?:string;paymentStatus?:'paid'|'unpaid'|'no_payment_required'}};
+ const lateCheckout={point:null as 'target'|'authorize'|null,targets:0,authorizations:0,revocations:0,guardPostlude:false,approved:false};
  const originalError=new AppError('CONFLICT'),ledgerKey=Buffer.from(programKey);
- const db:IdentityStore={transaction:async work=>{controls.terminalDone=false;let writes=false;const once=()=>f.db.transaction(tx=>work({query:async<R extends object>(sql:string,v:readonly unknown[]=[])=>{
+ const tracked:IdentityStore={transaction:async work=>{controls.nativeDepth++;try{return await f.db.transaction(work);}finally{controls.nativeDepth--;}}};
+ const db:IdentityStore={transaction:async work=>{controls.terminalDone=false;let writes=false;const once=()=>tracked.transaction(tx=>work({query:async<R extends object>(sql:string,v:readonly unknown[]=[])=>{
   if(controls.terminalDone&&(sql.includes('ls_fishing_billing')||sql.includes('synthetic_owner_card4')))throw Error('NATIVE_FINANCIAL_IO_AFTER_TERMINAL_SERVICE');
   if(controls.denyTarget&&sql.includes('FROM ls_fishing_billing'))controls.privateBeforeTarget++;
   if(sql==='SELECT 42 AS owner_held'){controls.queryEntered();await controls.holdQuery;}
@@ -60,8 +65,21 @@ async function ready(accept=true){
  }};
  const families=new FishingBillingInquiryFamilyProposals(f.db,f.workspace,programRing,programKey,f.clock),owner=new FishingServiceBillingOwnerV4(f.workspace,new FishingProgramSourceNativeV3(db,f.workspace,programRing,programKey,f.owner.id,f.clock),families,programRing,programKey,f.commandKey,ledgerKey,f.clock,authority);
  const binding={accountId:'acct_SYNTHETIC',livemode:false as const,apiVersion:'2026-09-30.endive' as const,verifiedBindingId:'SYNTHETIC-OWNER4-NO-SDK'},config={binding,cardOnlyConfigurationId:'pmc_SYNTHETIC',approvedProductLabel:'SYNTHETIC ONLY'};
- const current=new FishingServiceCurrentCardV4(f.db,f.workspace,families,programRing,programKey,f.commandKey,ledgerKey,f.clock,{target:async(c,b)=>{expect(c).not.toHaveProperty('actor');const rows=await c.tx.query<{active:boolean}>('SELECT active FROM synthetic_owner_card4.service WHERE workspace_id=$1 FOR SHARE',[f.workspace]);if(controls.denyService||canonical(b)!==canonical(binding)||rows.length!==1||!rows[0]!.active)throw new AppError('FORBIDDEN');},authorize:async(_c,_b,s)=>{if(s.familyId!==f.quote.familyId)throw new AppError('FORBIDDEN');}});
- const snapshots=new Map<string,ProviderPaymentSnapshot>(),created=vi.fn(async()=>{throw Error('SDK_CREATE_FORBIDDEN');}),provider:BillingStripeTestProvider={createCheckout:created,readPayment:async r=>{const s=snapshots.get(r.eventId);if(!s)throw new AppError('UNAVAILABLE');return structuredClone(s);}};
+ const currentDb:IdentityStore={transaction:async work=>{lateCheckout.approved=false;let writes=false;const result=await tracked.transaction(tx=>work({query:async<R extends object>(sql:string,v:readonly unknown[]=[])=>{
+  if(lateCheckout.guardPostlude&&lateCheckout.approved)throw Error('SQL_AFTER_FINAL_CHECKOUT_ADMISSION');
+  if(sql==='SELECT 42 AS checkout_held'){controls.queryEntered();await controls.holdQuery;}
+  if(sql.startsWith('UPDATE ls_fishing_billing.quotes'))writes=true;if(controls.resultFails&&sql.startsWith('UPDATE ls_fishing_billing.card_attempts'))throw new AppError('CONFLICT');return tx.query<R>(sql,v);
+ }}));if(writes&&controls.resultPostCommit){controls.resultPostCommit=false;throw new AppError('FORBIDDEN');}return result;}};
+ const current=new FishingServiceCurrentCardV4(currentDb,f.workspace,families,programRing,programKey,f.commandKey,ledgerKey,f.clock,{target:async(c,b)=>{expect(c).not.toHaveProperty('actor');const rows=await c.tx.query<{active:boolean}>('SELECT active FROM synthetic_owner_card4.service WHERE workspace_id=$1 FOR SHARE',[f.workspace]);if(controls.denyService||canonical(b)!==canonical(binding)||rows.length!==1||!rows[0]!.active)throw new AppError('FORBIDDEN');
+  if(lateCheckout.point&&++lateCheckout.targets===3&&lateCheckout.point==='target'){expect(controls.nativeDepth).toBe(1);lateCheckout.revocations++;await c.tx.query('UPDATE synthetic_owner_card4.service SET create_allowed=false WHERE workspace_id=$1',[f.workspace]);}
+ },authorize:async(c,_b,s)=>{if(s.familyId!==f.quote.familyId)throw new AppError('FORBIDDEN');
+  if(lateCheckout.point&&++lateCheckout.authorizations===2&&lateCheckout.point==='authorize'){expect(controls.nativeDepth).toBe(1);lateCheckout.revocations++;await c.tx.query('UPDATE synthetic_owner_card4.service SET create_allowed=false WHERE workspace_id=$1',[f.workspace]);}
+ }});
+ const snapshots=new Map<string,ProviderPaymentSnapshot>(),created=vi.fn(async(request:CheckoutRequest)=>{
+  expect(controls.nativeDepth).toBe(0);expect(Object.isFrozen(request)).toBe(true);expect(Object.isFrozen(request.params.metadata)).toBe(true);if(controls.beforeCreate)await controls.beforeCreate(request);if(controls.createError)throw controls.createError;controls.modeledPosts++;
+  if(controls.afterCreate)await controls.afterCreate(request);
+  return {accountId:binding.accountId,livemode:false as const,apiVersion:binding.apiVersion,quoteId:request.quoteId,attemptId:request.operationId,id:'cs_'+request.operationId.replaceAll('-',''),amountMinor:request.amountMinor,currency:'USD' as const,url:'https://checkout.stripe.com/c/pay/SYNTHETIC',paymentStatus:'unpaid' as const,...controls.sessionPatch};
+ }),provider:BillingStripeTestProvider={createCheckout:created,readPayment:async r=>{expect(controls.nativeDepth).toBe(0);const s=snapshots.get(r.eventId);if(!s)throw new AppError('UNAVAILABLE');return structuredClone(s);}};
  const inbox:BillingStripeInboxAuthority={authorize:async(_tx,ws,b)=>{if(ws!==f.workspace||canonical(b)!==canonical(binding)||controls.denyService)throw new AppError('FORBIDDEN');}};
  const reservation:ServiceCardReservationAuthorityV4={target:async(c,b)=>{
   expect(c).not.toHaveProperty('actor');expect(b).toEqual(binding);const rows=await c.tx.query<{active:boolean}>('SELECT active FROM synthetic_owner_card4.service WHERE workspace_id=$1 FOR SHARE',[f.workspace]);if(c.workspaceId!==f.workspace||controls.denyService||rows.length!==1||!rows[0]!.active)throw new AppError('FORBIDDEN');
@@ -77,13 +95,50 @@ async function ready(accept=true){
   if(r.phase==='terminal'){expect(a.state).toBe('unknown');expect(a.dispatchId).toEqual(expect.any(String));expect(a.balanceVersion).toBe(q.revision);controls.terminalAuthorizations++;controls.terminalDone=true;}
   else expect(a.state).toBe('prepared');if(controls.reservationClock)c.now.setTime(c.now.valueOf()+1);
  }};
- const cards=(transport:BillingStripeTestProvider|null=provider,permission:ServiceCardReservationAuthorityV4|null=reservation)=>new FishingServiceBillingCardsV4(f.db,f.workspace,current,owner,programRing,ledgerKey,config,inbox,transport,null,permission);
+ const checkout:ServiceCheckoutEffectAuthorityV4={target:async(c,b)=>{expect(c).not.toHaveProperty('actor');expect(b).toEqual(binding);const rows=await c.tx.query<{active:boolean;create_allowed:boolean}>('SELECT active,create_allowed FROM synthetic_owner_card4.service WHERE workspace_id=$1 FOR SHARE',[f.workspace]);if(rows.length!==1||!rows[0]!.active||!rows[0]!.create_allowed)throw new AppError('FORBIDDEN');},authorize:async(c,b,d)=>{
+  expect(c).not.toHaveProperty('actor');expect(b).toEqual(binding);expect(d.version).toBe(BILLING_SERVICE_V4);expect(d.purpose).toBe('create_checkout');expect(Object.isFrozen(d.request)).toBe(true);controls.effectAuthorizations++;
+  const rows=await c.tx.query<{state:string;revision:number;ciphertext:string}>("SELECT a.state,q.revision,r.payload_ciphertext AS ciphertext FROM synthetic_owner_card4.service s JOIN ls_fishing_billing.quotes q ON q.workspace_id=s.workspace_id JOIN ls_fishing_billing.card_attempts a ON a.workspace_id=q.workspace_id AND a.quote_id=q.id JOIN ls_fishing_billing.card_attempt_requests r ON r.workspace_id=a.workspace_id AND r.attempt_id=a.id WHERE s.workspace_id=$1 AND s.active AND s.create_allowed AND q.id=$2 AND a.id=$3 FOR SHARE OF s,q,a,r",[f.workspace,d.effect.quoteId,d.effect.operationId]);
+  if(rows.length!==1||rows[0]!.state!=='unknown'||rows[0]!.revision!==d.snapshot.quote.revision)throw new AppError('FORBIDDEN');expect(JSON.parse(unseal(rows[0]!.ciphertext,'ls_fishing_billing/card/v1/checkout_request/'+f.workspace+'/'+d.attempt.id,programRing)).request).toEqual(d.request);expect(d.request.amountMinor).toBe(d.effect.amountMinor);expect(d.request.params.payment_method_configuration).toBe(d.effect.configurationId);if(controls.effectClock)c.now.setTime(c.now.valueOf()+1);
+  lateCheckout.approved=true;
+ }};
+ const cards=(transport:BillingStripeTestProvider|null=provider,permission:ServiceCardReservationAuthorityV4|null=reservation,effect:ServiceCheckoutEffectAuthorityV4|null=checkout)=>new FishingServiceBillingCardsV4(tracked,f.workspace,current,owner,programRing,ledgerKey,config,inbox,transport,null,permission,effect);
  const command:PrepareCardCommand={operationId:randomUUID(),quoteId:f.quote.id,expectedVersion:3,selection:f.quote.lines.map(l=>({lineId:l.id,amountMinor:65000}))};
- return {...f,billingOwner:owner,controls,current,cards,command,binding,created,snapshots,inbox,reservation,provider};
+ return {...f,billingOwner:owner,controls,lateCheckout,current,cards,command,binding,created,snapshots,inbox,reservation,provider,checkout};
 }
 type Fixture=Awaited<ReturnType<typeof ready>>;
 async function rows(f:Fixture){const result:Record<string,unknown>={};for(const table of ['quotes','receipts','card_attempts','card_attempt_requests','guest_financial_acceptances'])result[table]=(await engine.query('SELECT * FROM ls_fishing_billing.'+table+' WHERE workspace_id=$1 ORDER BY 2',[f.workspace])).rows;return result;}
 const view=(f:Fixture)=>f.billingOwner.readSnapshot(f.owner,f.quote.id);
+const sdkEffect=(r:CheckoutRequest)=>({effect:'create_checkout' as const,binding:r.binding,operationId:r.operationId,quoteId:r.quoteId,amountMinor:r.amountMinor,configurationId:r.params.payment_method_configuration});
+it.each(['target','authorize'] as const)('provider-terminal-r01 late reconciliation %s cannot revoke create permission after the final modeled SDK admission',async point=>{
+ const f=await ready();await f.cards().prepare(f.owner,f.command);const original=await request(f),cards=f.cards();
+ f.controls.beforeCreate=async r=>{await cards.checkoutAdmission().authorize(sdkEffect(r));f.lateCheckout.point=point;await cards.checkoutAdmission().authorize(sdkEffect(r));};
+ const result=await cards.createCheckout(f.owner,f.quote.id,f.command.operationId);
+ expect(f.lateCheckout.revocations).toBe(1);expect(f.controls.modeledPosts).toBe(0);expect(result.state).toBe('unknown');expect(f.created).toHaveBeenCalledTimes(1);
+ const stored=await f.cards().readAttempt(f.owner,f.quote.id,f.command.operationId);expect(stored).toEqual(result);expect(stored.dispatchId).toEqual(expect.any(String));expect(stored.sessionId).toBeNull();expect(await request(f)).toEqual(original);expect((await view(f)).balance.paidMinor).toBe(0);
+ const durable=await rows(f);expect(await f.cards().createCheckout(f.owner,f.quote.id,f.command.operationId)).toEqual(stored);expect(await rows(f)).toEqual(durable);expect(f.created).toHaveBeenCalledTimes(1);
+});
+it('provider-terminal-r01 performs no native SQL after each successful final checkout decision',async()=>{
+ const f=await ready();await f.cards().prepare(f.owner,f.command);f.lateCheckout.guardPostlude=true;const cards=f.cards();
+ f.controls.beforeCreate=async r=>{await cards.checkoutAdmission().authorize(sdkEffect(r));await cards.checkoutAdmission().authorize(sdkEffect(r));};
+ expect((await cards.createCheckout(f.owner,f.quote.id,f.command.operationId)).state).toBe('open');expect(f.controls.effectAuthorizations).toBe(3);expect(f.controls.modeledPosts).toBe(1);expect((await view(f)).balance.paidMinor).toBe(0);
+});
+it('provider-terminal-r01 revokes terminal SQL without reactivating the producer query or advance capability',async()=>{
+ const f=await ready();let terminalContext:Readonly<BillingLedgerContext>|undefined,producer:ServiceCurrentCardLedgerV4|undefined;
+ expect(await f.current.withCurrentCardServiceV4(f.binding,f.quote.id,async l=>{producer=l;return 'ORIGINAL';},async(c,s)=>{terminalContext=c;expect(s.quote.id).toBe(f.quote.id);expect(Object.isFrozen(s.quote.lines)).toBe(true);await c.tx.query('SELECT 1');})).toBe('ORIGINAL');
+ await expect(terminalContext!.tx.query('SELECT 1')).rejects.toThrow('UNAVAILABLE');await expect(producer!.context.tx.query('SELECT 1')).rejects.toThrow('UNAVAILABLE');await expect(producer!.advance()).rejects.toThrow('CONFLICT');expect((await view(f)).quote.revision).toBe(3);
+});
+it('provider-terminal-r01 a caught terminal SQL failure poisons and rolls back the earlier native advance',async()=>{
+ const f=await ready();await expect(f.current.withCurrentCardServiceV4(f.binding,f.quote.id,async l=>{await l.advance();},async c=>{await c.tx.query('SELECT * FROM synthetic_owner_card4.nonexistent_terminal_table').catch(()=>{});})).rejects.toThrow('CONFLICT');expect((await view(f)).quote.revision).toBe(3);expect((await view(f)).balance.receipts).toHaveLength(0);
+});
+it('provider-terminal-r01 drains an escaped terminal query before rollback and cannot commit the earlier advance',async()=>{
+ const f=await ready();let release=()=>{},entered=()=>{},escaped:Promise<unknown>|undefined,finished=false;const gate=new Promise<void>(r=>{release=r;}),started=new Promise<void>(r=>{entered=r;});f.controls.queryEntered=entered;f.controls.holdQuery=gate;
+ const running=f.current.withCurrentCardServiceV4(f.binding,f.quote.id,async l=>{await l.advance();},async c=>{escaped=c.tx.query('SELECT 42 AS checkout_held');void escaped.catch(()=>{});}).finally(()=>{finished=true;});
+ await started;await Promise.resolve();expect(finished).toBe(false);release();await expect(running).rejects.toThrow('CONFLICT');await expect(escaped!).rejects.toThrow('UNAVAILABLE');expect((await view(f)).quote.revision).toBe(3);expect((await view(f)).balance.receipts).toHaveLength(0);
+});
+it('provider-terminal-r01 a typed driver error after terminal success and COMMIT remains uncertain with durable original readback',async()=>{
+ const f=await ready();let terminalCalls=0;f.controls.resultPostCommit=true;
+ await expect(f.current.withCurrentCardServiceV4(f.binding,f.quote.id,async l=>{await l.advance();},async()=>{terminalCalls++;})).rejects.toThrow('UNAVAILABLE');expect(terminalCalls).toBe(1);expect((await view(f)).quote.revision).toBe(4);expect((await view(f)).balance.receipts).toHaveLength(0);
+});
 async function request(f:Fixture,id=f.command.operationId){const r=(await engine.query<{payload_ciphertext:string}>('SELECT payload_ciphertext FROM ls_fishing_billing.card_attempt_requests WHERE workspace_id=$1 AND attempt_id=$2',[f.workspace,id])).rows[0]!;return JSON.parse(unseal(r.payload_ciphertext,'ls_fishing_billing/card/v1/checkout_request/'+f.workspace+'/'+id,programRing));}
 it('owner-card-v4 actually prepares once under configured owner and preserves exact frozen request, consent and original-command recovery',async()=>{
  const f=await ready(),before=await rows(f),first=await f.cards().prepare(f.owner,f.command),saved=await rows(f);expect(first.entityVersion).toBe(4);expect(first.result.amountMinor).toBe(130000);expect((await view(f)).balance.pendingAttemptIds).toEqual([f.command.operationId]);
@@ -178,4 +233,65 @@ it('owner-card-v4 preserves committed UNKNOWN after a terminal-admitted reservat
  const f=await ready();await f.cards().prepare(f.owner,f.command);f.controls.postCommit=true;
  await expect(f.cards().reserveCheckout(f.owner,f.quote.id,f.command.operationId)).rejects.toThrow('UNAVAILABLE');const stored=await rows(f),attempt=await f.cards().readAttempt(f.owner,f.quote.id,f.command.operationId);expect(attempt.state).toBe('unknown');expect(attempt.dispatchId).toEqual(expect.any(String));expect(f.controls.terminalAuthorizations).toBe(1);
  expect(await f.cards().reserveCheckout(f.owner,f.quote.id,f.command.operationId)).toEqual({dispatch:false,attempt});expect(await rows(f)).toEqual(stored);expect(f.controls.terminalAuthorizations).toBe(1);expect(f.created).not.toHaveBeenCalled();
+});
+it('provider-boundary-v4 pairs fresh native admission at both MOCK SDK points and stores a session without crediting funds',async()=>{
+ const f=await ready();await f.cards().prepare(f.owner,f.command);const frozen=await request(f),cards=f.cards();f.controls.beforeCreate=async r=>{await cards.checkoutAdmission().authorize(sdkEffect(r));await cards.checkoutAdmission().authorize(sdkEffect(r));};
+ const result=await cards.createCheckout(f.owner,f.quote.id,f.command.operationId);expect(result.state).toBe('open');expect(result.sessionId).toBe('cs_'+f.command.operationId.replaceAll('-',''));expect(f.created).toHaveBeenCalledTimes(1);expect(f.controls.modeledPosts).toBe(1);expect(f.controls.effectAuthorizations).toBe(3);expect((await view(f)).balance).toMatchObject({paidMinor:0,pendingAttemptIds:[f.command.operationId]});expect(await request(f)).toEqual(frozen);
+ await expect(cards.checkoutAdmission().authorize(sdkEffect(f.created.mock.calls[0]![0]))).rejects.toThrow('UNAVAILABLE');expect((await f.cards().createCheckout(f.owner,f.quote.id,f.command.operationId)).state).toBe('open');expect(f.created).toHaveBeenCalledTimes(1);
+});
+it('provider-boundary-v4 holds UNKNOWN after a MOCK POST timeout and never resends across a new coordinator instance',async()=>{
+ const f=await ready();await f.cards().prepare(f.owner,f.command);f.controls.afterCreate=async()=>{throw new AppError('CONFLICT');};const result=await f.cards().createCheckout(f.owner,f.quote.id,f.command.operationId);expect(result.state).toBe('unknown');expect(f.controls.modeledPosts).toBe(1);const stored=await rows(f);
+ expect(await f.cards().createCheckout(f.owner,f.quote.id,f.command.operationId)).toEqual(result);expect(await rows(f)).toEqual(stored);expect(f.created).toHaveBeenCalledTimes(1);expect((await view(f)).balance.paidMinor).toBe(0);
+});
+it('provider-boundary-v4 missing SDK or effect authority denies before reserving UNKNOWN',async()=>{
+ const f=await ready();await f.cards().prepare(f.owner,f.command);const before=await rows(f);await expect(f.cards(null).createCheckout(f.owner,f.quote.id,f.command.operationId)).rejects.toThrow('UNAVAILABLE');await expect(f.cards(f.provider,f.reservation,null).createCheckout(f.owner,f.quote.id,f.command.operationId)).rejects.toThrow('UNAVAILABLE');expect(await rows(f)).toEqual(before);expect(f.created).not.toHaveBeenCalled();
+});
+it('provider-boundary-v4 reservation permission cannot substitute for independent creation admission',async()=>{
+ const f=await ready();await f.cards().prepare(f.owner,f.command);await engine.query('UPDATE synthetic_owner_card4.service SET create_allowed=false WHERE workspace_id=$1',[f.workspace]);const result=await f.cards().createCheckout(f.owner,f.quote.id,f.command.operationId);expect(result.state).toBe('unknown');expect(f.controls.terminalAuthorizations).toBe(1);expect(f.created).not.toHaveBeenCalled();expect(f.controls.modeledPosts).toBe(0);
+});
+it('provider-boundary-v4 rechecks native admission at the modeled pre-POST point instead of caching the earlier decision',async()=>{
+ const f=await ready();await f.cards().prepare(f.owner,f.command);const cards=f.cards();f.controls.beforeCreate=async r=>{await cards.checkoutAdmission().authorize(sdkEffect(r));await engine.query('UPDATE synthetic_owner_card4.service SET create_allowed=false WHERE workspace_id=$1',[f.workspace]);await cards.checkoutAdmission().authorize(sdkEffect(r));};
+ expect((await cards.createCheckout(f.owner,f.quote.id,f.command.operationId)).state).toBe('unknown');expect(f.created).toHaveBeenCalledTimes(1);expect(f.controls.modeledPosts).toBe(0);expect((await view(f)).balance.receipts).toHaveLength(0);
+});
+it.each(['account','amount','url','no_payment_required'] as const)('provider-boundary-v4 retains UNKNOWN on a mismatched %s result without claiming a rejected charge',async field=>{
+ const f=await ready();await f.cards().prepare(f.owner,f.command);if(field==='account')f.controls.sessionPatch.accountId='acct_WRONG';if(field==='amount')f.controls.sessionPatch.amountMinor=1;if(field==='url')f.controls.sessionPatch.url='https://example.invalid/not-checkout';if(field==='no_payment_required')f.controls.sessionPatch.paymentStatus='no_payment_required';
+ const result=await f.cards().createCheckout(f.owner,f.quote.id,f.command.operationId);expect(result.state).toBe('unknown');expect(result.sessionId).toBeNull();expect((await view(f)).balance.paidMinor).toBe(0);expect(f.created).toHaveBeenCalledTimes(1);
+});
+it('provider-boundary-v4 a paid session response alone is still unpaid in the native ledger',async()=>{
+ const f=await ready();await f.cards().prepare(f.owner,f.command);f.controls.sessionPatch.paymentStatus='paid';expect((await f.cards().createCheckout(f.owner,f.quote.id,f.command.operationId)).state).toBe('open');expect((await view(f)).balance).toMatchObject({paidMinor:0,state:'unpaid'});
+});
+it.each(['before_commit','after_commit'] as const)('provider-boundary-v4 %s result-write failure remains uncertain and readback never creates another session',async point=>{
+ const f=await ready();await f.cards().prepare(f.owner,f.command);f.controls.resultFails=point==='before_commit';f.controls.resultPostCommit=point==='after_commit';await expect(f.cards().createCheckout(f.owner,f.quote.id,f.command.operationId)).rejects.toThrow('UNAVAILABLE');f.controls.resultFails=false;
+ const saved=await rows(f),attempt=await f.cards().readAttempt(f.owner,f.quote.id,f.command.operationId);expect(attempt.state).toBe(point==='after_commit'?'open':'unknown');expect(await f.cards().createCheckout(f.owner,f.quote.id,f.command.operationId)).toEqual(attempt);expect(await rows(f)).toEqual(saved);expect(f.created).toHaveBeenCalledTimes(1);expect((await view(f)).balance.paidMinor).toBe(0);
+});
+it.each(['cash','cancel'] as const)('provider-boundary-v4 late %s after modeled creation retains the remote session under review and blocks another payment attempt',async change=>{
+ const f=await ready();await f.cards().prepare(f.owner,f.command);f.controls.afterCreate=async()=>{if(change==='cash')await f.billingOwner.recordCashDate(f.owner,{version:BILLING_SERVICE_V4,operationId:randomUUID(),quoteId:f.quote.id,expectedVersion:5,amountMinor:30000,currency:'USD',receivedPrecision:'date',receivedDate:'2035-01-02',timeZone:'America/New_York',allocations:[{lineId:f.quote.lines[0]!.id,amountMinor:30000}]});else await f.billingOwner.setState(f.owner,{version:BILLING_SERVICE_V4,action:SERVICE_STATE_ACTION_V4,operationId:randomUUID(),quoteId:f.quote.id,expectedQuoteRevision:5,cancel:true});};
+ const result=await f.cards().createCheckout(f.owner,f.quote.id,f.command.operationId);expect(result.state).toBe('review_required');expect(result.sessionId).toEqual(expect.any(String));const current=await view(f);expect(current.balance.state).toBe('review_required');expect(current.balance.paidMinor).toBe(change==='cash'?30000:0);expect(current.quote.state).toBe(change==='cancel'?'cancelled':'accepted');
+ await expect(f.cards().prepare(f.owner,{...f.command,operationId:randomUUID(),expectedVersion:current.quote.revision})).rejects.toThrow('UNAVAILABLE');expect(f.created).toHaveBeenCalledTimes(1);
+});
+it('provider-boundary-v4 an authenticated-capability MOCK event before the session response is never downgraded by result storage',async()=>{
+ const f=await ready();await f.cards().prepare(f.owner,f.command);f.controls.afterCreate=async r=>{
+  const eventId='evt_'+randomUUID().replaceAll('-',''),bytes=Buffer.from('SYNTHETIC-EARLY-EVENT-'+eventId),snapshot:ProviderPaymentSnapshot={accountId:f.binding.accountId,livemode:false,apiVersion:f.binding.apiVersion,quoteId:r.quoteId,attemptId:r.operationId,sessionId:'cs_'+r.operationId.replaceAll('-',''),paymentIntentId:'pi_'+r.operationId.replaceAll('-',''),currency:'USD',amountMinor:r.amountMinor,receivedMinor:r.amountMinor,status:'paid',method:'card',paidAt:f.clock.now().toISOString(),observedAt:f.clock.now().toISOString(),refunds:[],dispute:'none'};
+  const receipt={eventId,eventType:'payment_intent.succeeded' as const,objectId:snapshot.paymentIntentId,providerAccountId:f.binding.accountId,livemode:false as const,apiVersion:f.binding.apiVersion,digest:createHash('sha256').update(bytes).digest('hex'),createdAt:f.clock.now().toISOString()};const cap=verifyBillingStripeTestEvent({rawBody:bytes,signatureHeader:'MOCK-NOT-STRIPE',binding:f.binding,now:f.clock.now(),sdk:{verify:()=>({kind:'stripe_test_signature_only',receipt})}});await new FishingBillingStripeInbox(f.db,f.workspace,programRing,f.clock,f.inbox).ingest(cap);f.snapshots.set(eventId,snapshot);await f.cards().processEvent(eventId);
+ };
+ expect((await f.cards().createCheckout(f.owner,f.quote.id,f.command.operationId)).state).toBe('paid');const current=await view(f);expect(current.balance).toMatchObject({state:'paid',paidMinor:130000,pendingAttemptIds:[]});expect(current.balance.receipts).toHaveLength(1);expect(f.created).toHaveBeenCalledTimes(1);
+});
+it('provider-boundary-v4 an existing UNKNOWN and raw effect data cannot mint an active SDK dispatch',async()=>{
+ const f=await ready();await f.cards().prepare(f.owner,f.command);const reserved=await f.cards().reserveCheckout(f.owner,f.quote.id,f.command.operationId);if(!reserved.dispatch)throw Error('EXPECTED_RESERVATION');const before=await rows(f);await expect(f.cards().checkoutAdmission().authorize(sdkEffect(reserved.request))).rejects.toThrow('UNAVAILABLE');expect((await f.cards().createCheckout(f.owner,f.quote.id,f.command.operationId)).state).toBe('unknown');expect(await rows(f)).toEqual(before);expect(f.created).not.toHaveBeenCalled();
+});
+it('provider-boundary-v4 rejects a mutated effect authority clock before invoking the provider port',async()=>{
+ const f=await ready();await f.cards().prepare(f.owner,f.command);f.controls.effectClock=true;expect((await f.cards().createCheckout(f.owner,f.quote.id,f.command.operationId)).state).toBe('unknown');expect(f.created).not.toHaveBeenCalled();expect((await view(f)).balance.paidMinor).toBe(0);
+});
+it('provider-boundary-v4 rejects a cryptographically re-signed changed request while the original dispatch is active',async()=>{
+ const f=await ready();await f.cards().prepare(f.owner,f.command);const cards=f.cards();f.controls.beforeCreate=async r=>{const changed=await request(f);changed.request.params.integration_identifier='jlfa_monthly_zzzzzzzz';changed.digest=createHmac('sha256',Buffer.from(programKey)).update(canonical(changed.request)).digest('hex');await engine.query('UPDATE ls_fishing_billing.card_attempt_requests SET payload_ciphertext=$3 WHERE workspace_id=$1 AND attempt_id=$2',[f.workspace,r.operationId,seal(JSON.stringify(changed),'ls_fishing_billing/card/v1/checkout_request/'+f.workspace+'/'+r.operationId,programRing)]);await cards.checkoutAdmission().authorize(sdkEffect(r));};
+ expect((await cards.createCheckout(f.owner,f.quote.id,f.command.operationId)).state).toBe('unknown');expect(f.controls.modeledPosts).toBe(0);expect((await view(f)).balance.receipts).toHaveLength(0);
+});
+it('provider-boundary-v4 overlapping calls reuse the committed UNKNOWN while only its original in-flight call proceeds',async()=>{
+ const f=await ready();await f.cards().prepare(f.owner,f.command);let release=()=>{},entered=()=>{};const gate=new Promise<void>(r=>{release=r;}),started=new Promise<void>(r=>{entered=r;});f.controls.afterCreate=async()=>{entered();await gate;};const cards=f.cards(),first=cards.createCheckout(f.owner,f.quote.id,f.command.operationId);await started;
+ const second=await cards.createCheckout(f.owner,f.quote.id,f.command.operationId);expect(second.state).toBe('unknown');expect(f.created).toHaveBeenCalledTimes(1);release();expect((await first).state).toBe('open');expect(f.created).toHaveBeenCalledTimes(1);expect(f.controls.modeledPosts).toBe(1);
+ // Queued memory transactions and a controlled MOCK response: not real PG
+ // multi-connection or provider concurrency evidence.
+});
+it('provider-boundary-v4 SDK admission paired with a different instance cannot reuse the active dispatch capability',async()=>{
+ const f=await ready();await f.cards().prepare(f.owner,f.command);const wrong=f.cards();f.controls.beforeCreate=async r=>wrong.checkoutAdmission().authorize(sdkEffect(r));expect((await f.cards().createCheckout(f.owner,f.quote.id,f.command.operationId)).state).toBe('unknown');expect(f.controls.modeledPosts).toBe(0);expect((await view(f)).balance.paidMinor).toBe(0);
 });
