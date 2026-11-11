@@ -109,6 +109,17 @@ export async function inspectLanding(page:Page,options:{declaredShortCase?:strin
   const hb=box(hero),ib=box(photo),header=box(document.querySelector('header')!);
   const width=document.documentElement.clientWidth;
   if(document.documentElement.scrollWidth>innerWidth+1||reading.scrollWidth>width+1)findings.push('page-horizontal-overflow');
+  if(width<=999){
+   // Measure the reading column itself, not its full-bleed section background.
+   // Reserving the WhatsApp footprint on one side shifts all of these while
+   // the hero and page still pass their outer-width checks.
+   for(const selector of ['[data-jlfa-intro] > div:first-child','#learn > div:first-child','#values h2','#faq > div:first-child']){
+    const node=document.querySelector(selector);
+    if(!node){findings.push('mobile-reading-column-missing:'+selector);continue;}
+    const r=box(node),left=r.left,right=width-r.right;
+    if(Math.abs(left-right)>2||Math.min(left,right)<12||Math.max(left,right)>26)findings.push('mobile-reading-gutters:'+selector);
+   }
+  }
   if(Math.abs(hb.left)>1||Math.abs(hb.right-width)>1)findings.push('hero-boxed');
   if(!photo.complete||!photo.naturalWidth)findings.push('hero-image-unloaded');
   const headingBlocks=hero.querySelectorAll('[data-hero-heading]'),actions=hero.querySelectorAll('[data-hero-action]');

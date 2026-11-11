@@ -197,7 +197,6 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, reser
    const heroBox=hero.current?.getBoundingClientRect();
    const headerBottom=header.current?.getBoundingClientRect().bottom ?? 0;
    if(mobile.matches){
-    // Body sections leave this fixed corner clear in both writing directions.
     // Crossing the hero boundary is the only scroll-driven visibility change.
     const ready=!menuOpen && (!heroBox || heroBox.bottom<=headerBottom);
     if(lift){lift=0;link.style.removeProperty('--contact-lift');}
