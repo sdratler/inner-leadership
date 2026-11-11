@@ -324,13 +324,13 @@ export async function inspectBodyContact(page:Page){
   const visible=getComputedStyle(wa).visibility==='visible'&&getComputedStyle(wa).display!=='none';
   if(!visible||wa.tabIndex!==0||wa.getAttribute('aria-hidden')==='true')findings.push('body-contact-unavailable');
   const mobile=innerWidth<=999;
-  const covered:{node:Element;x:number;y:number;top:number}[]=[];
-  const inspectOverlap=(node:Element,r:DOMRect,issue:string)=>{
+  const covered:{node:Element;x:number;y:number;top:number;measure:()=>DOMRect|undefined}[]=[];
+  const inspectOverlap=(node:Element,r:DOMRect,issue:string,measure:()=>DOMRect|undefined=()=>node.getBoundingClientRect())=>{
    if(!visible||r.width<=0||r.height<=0||r.left>=b.right||r.right<=b.left||r.top>=b.bottom||Math.min(r.bottom,reading.bottom)<=b.top)return;
    if(!mobile){findings.push(issue);return;}
    const x=(Math.max(r.left,b.left)+Math.min(r.right,b.right))/2;
    const y=(Math.max(r.top,b.top)+Math.min(r.bottom,b.bottom))/2;
-   if(wa.contains(document.elementFromPoint(x,y)))covered.push({node,x,y,top:node.getBoundingClientRect().top});
+   if(wa.contains(document.elementFromPoint(x,y)))covered.push({node,x,y,top:r.top,measure});
   };
   const protectedNodes=mobile?document.querySelectorAll('main img,main summary,main a,footer a'):[];
   for(const node of protectedNodes){
@@ -346,8 +346,9 @@ export async function inspectBodyContact(page:Page){
    for(let text=walker.nextNode();text;text=walker.nextNode()){
     if(!text.textContent?.trim())continue;
     const range=document.createRange();range.selectNodeContents(text);
-    for(const r of range.getClientRects()){
-     inspectOverlap(node,r,'body-contact-over-text');
+    const lines=Array.from(range.getClientRects());
+    for(const [index,line] of lines.entries()){
+     inspectOverlap(node,line,'body-contact-over-text',()=>range.getClientRects()[index]);
     }
    }
   }
@@ -362,8 +363,10 @@ export async function inspectBodyContact(page:Page){
    try{
     window.scrollBy({top:Math.ceil(b.height)+8,behavior:'instant'});
     const headerBottom=document.querySelector('header')!.getBoundingClientRect().bottom;
-    for(const {node,x,y,top} of covered){
-     const newY=y+node.getBoundingClientRect().top-top;
+    for(const {node,x,y,top,measure} of covered){
+     const current=measure();
+     if(!current){findings.push('mobile-content-fragment-missing');continue;}
+     const newY=y+current.top-top;
      if(newY>=b.top||newY<=headerBottom)findings.push('mobile-content-cannot-scroll-clear');
      else if(node.matches('a,summary')&&!node.contains(document.elementFromPoint(x,newY)))findings.push('mobile-control-still-obstructed');
     }
