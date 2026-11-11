@@ -267,7 +267,7 @@ export async function scrollLandingToTop(page:Page){
  });
 }
 
-/** A floating action may overlap empty row padding, never the question/glyph. */
+/** Desktop avoids the FAQ text; phones let it scroll past the fixed circle. */
 export async function inspectFaqContact(page:Page){
  const result=await page.evaluate(reading=>{
   const findings:string[]=[],wa=document.querySelector<HTMLAnchorElement>('a[class*="whatsapp"]')!;
@@ -276,7 +276,7 @@ export async function inspectFaqContact(page:Page){
   const icon=wa.querySelector('svg')!.getBoundingClientRect();
   const wrongCorner=innerWidth>999&&getComputedStyle(wa).direction==='rtl'?icon.right>100:icon.left<innerWidth-100;
   if(b.width<48||b.height<48||b.left<0||b.right>innerWidth||wrongCorner||b.top<0||b.bottom>innerHeight)findings.push('faq-contact-placement');
-  for(const summary of document.querySelectorAll('[data-trip390-faq] summary')){
+  if(innerWidth>999)for(const summary of document.querySelectorAll('[data-trip390-faq] summary')){
    const walker=document.createTreeWalker(summary,NodeFilter.SHOW_TEXT);
    for(let text=walker.nextNode();text;text=walker.nextNode()){
     if(!text.textContent?.trim())continue;
@@ -323,10 +323,19 @@ export async function inspectBodyContact(page:Page){
   const wa=document.querySelector<HTMLAnchorElement>('a[class*="whatsapp"]')!,b=wa.getBoundingClientRect(),findings:string[]=[];
   const visible=getComputedStyle(wa).visibility==='visible'&&getComputedStyle(wa).display!=='none';
   if(!visible||wa.tabIndex!==0||wa.getAttribute('aria-hidden')==='true')findings.push('body-contact-unavailable');
-  const protectedNodes=innerWidth<=999?document.querySelectorAll('main img,main summary,main a,footer a'):[];
+  const mobile=innerWidth<=999;
+  const covered:{node:Element;x:number;y:number;top:number}[]=[];
+  const inspectOverlap=(node:Element,r:DOMRect,issue:string)=>{
+   if(!visible||r.width<=0||r.height<=0||r.left>=b.right||r.right<=b.left||r.top>=b.bottom||Math.min(r.bottom,reading.bottom)<=b.top)return;
+   if(!mobile){findings.push(issue);return;}
+   const x=(Math.max(r.left,b.left)+Math.min(r.right,b.right))/2;
+   const y=(Math.max(r.top,b.top)+Math.min(r.bottom,b.bottom))/2;
+   if(wa.contains(document.elementFromPoint(x,y)))covered.push({node,x,y,top:node.getBoundingClientRect().top});
+  };
+  const protectedNodes=mobile?document.querySelectorAll('main img,main summary,main a,footer a'):[];
   for(const node of protectedNodes){
    const r=node.getBoundingClientRect();
-   if(r.width&&r.height&&r.left<b.right&&r.right>b.left&&r.top<b.bottom&&r.bottom>b.top)findings.push('body-contact-over-image-or-control');
+   inspectOverlap(node,r,'body-contact-over-image-or-control');
   }
   for(const node of document.querySelectorAll('main p,main li,main h2,main h3,main summary')){
    if(node.closest('dialog')||!node.getClientRects().length)continue;
@@ -338,13 +347,27 @@ export async function inspectBodyContact(page:Page){
     if(!text.textContent?.trim())continue;
     const range=document.createRange();range.selectNodeContents(text);
     for(const r of range.getClientRects()){
-     if(visible&&r.width>0&&r.height>0&&r.left<b.right&&r.right>b.left&&r.top<b.bottom&&Math.min(r.bottom,reading.bottom)>b.top)findings.push('body-contact-over-text');
+     inspectOverlap(node,r,'body-contact-over-text');
     }
    }
   }
   for(const icon of document.querySelectorAll('[data-jlfa-values] article svg')){
    const r=icon.getBoundingClientRect();
-   if(visible&&r.width>0&&r.height>0&&r.left<b.right&&r.right>b.left&&r.top<b.bottom&&Math.min(r.bottom,reading.bottom)>b.top)findings.push('body-contact-over-value-icon');
+   inspectOverlap(icon,r,'body-contact-over-value-icon');
+  }
+  // A passing line may go behind the circle; a pinned or unreachable line
+  // cannot. Move the document, check the same content, then restore the stop.
+  if(covered.length){
+   const originalY=scrollY;
+   try{
+    window.scrollBy({top:Math.ceil(b.height)+8,behavior:'instant'});
+    const headerBottom=document.querySelector('header')!.getBoundingClientRect().bottom;
+    for(const {node,x,y,top} of covered){
+     const newY=y+node.getBoundingClientRect().top-top;
+     if(newY>=b.top||newY<=headerBottom)findings.push('mobile-content-cannot-scroll-clear');
+     else if(node.matches('a,summary')&&!node.contains(document.elementFromPoint(x,newY)))findings.push('mobile-control-still-obstructed');
+    }
+   }finally{window.scrollTo({top:originalY,behavior:'instant'});}
   }
   return {findings,position:{left:b.left,top:b.top,width:b.width,height:b.height}};
  },await readingViewport(page));
