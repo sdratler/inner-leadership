@@ -1,4 +1,5 @@
 import {randomUUID,createHash,createHmac} from 'node:crypto';
+import {composeFishingServiceTestCardsV4} from '../../src/lib/fishing-billing-card-runtime-v4.ts';
 import {readFile} from 'node:fs/promises';
 import {PGlite} from '@electric-sql/pglite';
 import {beforeAll,afterAll,afterEach,it,expect,vi} from 'vitest';
@@ -103,7 +104,7 @@ async function ready(accept=true){
  }};
  const cards=(transport:BillingStripeTestProvider|null=provider,permission:ServiceCardReservationAuthorityV4|null=reservation,effect:ServiceCheckoutEffectAuthorityV4|null=checkout)=>new FishingServiceBillingCardsV4(tracked,f.workspace,current,owner,programRing,ledgerKey,config,inbox,transport,null,permission,effect);
  const command:PrepareCardCommand={operationId:randomUUID(),quoteId:f.quote.id,expectedVersion:3,selection:f.quote.lines.map(l=>({lineId:l.id,amountMinor:65000}))};
- return {...f,billingOwner:owner,controls,lateCheckout,current,cards,command,binding,created,snapshots,inbox,reservation,provider,checkout};
+ return {...f,billingOwner:owner,controls,lateCheckout,current,cards,command,binding,created,snapshots,inbox,reservation,provider,checkout,nativeDb:tracked,configuration:config,ledgerKey};
 }
 type Fixture=Awaited<ReturnType<typeof ready>>;
 async function rows(f:Fixture){const result:Record<string,unknown>={};for(const table of ['quotes','receipts','card_attempts','card_attempt_requests','guest_financial_acceptances'])result[table]=(await engine.query('SELECT * FROM ls_fishing_billing.'+table+' WHERE workspace_id=$1 ORDER BY 2',[f.workspace])).rows;return result;}
@@ -294,4 +295,71 @@ it('provider-boundary-v4 overlapping calls reuse the committed UNKNOWN while onl
 });
 it('provider-boundary-v4 SDK admission paired with a different instance cannot reuse the active dispatch capability',async()=>{
  const f=await ready();await f.cards().prepare(f.owner,f.command);const wrong=f.cards();f.controls.beforeCreate=async r=>wrong.checkoutAdmission().authorize(sdkEffect(r));expect((await f.cards().createCheckout(f.owner,f.quote.id,f.command.operationId)).state).toBe('unknown');expect(f.controls.modeledPosts).toBe(0);expect((await view(f)).balance.paidMinor).toBe(0);
+});
+
+// Actual native V4 preparation/reservation and official SDK, with an injected
+// transport only. Synthetic authority/seeded grant remain unapproved; no real
+// provider, network, runtime, financial activation or recurring charge.
+const pairJson=(body:unknown)=>new Response(JSON.stringify(body),{status:200,headers:{'content-type':'application/json'}});
+function officialPair(f:Fixture,transport:typeof fetch|null,override:{key?:string;origin?:string}={}){
+ return composeFishingServiceTestCardsV4({
+  db:f.nativeDb,workspaceId:f.workspace,current:f.current,owner:f.billingOwner,ring:programRing,digestKey:f.ledgerKey,
+  configuration:f.configuration,inbox:f.inbox,refund:null,reservation:f.reservation,checkoutEffect:f.checkout,
+  checkout:{key:'rk_test_'+'SYNTHETIC_PAIR_ONLY'.repeat(3),origin:'https://fishing-test.invalid',
+   successUrl:'https://fishing-test.invalid/payment/result?session_id={CHECKOUT_SESSION_ID}',cancelUrl:'https://fishing-test.invalid/payment/cancel',transport,...override},
+  // This separate purpose is deliberately unavailable in these creation cases.
+  readback:{key:'rk_test_'+'SYNTHETIC_PAIR_ONLY'.repeat(3),transport:null,admission:null,clock:f.clock},
+ });
+}
+it.each(['missing_transport','invalid_test_key'] as const)('v4-official-pair %s cannot install a producer or reserve UNKNOWN',async problem=>{
+ const f=await ready();await f.cards().prepare(f.owner,f.command);const before=await rows(f),calls=vi.fn<typeof fetch>(async()=>{throw Error('UNEXPECTED_SDK_CALL');});
+ expect(()=>officialPair(f,problem==='missing_transport'?null:calls,problem==='invalid_test_key'?{key:'NOT_A_TEST_KEY'}:{})).toThrow('UNAVAILABLE');
+ expect(await rows(f)).toEqual(before);expect(calls).not.toHaveBeenCalled();
+});
+it('v4-official-pair dispatches official SDK only after durable native UNKNOWN and restart never resends',async()=>{
+ const f=await ready(),paths:string[]=[];
+ const transport=vi.fn<typeof fetch>(async(url,init)=>{
+  expect(f.controls.nativeDepth).toBe(0);
+  const original=(await engine.query<{state:string;ciphertext:string}>('SELECT state,payload_ciphertext AS ciphertext FROM ls_fishing_billing.card_attempts WHERE workspace_id=$1 AND id=$2',[f.workspace,f.command.operationId])).rows;
+  expect(original).toHaveLength(1);expect(original[0]!.state).toBe('unknown');
+  const persisted=JSON.parse(unseal(original[0]!.ciphertext,'ls_fishing_billing/card/v1/attempt/'+f.workspace+'/'+f.command.operationId,programRing));
+  expect(persisted).toMatchObject({id:f.command.operationId,workspaceId:f.workspace,quoteId:f.quote.id,state:'unknown',sessionId:null});
+  const path=new URL(String(url)).pathname;paths.push(path);
+  if(path==='/v1/account')return pairJson({object:'account',id:f.binding.accountId});
+  if(path==='/v1/balance')return pairJson({object:'balance',livemode:false,available:[],pending:[]});
+  expect(path).toBe('/v1/checkout/sessions');expect(init?.method).toBe('POST');
+  const body=new URLSearchParams(String(init?.body)),headers=new Headers(init?.headers);
+  expect(headers.get('idempotency-key')).toBe(f.command.operationId);
+  expect(body.get('metadata[billing_quote_id]')).toBe(f.quote.id);
+  expect(body.get('metadata[billing_attempt_id]')).toBe(f.command.operationId);
+  expect(body.get('line_items[0][price_data][unit_amount]')).toBe('130000');
+  return pairJson({object:'checkout.session',id:'cs_test_SYNTHETICPAIR',livemode:false,mode:'payment',amount_total:130000,currency:'usd',client_reference_id:f.quote.id,
+   integration_identifier:body.get('integration_identifier'),metadata:{billing_quote_id:f.quote.id,billing_attempt_id:f.command.operationId},
+   payment_method_configuration_details:{id:'pmc_SYNTHETIC'},url:'https://checkout.stripe.com/c/pay/cs_test_SYNTHETICPAIR',payment_status:'unpaid'});
+ });
+ const cards=officialPair(f,transport);await cards.prepare(f.owner,f.command);
+ const result=await cards.createCheckout(f.owner,f.quote.id,f.command.operationId);
+ expect(paths).toEqual(['/v1/account','/v1/balance','/v1/checkout/sessions']);
+ expect(f.controls.effectAuthorizations).toBe(3);expect(result.state).toBe('open');expect(result.sessionId).toBe('cs_test_SYNTHETICPAIR');
+ const after=await rows(f);expect((await view(f)).balance.receipts).toEqual([]);
+ await cards.createCheckout(f.owner,f.quote.id,f.command.operationId);
+ await officialPair(f,transport).createCheckout(f.owner,f.quote.id,f.command.operationId);
+ expect(await rows(f)).toEqual(after);expect(transport).toHaveBeenCalledTimes(3);
+});
+it('v4-official-pair fresh native revocation after account reads blocks POST and keeps UNKNOWN without resend',async()=>{
+ const f=await ready(),paths:string[]=[];
+ const transport=vi.fn<typeof fetch>(async url=>{
+  expect(f.controls.nativeDepth).toBe(0);const path=new URL(String(url)).pathname;paths.push(path);
+  if(path==='/v1/account')return pairJson({object:'account',id:f.binding.accountId});
+  expect(path).toBe('/v1/balance');
+  await engine.query('UPDATE synthetic_owner_card4.service SET create_allowed=false WHERE workspace_id=$1',[f.workspace]);
+  return pairJson({object:'balance',livemode:false,available:[],pending:[]});
+ });
+ const cards=officialPair(f,transport);await cards.prepare(f.owner,f.command);
+ const result=await cards.createCheckout(f.owner,f.quote.id,f.command.operationId);
+ expect(paths).toEqual(['/v1/account','/v1/balance']);expect(result.state).toBe('unknown');expect(result.sessionId).toBeNull();
+ const after=await rows(f);
+ await engine.query('UPDATE synthetic_owner_card4.service SET create_allowed=true WHERE workspace_id=$1',[f.workspace]);
+ await officialPair(f,transport).createCheckout(f.owner,f.quote.id,f.command.operationId);
+ expect(await rows(f)).toEqual(after);expect(transport).toHaveBeenCalledTimes(2);expect((await view(f)).balance.receipts).toEqual([]);
 });

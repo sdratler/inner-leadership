@@ -32,6 +32,18 @@ function returnUrl(raw:string,origin:string){
  requireValue(url.protocol==='https:'&&url.origin===origin&&!url.username&&!url.password&&!url.hash);
  return url.href;
 }
+/** Pure configuration check only: no native permission, provider request or
+ * dispatch capability is established. Composition may call this before a
+ * non-null provider can cause a durable UNKNOWN reservation. Each SDK attempt
+ * repeats the same check and its separate fresh native admissions. */
+export function validateFishingBillingTestCheckoutDependencies(supplied:BillingCheckoutDependencies){
+ requireValue(supplied.admission&&typeof supplied.admission.authorize==='function'&&typeof supplied.transport==='function'&&Stripe.PACKAGE_VERSION==='23.0.0'&&Stripe.API_VERSION===apiVersion);
+ const binding=billingStripeBindingSchema.parse(supplied.binding);
+ requireValue(/^(?:sk|rk)_test_[A-Za-z0-9_]{16,256}$/.test(supplied.key));
+ const origin=new URL(supplied.origin);requireValue(origin.protocol==='https:'&&origin.origin===supplied.origin&&!origin.username&&!origin.password);
+ return Object.freeze({binding,admission:supplied.admission,transport:supplied.transport,
+  successUrl:returnUrl(supplied.successUrl,origin.origin),cancelUrl:returnUrl(supplied.cancelUrl,origin.origin)});
+}
 function interruptible<T>(pending:Promise<T>,signal:AbortSignal):Promise<T>{
  return new Promise((resolve,reject)=>{
   const abort=()=>{signal.removeEventListener('abort',abort);reject(unavailable());};
@@ -71,13 +83,9 @@ export function createFishingBillingTestCheckout(dependencies:BillingCheckoutDep
  return {async createCheckout(request){
   let controller:AbortController|undefined,timer:ReturnType<typeof setTimeout>|undefined;
   try{
-   requireValue(supplied.admission&&supplied.transport&&Stripe.PACKAGE_VERSION==='23.0.0'&&Stripe.API_VERSION===apiVersion);
-   const binding=billingStripeBindingSchema.parse(supplied.binding),frozen=snapshot(request,binding);
-   requireValue(/^(?:sk|rk)_test_[A-Za-z0-9_]{16,256}$/.test(supplied.key));
-   const origin=new URL(supplied.origin);requireValue(origin.protocol==='https:'&&origin.origin===supplied.origin&&!origin.username&&!origin.password);
-   const successUrl=returnUrl(supplied.successUrl,origin.origin),cancelUrl=returnUrl(supplied.cancelUrl,origin.origin);
+   const {binding,admission,transport,successUrl,cancelUrl}=validateFishingBillingTestCheckoutDependencies(supplied);
+   const frozen=snapshot(request,binding);
    controller=new AbortController();const signal=controller.signal;timer=setTimeout(()=>controller!.abort(),15000);
-   const admission=supplied.admission,transport=supplied.transport;
    await interruptible(admission.authorize(frozen.effect),signal);
    let calls=0;
    const guardedFetch:typeof fetch=async(input,init)=>{

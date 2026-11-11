@@ -112,7 +112,9 @@ if(!runtimePath){
   }
   const calendar=await page.request.get(runtime.origin+"/"+locale+"/app/calendar",{maxRedirects:0});
   expect(calendar.status()).toBe(307);
-  expect(calendar.headers().location).toBe(runtime.origin+"/"+locale+"/app/group-applications");
+  const location=calendar.headers().location;
+  if(!location)throw Error("OWNER_CALENDAR_REDIRECT_LOCATION_REQUIRED");
+  expect(new URL(location,calendar.url()).href).toBe(runtime.origin+"/"+locale+"/app/group-applications");
   await page.goto(runtime.origin+returnPath);
  }
  async function submit(page:Page,button:Locator,action:string){
