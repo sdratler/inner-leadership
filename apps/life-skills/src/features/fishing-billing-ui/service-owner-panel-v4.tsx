@@ -1,5 +1,5 @@
 'use client';
-import {useEffect,useId,useRef,useSyncExternalStore} from 'react';
+import {useEffect,useId,useLayoutEffect,useRef,useSyncExternalStore} from 'react';
 import {Button,Input,Textarea} from '../../ui/workspace/controls.tsx';
 import {money,unallocatedAmount} from './model.ts';
 import {ServiceOwnerPanelStateV4,type ServiceOwnerPanelSnapshotV4} from './service-owner-panel-state-v4.ts';
@@ -101,11 +101,18 @@ function AcceptanceProvenance({locale,snapshot}:{locale:Locale;snapshot:ServiceO
  </>}</section>;
 }
 function EntryDialog({locale,store,snapshot}:{locale:Locale;store:ServiceOwnerPanelStateV4;snapshot:ServiceOwnerPanelSnapshotV4}){
- const ref=useRef<HTMLDialogElement>(null),id=useId(),draft=snapshot.draft!,data=snapshot.data!,t=(en:string,he:string)=>text(locale,en,he);
+ const ref=useRef<HTMLDialogElement>(null),headingRef=useRef<HTMLHeadingElement>(null),id=useId(),draft=snapshot.draft!,data=snapshot.data!,t=(en:string,he:string)=>text(locale,en,he);
+ const review=draft.review,op=review?.operation,done=snapshot.flow.phase==='confirmed',reviewing=Boolean(review&&op),lastReviewing=useRef(reviewing);
  useEffect(()=>{const node=ref.current;if(node&&!node.open)node.showModal();return()=>{if(node?.open)node.close();};},[]);
- const review=draft.review,op=review?.operation,done=snapshot.flow.phase==='confirmed';
+ useLayoutEffect(()=>{
+  const previous=lastReviewing.current;lastReviewing.current=reviewing;
+  const node=ref.current,heading=headingRef.current;
+  if(previous===reviewing||!node?.open||!node.matches(':modal')||!heading||!node.contains(heading))return;
+  const doc=node.ownerDocument;
+  if(doc.hasFocus()&&doc.activeElement===doc.body)heading.focus({preventScroll:true});
+ },[reviewing]);
  return <dialog ref={ref} className={styles.dialog} aria-labelledby={`${id}-title`} onCancel={event=>{event.preventDefault();store.closeForm();}}>
-  <header className={styles.dialogHeader}><h2 id={`${id}-title`}>{draft.kind==='cash'?t('Record cash received','רישום מזומן שהתקבל'):draft.kind==='reversal'?t('Correct cash entry','תיקון רישום מזומן'):t('Review billing state','בדיקת מצב החיוב')}</h2><Button variant="quiet" onClick={()=>store.closeForm()} aria-label={t('Close dialog','סגירת החלון')}>×</Button></header>
+  <header className={styles.dialogHeader}><h2 ref={headingRef} tabIndex={-1} id={`${id}-title`}>{draft.kind==='cash'?t('Record cash received','רישום מזומן שהתקבל'):draft.kind==='reversal'?t('Correct cash entry','תיקון רישום מזומן'):t('Review billing state','בדיקת מצב החיוב')}</h2><Button variant="quiet" onClick={()=>store.closeForm()} aria-label={t('Close dialog','סגירת החלון')}>×</Button></header>
   <div className={styles.dialogBody}>{done?<><p role="status">{t('Original operation confirmed; current details refreshed.','הפעולה המקורית אושרה; הפרטים העדכניים רועננו.')}</p><Button onClick={()=>store.closeForm()}>{t('Done','סיום')}</Button></>:review&&op?<>
    {op.action==='state'?<><p>{op.command.cancel?t('Cancel future billing. Existing entries and original acceptance remain.','ביטול חיובים עתידיים. הרישומים הקיימים והאישור המקורי נשמרים.'):op.command.paused?t('Pause billing. Existing entries remain.','השהיית החיוב. הרישומים הקיימים נשמרים.'):t('Resume billing under the existing recorded terms.','חידוש החיוב לפי התנאים שנרשמו.')}</p><p>{t('This changes the recorded billing state. External subscription updates are unavailable here.','פעולה זו משנה את מצב החיוב הרשום. עדכון מנויים אצל ספק חיצוני אינו זמין כאן.')}</p></>:<>
     <strong className={`${styles.confirmAmount} ${styles.money}`}>{money(op.command.amountMinor,locale)}</strong>
