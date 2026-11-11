@@ -311,9 +311,12 @@ export async function inspectBodyContact(page:Page){
  return page.evaluate(reading=>{
   const wa=document.querySelector<HTMLAnchorElement>('a[class*="whatsapp"]')!,b=wa.getBoundingClientRect(),findings:string[]=[];
   const visible=getComputedStyle(wa).visibility==='visible'&&getComputedStyle(wa).display!=='none';
-  let nearContent=false;
-  const nearby=(r:DOMRect)=>r.width>0&&r.height>0&&r.left<b.right+12&&r.right>b.left-12&&r.top<b.bottom+12&&r.bottom>b.top-12;
-  for(const node of document.querySelectorAll('main img,main summary,main a,main button,footer'))nearContent ||= nearby(node.getBoundingClientRect());
+  if(!visible||wa.tabIndex!==0||wa.getAttribute('aria-hidden')==='true')findings.push('body-contact-unavailable');
+  const protectedNodes=innerWidth<=999?document.querySelectorAll('main img,main summary,main a,footer a'):[];
+  for(const node of protectedNodes){
+   const r=node.getBoundingClientRect();
+   if(r.width&&r.height&&r.left<b.right&&r.right>b.left&&r.top<b.bottom&&r.bottom>b.top)findings.push('body-contact-over-image-or-control');
+  }
   for(const node of document.querySelectorAll('main p,main li,main h2,main h3,main summary')){
    if(node.closest('dialog')||!node.getClientRects().length)continue;
    // Native collapsed details may retain layout rectangles for unpainted text.
@@ -324,17 +327,51 @@ export async function inspectBodyContact(page:Page){
     if(!text.textContent?.trim())continue;
     const range=document.createRange();range.selectNodeContents(text);
     for(const r of range.getClientRects()){
-     nearContent ||= nearby(r);
      if(visible&&r.width>0&&r.height>0&&r.left<b.right&&r.right>b.left&&r.top<b.bottom&&Math.min(r.bottom,reading.bottom)>b.top)findings.push('body-contact-over-text');
     }
    }
   }
   for(const icon of document.querySelectorAll('[data-jlfa-values] article svg')){
    const r=icon.getBoundingClientRect();
-   nearContent ||= nearby(r);
    if(visible&&r.width>0&&r.height>0&&r.left<b.right&&r.right>b.left&&r.top<b.bottom&&Math.min(r.bottom,reading.bottom)>b.top)findings.push('body-contact-over-value-icon');
   }
-  if(!visible&&(innerWidth>999||!nearContent||wa.tabIndex!==-1||wa.getAttribute('aria-hidden')!=='true'))findings.push('body-contact-hidden-without-obstacle');
   return {findings,position:{left:b.left,top:b.top,width:b.width,height:b.height}};
  },await readingViewport(page));
+}
+
+/** Follow the same anchor through native smooth scrolling. Sample the painted
+ * corner on each animation frame, including those between stopped positions. */
+export async function traceMobileContact(page:Page){
+ return page.evaluate(async()=>{
+  const link=document.querySelector<HTMLAnchorElement>('[data-contact-ready]')!;
+  const hero=document.querySelector('[aria-labelledby="trip390-title"]')!;
+  const start=Math.ceil(hero.getBoundingClientRect().bottom+scrollY);
+  const bottom=document.documentElement.scrollHeight-innerHeight;
+  const nextFrame=()=>new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));
+  window.scrollTo({top:start,behavior:'instant'});
+  await nextFrame();await nextFrame();
+  const corner=link.getBoundingClientRect();
+  const findings=new Set<string>();
+  const traces=[];
+  for(const target of [bottom,start]){
+   const offsets=new Set<number>();
+   const deadline=performance.now()+8000;
+   window.scrollTo({top:target,behavior:'smooth'});
+   do{
+    await nextFrame();
+    offsets.add(scrollY);
+    const box=link.getBoundingClientRect();
+    const x=box.left+box.width/2,y=box.top+box.height/2;
+    if(link.dataset.contactReady!=='true'||link.tabIndex!==0||link.getAttribute('aria-hidden')==='true'||getComputedStyle(link).visibility!=='visible')findings.add('unavailable');
+    if(!link.isConnected||Math.abs(box.left-corner.left)>1||Math.abs(box.top-corner.top)>1||box.width!==corner.width||box.width!==box.height||box.width<48)findings.add('moved-or-resized');
+    for(const [px,py] of [[x,y],[x,box.top+6],[x,box.bottom-6],[box.left+6,y],[box.right-6,y]] as const){
+     if(!link.contains(document.elementFromPoint(px,py)))findings.add('missed-hit');
+    }
+    if(performance.now()>=deadline){findings.add('scroll-timeout');break;}
+   }while(Math.abs(scrollY-target)>1);
+   if(offsets.size<3)findings.add('missing-intermediate-frames');
+   traces.push({target,positions:offsets.size});
+  }
+  return {findings:[...findings],corner:{x:corner.x,y:corner.y,size:corner.width},traces};
+ });
 }
