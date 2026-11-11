@@ -61,11 +61,14 @@ export class FishingServiceBillingCardsV4 extends FishingServiceCardEventsV4{
   const effect=serviceCheckoutEffectV4Schema.parse(raw),active=this.activeCheckoutRequests.get(effect.operationId);requireBilling(active,'UNAVAILABLE');this.sameBinding(effect.binding);
   await this.current.withCurrentCardServiceV4(this.binding,effect.quoteId,async l=>{
    requireBilling(l.context.workspaceId===this.workspaceId,'FORBIDDEN');await guardedCardServicePermissionV4(l.context,this.workspaceId,this.binding,authority,null);
-   const a=await this.attempt(l.context,effect.operationId,effect.quoteId),request=await this.frozenRequest(l.context,a),q=l.frame.quote;
+  },async(context,frame)=>{
+   // Re-read after ALL mutable reconciliation/native postludes in the same TX.
+   requireBilling(context.workspaceId===this.workspaceId,'FORBIDDEN');await guardedCardServicePermissionV4(context,this.workspaceId,this.binding,authority,null);
+   const a=await this.attempt(context,effect.operationId,effect.quoteId),request=await this.frozenRequest(context,a),q=frame.quote;
    requireBilling(active&&this.activeCheckoutRequests.get(a.id)===active&&a.state==='unknown'&&a.dispatchId===active.dispatchId&&a.balanceVersion===q.revision&&a.sessionId===null&&a.paymentIntentId===null&&a.checkoutUrl===null&&canonical(request)===canonical(active.request),'UNAVAILABLE');
-   requireBilling(q.state==='accepted'&&!q.paused&&q.acceptance&&l.frame.balance.pendingAttemptIds.length===1&&l.frame.balance.pendingAttemptIds[0]===a.id&&!['review_required','overpaid'].includes(l.frame.balance.state),'UNAVAILABLE');
-   requireBilling(effect.amountMinor===request.amountMinor&&effect.configurationId===request.params.payment_method_configuration&&request.allocations.every(x=>x.amountMinor<=(l.frame.balance.lines.find(line=>line.lineId===x.lineId)?.remainingMinor??0)),'UNAVAILABLE');
-   await guardedCardServicePermissionV4(l.context,this.workspaceId,this.binding,authority,{version:BILLING_SERVICE_V4,purpose:'create_checkout',effect,snapshot:l.frame,attempt:a,request});
+   requireBilling(q.state==='accepted'&&!q.paused&&q.acceptance&&frame.balance.pendingAttemptIds.length===1&&frame.balance.pendingAttemptIds[0]===a.id&&!['review_required','overpaid'].includes(frame.balance.state),'UNAVAILABLE');
+   requireBilling(effect.amountMinor===request.amountMinor&&effect.configurationId===request.params.payment_method_configuration&&request.allocations.every(x=>x.amountMinor<=(frame.balance.lines.find(line=>line.lineId===x.lineId)?.remainingMinor??0)),'UNAVAILABLE');
+   await guardedCardServicePermissionV4(context,this.workspaceId,this.binding,authority,{version:BILLING_SERVICE_V4,purpose:'create_checkout',effect,snapshot:frame,attempt:a,request});
    requireBilling(this.activeCheckoutRequests.get(a.id)===active,'UNAVAILABLE');
   });
  }

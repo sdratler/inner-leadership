@@ -57,13 +57,13 @@ export class FishingServiceCurrentCardV4{
    fact(await one(c.tx,"UPDATE ls_fishing_billing.reminders SET state='suppressed',payload_ciphertext=$3 WHERE workspace_id=$1 AND id=$2 AND quote_id=$4 AND state='queued' AND payload_ciphertext=$5 RETURNING id",[this.workspaceId,i.id,seal(JSON.stringify(after),'ls_fishing_billing/v1/reminder/'+this.workspaceId+'/'+i.id,this.ring),q.id,row.ciphertext]),'CONFLICT');
   }
  }
- async withCurrentCardServiceV4<T>(rawBinding:BillingStripeBinding,quoteId:string,work:(ledger:ServiceCurrentCardLedgerV4)=>Promise<T>):Promise<T>{
+ async withCurrentCardServiceV4<T>(rawBinding:BillingStripeBinding,quoteId:string,work:(ledger:ServiceCurrentCardLedgerV4)=>Promise<T>,terminal?:(context:Context,snapshot:ServiceOwnerSnapshotV4)=>Promise<void>):Promise<T>{
   billingId.parse(quoteId);const binding=Object.freeze(billingStripeBindingSchema.parse(rawBinding));
   let callbackFailure:unknown,rejected=false;
   try{return await this.db.transaction(async physical=>{
    // Each actual callback invocation supersedes all earlier retry provenance.
    callbackFailure=undefined;rejected=false;
-   const original=physical.query,query=original.bind(physical),time=this.currentNow(),at=time.valueOf();let open=true,active=true,claimed=false,failed=false,completed=false;
+   const original=physical.query,query=original.bind(physical),time=this.currentNow(),at=time.valueOf();let open=true,active=true,claimed=false,failed=false,completed=false,terminalActive=false,terminalComplete=false;
    const guard=()=>fact(open&&physical.query===original&&c.tx===tx&&c.workspaceId===this.workspaceId&&c.now===time&&time.valueOf()===at);
    const tx:SqlSession=Object.freeze({query:async<R extends object>(sql:string,v:readonly unknown[]=[])=>{guard();const rows=await query<R>(sql,v);guard();return rows;}}),c=Object.freeze({workspaceId:this.workspaceId,now:time,tx});
    const pending=new Set<Promise<ServiceOwnerSnapshotV4>>(),queries=new Set<Promise<unknown>>();
@@ -107,10 +107,24 @@ export class FishingServiceCurrentCardV4{
     const result=await work(ledger);active=false;fact(!failed&&queries.size===0&&(!claimed||completed),'CONFLICT');
     // Producer may finish its actual attempt/event rows after advance. Re-read
     // those rows through the common projector, while pinning immutable money.
-    await stable();await this.suppressQueued(c,await stable());await this.permission(c,binding,scope);await stable();
+    await stable();await this.suppressQueued(c,await stable());await this.permission(c,binding,scope);const final=await stable();
+    // A separate effect decision must follow every mutable reconciliation hook.
+    // This context cannot reactivate the producer's expired query/advance port.
+    if(terminal){
+     const terminalTx:SqlSession=Object.freeze({query:<R extends object>(sql:string,v:readonly unknown[]=[])=>{
+      const task=(async()=>{fact(terminalActive);const rows=await tx.query<R>(sql,v);fact(terminalActive);return rows;})().catch(error=>{failed=true;throw error;});
+      queries.add(task);void task.then(()=>queries.delete(task),()=>queries.delete(task));return task;
+     }});
+     terminalActive=true;
+     try{await terminal(Object.freeze({...c,tx:terminalTx}),freeze(structuredClone(final)));}finally{terminalActive=false;}
+     guard();fact(!failed&&queries.size===0&&pending.size===0&&(!claimed||completed),'CONFLICT');terminalComplete=true;
+    }
     guard();fact(!failed&&(!claimed||completed),'CONFLICT');return result;
    }catch(error){callbackFailure=error;rejected=true;throw error;}finally{
-    active=false;await Promise.allSettled([...pending,...queries]);open=false;
+    active=false;terminalActive=false;
+    // Successful terminal admission leaves only synchronous guard/revocation.
+    // Default callers and rejected work retain the original rollback drain.
+    if(!terminalComplete)await Promise.allSettled([...pending,...queries]);open=false;
    }
   });}catch(error){
    // Only the actual callback's own rejected AppError is a known rejection.

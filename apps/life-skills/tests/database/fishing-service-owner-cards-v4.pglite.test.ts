@@ -21,6 +21,7 @@ import {seal,unseal} from '../../src/features/identity/crypto.ts';
 import {ledgerReceiptSchema} from '../../src/features/fishing-billing/contracts.ts';
 import {AppError} from '../../src/lib/errors.ts';
 import type {IdentityStore} from '../../src/features/identity/store.ts';
+import type {BillingLedgerContext} from '../../src/features/fishing-billing/native.ts';
 import type {PrepareCardCommand,ProviderPaymentSnapshot} from '../../src/features/fishing-billing/card-contracts.ts';
 import type {CheckoutRequest} from '../../src/features/fishing-billing/card-checkout-request.ts';
 import type {ServiceCheckoutEffectAuthorityV4} from '../../src/features/fishing-billing/guest-service-checkout-effect-v4.ts';
@@ -43,6 +44,7 @@ async function ready(accept=true){
  const f=await serviceGuestFixtureV4(engine);if(accept)await new FishingServiceGuestNativeV4(f.db,f.workspace,programRing,programKey,f.commandKey,f.clock,f.resolver()).acceptFinancialOffer(f.token,f.command);
  await engine.query('INSERT INTO synthetic_owner_card4.service(workspace_id) VALUES($1)',[f.workspace]);
  const controls={denyTarget:false,denyCard:false,denyService:false,clock:false,failRequest:false,failCAS:false,postCommit:false,retry:false,retryGate:false,privateBeforeTarget:0,holdQuery:null as Promise<void>|null,queryEntered:()=>{},revokeAtOwnerTarget:false,revokeAtOwnerTerminal:false,afterReserveOwnerChecks:0,terminalDone:false,terminalAuthorizations:0,reservationClock:false,nativeDepth:0,effectAuthorizations:0,effectClock:false,modeledPosts:0,createError:null as Error|null,beforeCreate:null as ((request:CheckoutRequest)=>Promise<void>)|null,afterCreate:null as ((request:CheckoutRequest)=>Promise<void>)|null,resultFails:false,resultPostCommit:false,sessionPatch:{} as {accountId?:string;amountMinor?:number;url?:string;paymentStatus?:'paid'|'unpaid'|'no_payment_required'}};
+ const lateCheckout={point:null as 'target'|'authorize'|null,targets:0,authorizations:0,revocations:0,guardPostlude:false,approved:false};
  const originalError=new AppError('CONFLICT'),ledgerKey=Buffer.from(programKey);
  const tracked:IdentityStore={transaction:async work=>{controls.nativeDepth++;try{return await f.db.transaction(work);}finally{controls.nativeDepth--;}}};
  const db:IdentityStore={transaction:async work=>{controls.terminalDone=false;let writes=false;const once=()=>tracked.transaction(tx=>work({query:async<R extends object>(sql:string,v:readonly unknown[]=[])=>{
@@ -63,8 +65,16 @@ async function ready(accept=true){
  }};
  const families=new FishingBillingInquiryFamilyProposals(f.db,f.workspace,programRing,programKey,f.clock),owner=new FishingServiceBillingOwnerV4(f.workspace,new FishingProgramSourceNativeV3(db,f.workspace,programRing,programKey,f.owner.id,f.clock),families,programRing,programKey,f.commandKey,ledgerKey,f.clock,authority);
  const binding={accountId:'acct_SYNTHETIC',livemode:false as const,apiVersion:'2026-09-30.endive' as const,verifiedBindingId:'SYNTHETIC-OWNER4-NO-SDK'},config={binding,cardOnlyConfigurationId:'pmc_SYNTHETIC',approvedProductLabel:'SYNTHETIC ONLY'};
- const currentDb:IdentityStore={transaction:async work=>{let writes=false;const result=await tracked.transaction(tx=>work({query:async<R extends object>(sql:string,v:readonly unknown[]=[])=>{if(sql.startsWith('UPDATE ls_fishing_billing.quotes'))writes=true;if(controls.resultFails&&sql.startsWith('UPDATE ls_fishing_billing.card_attempts'))throw new AppError('CONFLICT');return tx.query<R>(sql,v);}}));if(writes&&controls.resultPostCommit){controls.resultPostCommit=false;throw new AppError('FORBIDDEN');}return result;}};
- const current=new FishingServiceCurrentCardV4(currentDb,f.workspace,families,programRing,programKey,f.commandKey,ledgerKey,f.clock,{target:async(c,b)=>{expect(c).not.toHaveProperty('actor');const rows=await c.tx.query<{active:boolean}>('SELECT active FROM synthetic_owner_card4.service WHERE workspace_id=$1 FOR SHARE',[f.workspace]);if(controls.denyService||canonical(b)!==canonical(binding)||rows.length!==1||!rows[0]!.active)throw new AppError('FORBIDDEN');},authorize:async(_c,_b,s)=>{if(s.familyId!==f.quote.familyId)throw new AppError('FORBIDDEN');}});
+ const currentDb:IdentityStore={transaction:async work=>{lateCheckout.approved=false;let writes=false;const result=await tracked.transaction(tx=>work({query:async<R extends object>(sql:string,v:readonly unknown[]=[])=>{
+  if(lateCheckout.guardPostlude&&lateCheckout.approved)throw Error('SQL_AFTER_FINAL_CHECKOUT_ADMISSION');
+  if(sql==='SELECT 42 AS checkout_held'){controls.queryEntered();await controls.holdQuery;}
+  if(sql.startsWith('UPDATE ls_fishing_billing.quotes'))writes=true;if(controls.resultFails&&sql.startsWith('UPDATE ls_fishing_billing.card_attempts'))throw new AppError('CONFLICT');return tx.query<R>(sql,v);
+ }}));if(writes&&controls.resultPostCommit){controls.resultPostCommit=false;throw new AppError('FORBIDDEN');}return result;}};
+ const current=new FishingServiceCurrentCardV4(currentDb,f.workspace,families,programRing,programKey,f.commandKey,ledgerKey,f.clock,{target:async(c,b)=>{expect(c).not.toHaveProperty('actor');const rows=await c.tx.query<{active:boolean}>('SELECT active FROM synthetic_owner_card4.service WHERE workspace_id=$1 FOR SHARE',[f.workspace]);if(controls.denyService||canonical(b)!==canonical(binding)||rows.length!==1||!rows[0]!.active)throw new AppError('FORBIDDEN');
+  if(lateCheckout.point&&++lateCheckout.targets===3&&lateCheckout.point==='target'){expect(controls.nativeDepth).toBe(1);lateCheckout.revocations++;await c.tx.query('UPDATE synthetic_owner_card4.service SET create_allowed=false WHERE workspace_id=$1',[f.workspace]);}
+ },authorize:async(c,_b,s)=>{if(s.familyId!==f.quote.familyId)throw new AppError('FORBIDDEN');
+  if(lateCheckout.point&&++lateCheckout.authorizations===2&&lateCheckout.point==='authorize'){expect(controls.nativeDepth).toBe(1);lateCheckout.revocations++;await c.tx.query('UPDATE synthetic_owner_card4.service SET create_allowed=false WHERE workspace_id=$1',[f.workspace]);}
+ }});
  const snapshots=new Map<string,ProviderPaymentSnapshot>(),created=vi.fn(async(request:CheckoutRequest)=>{
   expect(controls.nativeDepth).toBe(0);expect(Object.isFrozen(request)).toBe(true);expect(Object.isFrozen(request.params.metadata)).toBe(true);if(controls.beforeCreate)await controls.beforeCreate(request);if(controls.createError)throw controls.createError;controls.modeledPosts++;
   if(controls.afterCreate)await controls.afterCreate(request);
@@ -89,15 +99,46 @@ async function ready(accept=true){
   expect(c).not.toHaveProperty('actor');expect(b).toEqual(binding);expect(d.version).toBe(BILLING_SERVICE_V4);expect(d.purpose).toBe('create_checkout');expect(Object.isFrozen(d.request)).toBe(true);controls.effectAuthorizations++;
   const rows=await c.tx.query<{state:string;revision:number;ciphertext:string}>("SELECT a.state,q.revision,r.payload_ciphertext AS ciphertext FROM synthetic_owner_card4.service s JOIN ls_fishing_billing.quotes q ON q.workspace_id=s.workspace_id JOIN ls_fishing_billing.card_attempts a ON a.workspace_id=q.workspace_id AND a.quote_id=q.id JOIN ls_fishing_billing.card_attempt_requests r ON r.workspace_id=a.workspace_id AND r.attempt_id=a.id WHERE s.workspace_id=$1 AND s.active AND s.create_allowed AND q.id=$2 AND a.id=$3 FOR SHARE OF s,q,a,r",[f.workspace,d.effect.quoteId,d.effect.operationId]);
   if(rows.length!==1||rows[0]!.state!=='unknown'||rows[0]!.revision!==d.snapshot.quote.revision)throw new AppError('FORBIDDEN');expect(JSON.parse(unseal(rows[0]!.ciphertext,'ls_fishing_billing/card/v1/checkout_request/'+f.workspace+'/'+d.attempt.id,programRing)).request).toEqual(d.request);expect(d.request.amountMinor).toBe(d.effect.amountMinor);expect(d.request.params.payment_method_configuration).toBe(d.effect.configurationId);if(controls.effectClock)c.now.setTime(c.now.valueOf()+1);
+  lateCheckout.approved=true;
  }};
  const cards=(transport:BillingStripeTestProvider|null=provider,permission:ServiceCardReservationAuthorityV4|null=reservation,effect:ServiceCheckoutEffectAuthorityV4|null=checkout)=>new FishingServiceBillingCardsV4(tracked,f.workspace,current,owner,programRing,ledgerKey,config,inbox,transport,null,permission,effect);
  const command:PrepareCardCommand={operationId:randomUUID(),quoteId:f.quote.id,expectedVersion:3,selection:f.quote.lines.map(l=>({lineId:l.id,amountMinor:65000}))};
- return {...f,billingOwner:owner,controls,current,cards,command,binding,created,snapshots,inbox,reservation,provider,checkout};
+ return {...f,billingOwner:owner,controls,lateCheckout,current,cards,command,binding,created,snapshots,inbox,reservation,provider,checkout};
 }
 type Fixture=Awaited<ReturnType<typeof ready>>;
 async function rows(f:Fixture){const result:Record<string,unknown>={};for(const table of ['quotes','receipts','card_attempts','card_attempt_requests','guest_financial_acceptances'])result[table]=(await engine.query('SELECT * FROM ls_fishing_billing.'+table+' WHERE workspace_id=$1 ORDER BY 2',[f.workspace])).rows;return result;}
 const view=(f:Fixture)=>f.billingOwner.readSnapshot(f.owner,f.quote.id);
 const sdkEffect=(r:CheckoutRequest)=>({effect:'create_checkout' as const,binding:r.binding,operationId:r.operationId,quoteId:r.quoteId,amountMinor:r.amountMinor,configurationId:r.params.payment_method_configuration});
+it.each(['target','authorize'] as const)('provider-terminal-r01 late reconciliation %s cannot revoke create permission after the final modeled SDK admission',async point=>{
+ const f=await ready();await f.cards().prepare(f.owner,f.command);const original=await request(f),cards=f.cards();
+ f.controls.beforeCreate=async r=>{await cards.checkoutAdmission().authorize(sdkEffect(r));f.lateCheckout.point=point;await cards.checkoutAdmission().authorize(sdkEffect(r));};
+ const result=await cards.createCheckout(f.owner,f.quote.id,f.command.operationId);
+ expect(f.lateCheckout.revocations).toBe(1);expect(f.controls.modeledPosts).toBe(0);expect(result.state).toBe('unknown');expect(f.created).toHaveBeenCalledTimes(1);
+ const stored=await f.cards().readAttempt(f.owner,f.quote.id,f.command.operationId);expect(stored).toEqual(result);expect(stored.dispatchId).toEqual(expect.any(String));expect(stored.sessionId).toBeNull();expect(await request(f)).toEqual(original);expect((await view(f)).balance.paidMinor).toBe(0);
+ const durable=await rows(f);expect(await f.cards().createCheckout(f.owner,f.quote.id,f.command.operationId)).toEqual(stored);expect(await rows(f)).toEqual(durable);expect(f.created).toHaveBeenCalledTimes(1);
+});
+it('provider-terminal-r01 performs no native SQL after each successful final checkout decision',async()=>{
+ const f=await ready();await f.cards().prepare(f.owner,f.command);f.lateCheckout.guardPostlude=true;const cards=f.cards();
+ f.controls.beforeCreate=async r=>{await cards.checkoutAdmission().authorize(sdkEffect(r));await cards.checkoutAdmission().authorize(sdkEffect(r));};
+ expect((await cards.createCheckout(f.owner,f.quote.id,f.command.operationId)).state).toBe('open');expect(f.controls.effectAuthorizations).toBe(3);expect(f.controls.modeledPosts).toBe(1);expect((await view(f)).balance.paidMinor).toBe(0);
+});
+it('provider-terminal-r01 revokes terminal SQL without reactivating the producer query or advance capability',async()=>{
+ const f=await ready();let terminalContext:Readonly<BillingLedgerContext>|undefined,producer:ServiceCurrentCardLedgerV4|undefined;
+ expect(await f.current.withCurrentCardServiceV4(f.binding,f.quote.id,async l=>{producer=l;return 'ORIGINAL';},async(c,s)=>{terminalContext=c;expect(s.quote.id).toBe(f.quote.id);expect(Object.isFrozen(s.quote.lines)).toBe(true);await c.tx.query('SELECT 1');})).toBe('ORIGINAL');
+ await expect(terminalContext!.tx.query('SELECT 1')).rejects.toThrow('UNAVAILABLE');await expect(producer!.context.tx.query('SELECT 1')).rejects.toThrow('UNAVAILABLE');await expect(producer!.advance()).rejects.toThrow('CONFLICT');expect((await view(f)).quote.revision).toBe(3);
+});
+it('provider-terminal-r01 a caught terminal SQL failure poisons and rolls back the earlier native advance',async()=>{
+ const f=await ready();await expect(f.current.withCurrentCardServiceV4(f.binding,f.quote.id,async l=>{await l.advance();},async c=>{await c.tx.query('SELECT * FROM synthetic_owner_card4.nonexistent_terminal_table').catch(()=>{});})).rejects.toThrow('CONFLICT');expect((await view(f)).quote.revision).toBe(3);expect((await view(f)).balance.receipts).toHaveLength(0);
+});
+it('provider-terminal-r01 drains an escaped terminal query before rollback and cannot commit the earlier advance',async()=>{
+ const f=await ready();let release=()=>{},entered=()=>{},escaped:Promise<unknown>|undefined,finished=false;const gate=new Promise<void>(r=>{release=r;}),started=new Promise<void>(r=>{entered=r;});f.controls.queryEntered=entered;f.controls.holdQuery=gate;
+ const running=f.current.withCurrentCardServiceV4(f.binding,f.quote.id,async l=>{await l.advance();},async c=>{escaped=c.tx.query('SELECT 42 AS checkout_held');void escaped.catch(()=>{});}).finally(()=>{finished=true;});
+ await started;await Promise.resolve();expect(finished).toBe(false);release();await expect(running).rejects.toThrow('CONFLICT');await expect(escaped!).rejects.toThrow('UNAVAILABLE');expect((await view(f)).quote.revision).toBe(3);expect((await view(f)).balance.receipts).toHaveLength(0);
+});
+it('provider-terminal-r01 a typed driver error after terminal success and COMMIT remains uncertain with durable original readback',async()=>{
+ const f=await ready();let terminalCalls=0;f.controls.resultPostCommit=true;
+ await expect(f.current.withCurrentCardServiceV4(f.binding,f.quote.id,async l=>{await l.advance();},async()=>{terminalCalls++;})).rejects.toThrow('UNAVAILABLE');expect(terminalCalls).toBe(1);expect((await view(f)).quote.revision).toBe(4);expect((await view(f)).balance.receipts).toHaveLength(0);
+});
 async function request(f:Fixture,id=f.command.operationId){const r=(await engine.query<{payload_ciphertext:string}>('SELECT payload_ciphertext FROM ls_fishing_billing.card_attempt_requests WHERE workspace_id=$1 AND attempt_id=$2',[f.workspace,id])).rows[0]!;return JSON.parse(unseal(r.payload_ciphertext,'ls_fishing_billing/card/v1/checkout_request/'+f.workspace+'/'+id,programRing));}
 it('owner-card-v4 actually prepares once under configured owner and preserves exact frozen request, consent and original-command recovery',async()=>{
  const f=await ready(),before=await rows(f),first=await f.cards().prepare(f.owner,f.command),saved=await rows(f);expect(first.entityVersion).toBe(4);expect(first.result.amountMinor).toBe(130000);expect((await view(f)).balance.pendingAttemptIds).toEqual([f.command.operationId]);
