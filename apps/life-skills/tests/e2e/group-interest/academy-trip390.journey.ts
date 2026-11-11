@@ -302,7 +302,7 @@ test('landing matrix, native dialog interactions and independent holdout regress
    sizes.forEach(({node,size})=>node.style.setProperty('font-size',`${size*2}px`,'important'));
   });
   await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
-  await expect.poll(()=>page.locator('section[data-reflow="true"]').count()).toBe(1);
+  await expect.poll(()=>page.locator('[data-text-reflow="true"]').count()).toBe(1);
   const enlargedPortrait=page.locator('img[src="/groups/people/founder-head.jpg"]');await enlargedPortrait.scrollIntoViewIfNeeded();
   await expect.poll(()=>enlargedPortrait.evaluate(image=>(image as HTMLImageElement).complete&&(image as HTMLImageElement).naturalWidth>0)).toBe(true);
   await expect.poll(()=>inspectBodyHeadings(page)).toEqual([]);
@@ -330,8 +330,11 @@ test('landing matrix, native dialog interactions and independent holdout regress
   await expect(page.locator('[data-hero-action] a')).toBeFocused();
   if(enlarged.contactMode==='blocked'){
    expect(blockedContact).not.toBeNull();
-   // Actual scroll, SAME element, and the existing strict public body position.
-   await page.locator('#values h2').scrollIntoViewIfNeeded();
+   // Find a clear corner after the hero, keeping the original DOM handle.
+   await page.locator('[data-jlfa-intro]').scrollIntoViewIfNeeded();
+   for(let step=0;step<80&&!await blockedContact!.isVisible();step++){
+    await page.evaluate(async()=>{window.scrollBy(0,40);await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));});
+   }
    await expect.poll(async()=>(await inspectBodyContact(page)).findings).toEqual([]);
    await expect.poll(async()=>(await inspectContactRestoration(page,blockedContact!)).findings).toEqual([]);
    await blockedContact!.dispose();

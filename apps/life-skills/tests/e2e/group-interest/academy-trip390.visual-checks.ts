@@ -7,7 +7,7 @@ const registeredOriginals=(['desktop','mobile'] as const).map(role=>({...heroAss
 export type HeroContentSnapshot={locale:string|null;blocks:string[];allText:string;headingCount:number;titleCount:number;paragraphCount:number;actionCount:number;linkCount:number};
 type ActionRect={left:number;right:number;top:number;bottom:number;width:number;height:number};
 export type PrimaryActionSnapshot={viewport:{width:number;height:number};hero:ActionRect;photo:ActionRect&{naturalWidth:number;naturalHeight:number};action:ActionRect;cta:ActionRect;
- painted:boolean;initialPrimaryVisible:boolean;reflow:boolean;actionPosition:string;declaredShortCase:string|null;declaredEnlargedText:boolean;pageFontSize:number};
+ photoBackedGrid?:boolean;enlargedPhotoFrame?:boolean;painted:boolean;initialPrimaryVisible:boolean;reflow:boolean;actionPosition:string;declaredShortCase:string|null;declaredEnlargedText:boolean;pageFontSize:number};
 // This task's source-admitted matrix cases, not a universal viewport policy.
 const shortCases=new Set(['320x568','375x667','844x390']);
 const validRect=(r:ActionRect)=>Object.values(r).every(Number.isFinite)&&r.width>0&&r.height>0&&Math.abs(r.right-r.left-r.width)<1&&Math.abs(r.bottom-r.top-r.height)<1;
@@ -20,6 +20,9 @@ export function primaryActionMode(s:PrimaryActionSnapshot):'initial'|'scroll'|'u
  const qualified=short||s.declaredEnlargedText&&s.pageFontSize>=34;
  const proportional=s.photo.naturalWidth>0&&s.photo.naturalHeight>0&&Math.abs(s.photo.width/s.photo.height-s.photo.naturalWidth/s.photo.naturalHeight)<.005;
  const admittedFlow=qualified&&s.reflow&&s.actionPosition==='static'&&proportional&&s.action.top>=s.photo.bottom-1;
+ if(s.enlargedPhotoFrame&&s.declaredEnlargedText&&s.pageFontSize>=34&&proportional&&s.viewport.width<=767)return s.initialPrimaryVisible?'initial':'scroll';
+ const photoOverlay=s.photoBackedGrid&&s.viewport.width<=999&&s.actionPosition==='static'&&containsRect(s.photo,s.action);
+ if(photoOverlay)return s.initialPrimaryVisible?'initial':qualified?'scroll':'unreachable';
  if(s.actionPosition==='static'&&!admittedFlow)return 'unreachable';
  if(s.initialPrimaryVisible)return 'initial';
  return admittedFlow?'scroll':'unreachable';
@@ -124,14 +127,17 @@ export async function inspectLanding(page:Page,options:{declaredShortCase?:strin
      if(boxes.some(r=>r.left< -1||r.right>width+1))findings.push('hero-word-outside-reading-width');
    }
   }
-  if(innerHeight>600&&hero.getAttribute('data-reflow')!=='true'&&Math.abs(hb.bottom-reading.bottom)>3)findings.push('hero-first-screen-height');
+  if(innerHeight>600&&!declaredEnlargedText&&hero.getAttribute('data-reflow')!=='true'&&Math.abs(hb.bottom-reading.bottom)>3)findings.push('hero-first-screen-height');
   if(getComputedStyle(document.querySelector('header')!).position!=='sticky')findings.push('header-not-sticky');
   const primary=[...document.querySelectorAll<HTMLAnchorElement>('[data-hero-action] a,header a[href="#interest"]')];
   const initialPrimaryVisible=primary.some(node=>{const b=box(node),s=getComputedStyle(node);return s.display!=='none'&&s.visibility!=='hidden'&&b.width>=48&&b.height>=48&&b.top>=0&&b.bottom<=reading.bottom&&b.left>=0&&b.right<=innerWidth;});
   const rect=(b:DOMRect)=>({left:b.left,right:b.right,top:b.top,bottom:b.bottom,width:b.width,height:b.height});
   const action=hero.querySelector<HTMLElement>('[data-hero-action]')!,cta=action.querySelector<HTMLAnchorElement>('a')!;
   let actionPainted=true;for(let n:HTMLElement|null=cta;n;n=n.parentElement){const s=getComputedStyle(n);if(s.display==='none'||s.visibility==='hidden'||s.opacity==='0'||n.hidden||n.getAttribute('aria-hidden')==='true')actionPainted=false;}
+  const photoEdges=['::before','::after'].map(edge=>getComputedStyle(hero,edge));
+  const enlargedPhotoFrame=declaredEnlargedText&&getComputedStyle(hero).display==='grid'&&photoEdges.every(edge=>edge.borderImageSource.includes('hero-mobile-20261018.png'))&&Math.abs(ib.width-hb.width)<1;
   const primaryAction:PrimaryActionSnapshot={viewport:{width:innerWidth,height:innerHeight},hero:rect(hb),photo:{...rect(ib),naturalWidth:photo.naturalWidth,naturalHeight:photo.naturalHeight},action:rect(box(action)),cta:rect(box(cta)),
+   enlargedPhotoFrame,photoBackedGrid:getComputedStyle(hero).display==='grid'&&Math.abs(ib.top-hb.top)<1&&Math.abs(ib.bottom-hb.bottom)<1&&getComputedStyle(photo).objectFit==='cover',
    painted:actionPainted,initialPrimaryVisible,reflow:hero.getAttribute('data-reflow')==='true',actionPosition:getComputedStyle(action).position,declaredShortCase,declaredEnlargedText,pageFontSize:parseFloat(getComputedStyle(hero.closest('div[lang]')!).fontSize)};
   if(primary.some(node=>/[↗→]/.test(node.textContent??'')))findings.push('ornamental-primary-arrow');
   if(document.body.textContent?.includes('Review candidate ·'))findings.push('internal-review-banner');
@@ -141,10 +147,11 @@ export async function inspectLanding(page:Page,options:{declaredShortCase?:strin
   const focal=mobile?[.035,.30,.905,.65]:[.29,.27,.68,.76];
   const fit=getComputedStyle(photo).objectFit;
   const scale=fit==='cover'?Math.max(ib.width/photo.naturalWidth,ib.height/photo.naturalHeight):Math.min(ib.width/photo.naturalWidth,ib.height/photo.naturalHeight);
-  const painted={left:ib.left+(ib.width-photo.naturalWidth*scale)/2,top:ib.top+(ib.height-photo.naturalHeight*scale)/2};
+  const [xAnchor,yAnchor]=getComputedStyle(photo).objectPosition.split(' ').map(value=>parseFloat(value)/100);
+  const painted={left:ib.left+(ib.width-photo.naturalWidth*scale)*xAnchor!,top:ib.top+(ib.height-photo.naturalHeight*scale)*yAnchor!};
   const subject={left:painted.left+focal[0]!*photo.naturalWidth*scale,top:painted.top+focal[1]!*photo.naturalHeight*scale,right:painted.left+focal[2]!*photo.naturalWidth*scale,bottom:painted.top+focal[3]!*photo.naturalHeight*scale};
   if(subject.left<ib.left-1||subject.right>ib.right+1||subject.top<ib.top-1||subject.bottom>ib.bottom+1)findings.push('protected-subject-cropped');
-  for(const node of hero.querySelectorAll('[data-hero-heading],[data-hero-action]')){
+  for(const node of hero.querySelectorAll('[data-hero-heading] p,[data-hero-heading] h1 span,[data-hero-action]')){
    const b=box(node),overlap=b.left<subject.right&&b.right>subject.left&&b.top<subject.bottom&&b.bottom>subject.top;
    if(overlap)findings.push('hero-text-over-subject');
    if(b.left<0||b.right>width+1||b.bottom>hb.bottom+1)findings.push('hero-control-clipped');
@@ -169,9 +176,12 @@ export async function inspectLanding(page:Page,options:{declaredShortCase?:strin
    const protectedPhoto=edges&&edges.right>edges.left&&edges.bottom>edges.top?{...edges,width:edges.right-edges.left,height:edges.bottom-edges.top}:null;
    contactSnapshot={box:rect(b),lift,visibility:style.visibility,display:style.display,inlineVisibility:wa.style.visibility,ready:wa.getAttribute('data-contact-ready'),ariaHidden:wa.getAttribute('aria-hidden'),tabIndex:wa.tabIndex,hidden:wa.hidden,position:style.position,modalOpen:document.querySelector('dialog')?.matches(':modal')??false,photoReady:photo.complete&&photo.naturalWidth>0,photoRegistered:Boolean(original),protectedPhoto,direction:style.direction};
    // Bounded local collision avoidance: three controls, four for protected photo.
-   const inlineEndDistance=style.direction==='rtl'?b.left:width-b.right;
+   const inlineEndDistance=width>999&&style.direction==='rtl'?b.left:width-b.right;
    if(style.position!=='fixed'||b.width<48||b.height<48||b.left<0||b.right>width||inlineEndDistance>40||lift<0||lift>224||innerHeight-b.bottom>242||b.bottom>innerHeight)findings.push('whatsapp-placement');
-   if(width<=999&&(!reading.separate||reading.bottom>b.top))findings.push('mobile-contact-covers-reading-viewport');
+   if(width<=999){
+    if(reading.separate||(!primaryAction.photoBackedGrid&&!enlargedPhotoFrame)||Math.abs(header.bottom-hb.top)>1)findings.push('mobile-hero-band-or-reading-pane');
+    if(wa.textContent?.trim()||Math.abs(b.width-b.height)>1||style.borderRadius!=='50%'||!wa.querySelector('svg')||document.querySelectorAll('[data-contact-ready]').length!==1)findings.push('mobile-contact-not-single-logo');
+   }
    if(style.visibility==='visible'&&style.display!=='none'&&b.left<subject.right&&b.right>subject.left&&b.top<Math.min(subject.bottom,reading.bottom)&&b.bottom>subject.top)findings.push('whatsapp-over-subject');
    if(!wa.href.startsWith('https://wa.me/13054916674?'))findings.push('whatsapp-destination');
    for(const control of document.querySelectorAll('a,button,summary')){
@@ -197,7 +207,11 @@ export async function inspectLanding(page:Page,options:{declaredShortCase?:strin
  const actionMode=primaryActionMode(observed.primaryAction);
  let contactMode:'visible'|'blocked'|'invalid'='invalid';
  if(observed.contactSnapshot){
-  if(observed.contactSnapshot.visibility==='visible'&&observed.contactSnapshot.ariaHidden!=='true')contactMode='visible';
+  const contact=observed.contactSnapshot;
+  if(observed.viewport.width<=999){
+   if(contact.visibility==='hidden'&&contact.ready==='false'&&contact.tabIndex===-1&&contact.ariaHidden==='true')contactMode='blocked';
+   else observed.findings.push('mobile-contact-on-hero');
+  }else if(observed.contactSnapshot.visibility==='visible'&&observed.contactSnapshot.ariaHidden!=='true')contactMode='visible';
   else if(admittedEnlargedPhotoBlock(observed.primaryAction,observed.contactSnapshot))contactMode='blocked';
   else observed.findings.push('whatsapp-not-visible');
  }
@@ -244,23 +258,25 @@ export async function scrollLandingToTop(page:Page){
 
 /** A floating action may overlap empty row padding, never the question/glyph. */
 export async function inspectFaqContact(page:Page){
- return page.evaluate(reading=>{
+ const result=await page.evaluate(reading=>{
   const findings:string[]=[],wa=document.querySelector<HTMLAnchorElement>('a[class*="whatsapp"]')!;
-  if(getComputedStyle(wa).visibility!=='visible'||wa.getAttribute('aria-hidden')==='true')findings.push('faq-contact-hidden');
+  const visible=getComputedStyle(wa).visibility==='visible';
   const b=wa.getBoundingClientRect();
   const icon=wa.querySelector('svg')!.getBoundingClientRect();
-  const wrongCorner=getComputedStyle(wa).direction==='rtl'?icon.right>100:icon.left<innerWidth-100;
+  const wrongCorner=innerWidth>999&&getComputedStyle(wa).direction==='rtl'?icon.right>100:icon.left<innerWidth-100;
   if(b.width<48||b.height<48||b.left<0||b.right>innerWidth||wrongCorner||b.top<0||b.bottom>innerHeight)findings.push('faq-contact-placement');
   for(const summary of document.querySelectorAll('[data-trip390-faq] summary')){
    const walker=document.createTreeWalker(summary,NodeFilter.SHOW_TEXT);
    for(let text=walker.nextNode();text;text=walker.nextNode()){
     if(!text.textContent?.trim())continue;
     const range=document.createRange();range.selectNodeContents(text);
-    for(const r of range.getClientRects())if(r.left<b.right&&r.right>b.left&&r.top<b.bottom&&Math.min(r.bottom,reading.bottom)>b.top)findings.push('faq-contact-over-text-or-glyph');
+    for(const r of range.getClientRects())if(visible&&r.left<b.right&&r.right>b.left&&r.top<b.bottom&&Math.min(r.bottom,reading.bottom)>b.top)findings.push('faq-contact-over-text-or-glyph');
    }
   }
   return {findings,lang:document.querySelector('[class*="trip390"][lang]')?.getAttribute('lang'),position:{x:b.x,y:b.y,width:b.width,height:b.height}};
  },await readingViewport(page));
+ const body=await inspectBodyContact(page);
+ return {...result,findings:[...result.findings,...body.findings]};
 }
 
 /** Approved discretionary/hyphen breaks are readable; orphan letters are not.
@@ -294,7 +310,10 @@ export async function inspectBodyHeadings(page:Page){
 export async function inspectBodyContact(page:Page){
  return page.evaluate(reading=>{
   const wa=document.querySelector<HTMLAnchorElement>('a[class*="whatsapp"]')!,b=wa.getBoundingClientRect(),findings:string[]=[];
-  if(getComputedStyle(wa).visibility!=='visible'||getComputedStyle(wa).display==='none')findings.push('body-contact-hidden');
+  const visible=getComputedStyle(wa).visibility==='visible'&&getComputedStyle(wa).display!=='none';
+  let nearContent=false;
+  const nearby=(r:DOMRect)=>r.width>0&&r.height>0&&r.left<b.right+12&&r.right>b.left-12&&r.top<b.bottom+12&&r.bottom>b.top-12;
+  for(const node of document.querySelectorAll('main img,main summary,main a,main button,footer'))nearContent ||= nearby(node.getBoundingClientRect());
   for(const node of document.querySelectorAll('main p,main li,main h2,main h3,main summary')){
    if(node.closest('dialog')||!node.getClientRects().length)continue;
    // Native collapsed details may retain layout rectangles for unpainted text.
@@ -304,13 +323,18 @@ export async function inspectBodyContact(page:Page){
    for(let text=walker.nextNode();text;text=walker.nextNode()){
     if(!text.textContent?.trim())continue;
     const range=document.createRange();range.selectNodeContents(text);
-    for(const r of range.getClientRects())if(r.width>0&&r.height>0&&r.left<b.right&&r.right>b.left&&r.top<b.bottom&&Math.min(r.bottom,reading.bottom)>b.top)findings.push('body-contact-over-text');
+    for(const r of range.getClientRects()){
+     nearContent ||= nearby(r);
+     if(visible&&r.width>0&&r.height>0&&r.left<b.right&&r.right>b.left&&r.top<b.bottom&&Math.min(r.bottom,reading.bottom)>b.top)findings.push('body-contact-over-text');
+    }
    }
   }
   for(const icon of document.querySelectorAll('[data-jlfa-values] article svg')){
    const r=icon.getBoundingClientRect();
-   if(r.width>0&&r.height>0&&r.left<b.right&&r.right>b.left&&r.top<b.bottom&&Math.min(r.bottom,reading.bottom)>b.top)findings.push('body-contact-over-value-icon');
+   nearContent ||= nearby(r);
+   if(visible&&r.width>0&&r.height>0&&r.left<b.right&&r.right>b.left&&r.top<b.bottom&&Math.min(r.bottom,reading.bottom)>b.top)findings.push('body-contact-over-value-icon');
   }
+  if(!visible&&(innerWidth>999||!nearContent||wa.tabIndex!==-1||wa.getAttribute('aria-hidden')!=='true'))findings.push('body-contact-hidden-without-obstacle');
   return {findings,position:{left:b.left,top:b.top,width:b.width,height:b.height}};
  },await readingViewport(page));
 }
