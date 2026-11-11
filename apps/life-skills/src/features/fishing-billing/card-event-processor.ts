@@ -11,7 +11,7 @@ import {requireBilling} from './domain.ts';
 import type {BillingLedgerContext} from './native.ts';
 import {billingStripeSignedReceiptSchema,type BillingStripeSignedReceipt,type BillingStripeInboxAuthority} from './stripe-test.ts';
 import {billingStripeBindingSchema,type BillingStripeBinding} from './card-binding.ts';
-import {CARD_VERSION,cardAttemptSchema,providerPaymentSnapshotSchema,cardExceptionSchema,type CardAttempt,type ProviderPaymentSnapshot,type ProviderRefund} from './card-contracts.ts';
+import {CARD_VERSION,cardAttemptSchema,providerPaymentSnapshotSchema,cardExceptionSchema,type CardAttempt,type ProviderPaymentSnapshot,type ProviderRefund,cardSessionResultSchema} from './card-contracts.ts';
 import type {BillingStripeTestProvider} from './cards.ts';
 import {requestRecordSchema,type CheckoutRequest} from './card-checkout-request.ts';
 
@@ -22,7 +22,7 @@ export type NativeCardEventLedger<Frame>={context:Readonly<BillingLedgerContext>
 export interface NativeCardEventAccess<Frame>{
  db:IdentityStore;workspaceId:WorkspaceId;
  withReconciliation<T>(binding:BillingStripeBinding,quoteId:string,work:(ledger:NativeCardEventLedger<Frame>)=>Promise<T>):Promise<T>;
- view(frame:Frame):{quote:Pick<FamilyOffer,'id'|'familyId'|'revision'>&{acceptance:unknown|null};receipts:readonly LedgerReceiptV2[]};
+ view(frame:Frame):{quote:Pick<FamilyOffer,'id'|'familyId'|'revision'|'state'|'paused'>&{acceptance:unknown|null};receipts:readonly LedgerReceiptV2[];remainingMinor:number};
  refundAllocations(context:BillingLedgerContext,frame:Frame,refund:ProviderRefund,original:LedgerReceipt):Promise<LedgerReceipt['allocations']|null>;
 }
 
@@ -74,6 +74,18 @@ export class FishingBillingCardEventProcessor<Frame>{
    r.params.client_reference_id===a.quoteId&&r.params.metadata.billing_quote_id===a.quoteId&&r.params.metadata.billing_attempt_id===a.id&&
    canonical(r.params.metadata)===canonical(r.params.payment_intent_data.metadata)&&r.params.line_items[0]!.price_data.unit_amount===r.amountMinor,'UNAVAILABLE');
   this.sameBinding(r.binding);return r;
+ }
+ /** Original V3 native result transition, shared with explicit V4 frames.
+  * A session response is not a payment receipt or permission for another POST. */
+ protected async recordCheckoutSession(l:NativeCardEventLedger<Frame>,quoteId:string,attemptId:string,reserved:CardAttempt,session:z.infer<typeof cardSessionResultSchema>,staleState:'stale'|'review_required'='stale'){
+  const a=await this.attempt(l.context,attemptId,quoteId);
+  requireBilling(a.dispatchId===reserved.dispatchId,'CONFLICT');
+  if(a.state!=='unknown'){
+   requireBilling(a.sessionId===session.id&&['paid','pending','failed'].includes(a.state),'CONFLICT');return a;
+  }
+  const view=this.native.view(l.frame),stale=view.quote.revision!==a.balanceVersion||view.quote.state!=='accepted'||view.quote.paused||view.remainingMinor===0;
+  const after={...a,revision:a.revision+1,balanceVersion:view.quote.revision+1,state:stale?staleState:'open' as const,sessionId:session.id,checkoutUrl:session.url};
+  await this.save(l.context,a,after);await l.advance();return after;
  }
  private async event(eventId:string){
   requireBilling(/^evt_[A-Za-z0-9_]{1,150}$/.test(eventId));

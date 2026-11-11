@@ -31,7 +31,7 @@ export class FishingServiceCardEventsV4 extends FishingBillingCardEventProcessor
    withReconciliation:(bound,id,work)=>ledger.withCurrentCardServiceV4(bound,id,l=>{
     requireBilling(l.context.workspaceId===workspaceId,'FORBIDDEN');return work(l);
    }),
-   view:frame=>({quote:frame.quote,receipts:frame.balance.receipts}),
+   view:frame=>({quote:frame.quote,receipts:frame.balance.receipts,remainingMinor:frame.balance.remainingMinor}),
    refundAllocations:async(c,frame,refund,original)=>refundAuthority?refundAuthority.allocations(c,frame,refund,original):null,
   },ring,digestKey,binding,inboxAuthority,provider);
  }

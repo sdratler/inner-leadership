@@ -56,7 +56,7 @@ export class FishingBillingCards extends FishingBillingCardEventProcessor<Curren
  ){
   super({db:ledger.db,workspaceId:ledger.workspaceId,
    withReconciliation:(binding,id,work)=>ledger.withCurrentCardServiceV3(binding,id,work),
-   view:frame=>({quote:frame.source.quote,receipts:frame.balance.receipts}),
+   view:frame=>({quote:frame.source.quote,receipts:frame.balance.receipts,remainingMinor:frame.balance.remainingMinor}),
    refundAllocations:async(c,frame,refund,original)=>currentRefundAuthority?currentRefundAuthority.allocations(c,frame,refund,original):
     frame.source.kind==='historical_account'&&refundAuthority?refundAuthority.allocations(c,frame.source.quote,refund,original):null,
   },ring,digestKey,configuration.binding,inboxAuthority,provider);
@@ -126,15 +126,6 @@ export class FishingBillingCards extends FishingBillingCardEventProcessor<Curren
   requireBilling(session.accountId===this.binding.accountId&&session.livemode===false&&session.apiVersion===this.binding.apiVersion&&
    session.quoteId===quoteId&&session.attemptId===attemptId&&session.amountMinor===reserved.request.amountMinor&&session.currency==='USD'&&session.paymentStatus!=='no_payment_required','CONFLICT');
   const url=new URL(session.url);requireBilling(url.origin==='https://checkout.stripe.com'&&!url.username&&!url.password,'UNAVAILABLE');
-  return this.ledger.withCurrentCardServiceV3(this.binding,quoteId,async l=>{
-   const a=await this.attempt(l.context,attemptId,quoteId);
-   requireBilling(a.dispatchId===reserved.attempt.dispatchId,'CONFLICT');
-   if(a.state!=='unknown'){
-    requireBilling(a.sessionId===session.id&&['paid','pending','failed'].includes(a.state),'CONFLICT');return a;
-   }
-   const stale=l.frame.source.quote.revision!==a.balanceVersion||l.frame.source.quote.state!=='accepted'||l.frame.source.quote.paused||l.frame.balance.remainingMinor===0;
-   const after={...a,revision:a.revision+1,balanceVersion:l.frame.source.quote.revision+1,state:stale?'stale' as const:'open' as const,sessionId:session.id,checkoutUrl:session.url};
-   await this.save(l.context,a,after);await l.advance();return after;
-  });
+  return this.ledger.withCurrentCardServiceV3(this.binding,quoteId,l=>this.recordCheckoutSession(l,quoteId,attemptId,reserved.attempt,session));
  }
 }

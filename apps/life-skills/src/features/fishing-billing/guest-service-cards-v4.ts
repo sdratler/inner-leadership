@@ -8,8 +8,8 @@ import {billingId} from './contracts.ts';
 import {requireBilling} from './domain.ts';
 import type {BillingStripeBinding} from './card-binding.ts';
 import {prepareBillingServiceTestCheckoutV4,type BillingStripeInboxAuthority} from './stripe-test.ts';
-import {CARD_VERSION,prepareCardCommandSchema,cardAttemptSchema,cardPreparationReceiptSchema,type PrepareCardCommand} from './card-contracts.ts';
-import {frozenRequestSchema,requestRecordSchema} from './card-checkout-request.ts';
+import {CARD_VERSION,prepareCardCommandSchema,cardAttemptSchema,cardPreparationReceiptSchema,cardSessionResultSchema,type PrepareCardCommand} from './card-contracts.ts';
+import {frozenRequestSchema,requestRecordSchema,type CheckoutRequest} from './card-checkout-request.ts';
 import {cardRecordAad as aad} from './card-event-processor.ts';
 import type {BillingStripeTestProvider} from './cards.ts';
 import {FishingServiceCardEventsV4,type ServiceRefundAllocationAuthorityV4} from './guest-service-card-events-v4.ts';
@@ -22,36 +22,72 @@ import type {ServiceOwnerSnapshotV4} from './guest-service-owner-financial-contr
 import {BILLING_SERVICE_V4} from './guest-service-contract-v4.ts';
 import type {ServiceCardReservationAuthorityV4,ServiceCardReservationV4} from './guest-service-card-reservation-v4.ts';
 import {cardRecordCanonical as canonical} from './card-event-processor.ts';
+import {guardedCardServicePermissionV4} from './card-service-permission-v4.ts';
+import {serviceCheckoutEffectV4Schema,type ServiceCheckoutEffectAuthorityV4} from './guest-service-checkout-effect-v4.ts';
+import type {BillingCheckoutAdmission,BillingCheckoutEffect} from '../../lib/fishing-billing-stripe-checkout.ts';
 
 function freezeReservation<T>(v:T):T{if(v&&typeof v==='object'){for(const x of Object.values(v))freezeReservation(x);Object.freeze(v);}return v;}
 
 /** Existing card storage/protocol with actual V4 owner preparation and durable
- * reservation, plus the shared event reconciler. No SDK creation/transport is
- * invoked here. A reserved request is UNKNOWN, never sent/paid/permission to
- * charge; future provider execution needs Root's actual effect admission.
- * Repeated reservation cannot emit a second dispatch or idempotency key. */
+ * reservation, plus the shared event reconciler. Explicit unmounted creation
+ * calls only Root's independently admitted provider port, once for a FRESH
+ * committed UNKNOWN. No SDK/transport/runtime is installed here. Root must pair
+ * checkoutAdmission() with its official SDK before-account/pre-POST guards.
+ * Session response never credits money; existing UNKNOWN is read/recovery only. */
 export class FishingServiceBillingCardsV4 extends FishingServiceCardEventsV4{
  private readonly reservationAuthority:ServiceCardReservationAuthorityV4|null;
- constructor(db:IdentityStore,private readonly workspaceId:WorkspaceId,current:FishingServiceCurrentCardV4,private readonly owner:FishingServiceBillingOwnerV4,
+ private readonly checkoutAuthority:ServiceCheckoutEffectAuthorityV4|null;
+ // Active original-request provenance only, NEVER a cached permission. Restart
+ // or completion loses this capability; persisted UNKNOWN cannot mint another.
+ private readonly activeCheckoutRequests=new Map<string,Readonly<{dispatchId:string;request:CheckoutRequest}>>();
+ constructor(db:IdentityStore,private readonly workspaceId:WorkspaceId,private readonly current:FishingServiceCurrentCardV4,private readonly owner:FishingServiceBillingOwnerV4,
   ring:Keyring,digestKey:Buffer,private readonly configuration:{binding:BillingStripeBinding;cardOnlyConfigurationId:string;approvedProductLabel:string},inbox:BillingStripeInboxAuthority,
-  provider:BillingStripeTestProvider|null=null,refund:ServiceRefundAllocationAuthorityV4|null=null,reservationAuthority:ServiceCardReservationAuthorityV4|null=null){
+  provider:BillingStripeTestProvider|null=null,refund:ServiceRefundAllocationAuthorityV4|null=null,reservationAuthority:ServiceCardReservationAuthorityV4|null=null,checkoutAuthority:ServiceCheckoutEffectAuthorityV4|null=null){
   super(db,workspaceId,current,ring,digestKey,configuration.binding,inbox,provider,refund);
   requireBilling(!reservationAuthority||typeof reservationAuthority.target==='function'&&typeof reservationAuthority.authorize==='function','UNAVAILABLE');
   this.reservationAuthority=reservationAuthority?Object.freeze({target:reservationAuthority.target.bind(reservationAuthority),authorize:reservationAuthority.authorize.bind(reservationAuthority)}):null;
+  requireBilling(!checkoutAuthority||typeof checkoutAuthority.target==='function'&&typeof checkoutAuthority.authorize==='function','UNAVAILABLE');
+  this.checkoutAuthority=checkoutAuthority?Object.freeze({target:checkoutAuthority.target.bind(checkoutAuthority),authorize:checkoutAuthority.authorize.bind(checkoutAuthority)}):null;
  }
  private withOwner<T>(actor:Actor,id:string,work:(ledger:ServiceCurrentCardLedgerV4&{actor:Readonly<AccountFacts>})=>Promise<T>,terminal?:(context:Readonly<BillingLedgerContext>,snapshot:ServiceOwnerSnapshotV4)=>Promise<void>){
   return this.owner.withCurrentCardActorV4(actor,id,l=>{requireBilling(l.context.workspaceId===this.workspaceId,'FORBIDDEN');return work(l);},terminal);
  }
- private async reservationPermission(c:Readonly<BillingLedgerContext>,reservation:ServiceCardReservationV4|null){
-  const authority=this.reservationAuthority;if(!authority)throw new AppError('UNAVAILABLE');const physical=c.tx,original=physical.query,query=original.bind(physical),time=c.now,at=time.valueOf();let active=true,failed=false;
-  const pending=new Set<Promise<unknown>>(),guard=()=>requireBilling(active&&c.workspaceId===this.workspaceId&&c.tx===physical&&physical.query===original&&c.now===time&&time.valueOf()===at&&view.now.valueOf()===at,'UNAVAILABLE');
-  const tx=Object.freeze({query:<R extends object>(sql:string,v:readonly unknown[]=[])=>{const p=(async()=>{guard();const rows=await query<R>(sql,v);guard();return rows;})().catch(error=>{failed=true;throw error;});pending.add(p);void p.then(()=>pending.delete(p),()=>pending.delete(p));return p;}});
-  const view=Object.freeze({workspaceId:this.workspaceId,tx,now:new Date(at)}),binding=Object.freeze({...this.binding});
+ private reservationPermission(c:Readonly<BillingLedgerContext>,reservation:ServiceCardReservationV4|null){return guardedCardServicePermissionV4(c,this.workspaceId,this.binding,this.reservationAuthority,reservation);}
+ /** Pair THIS adapter with Root's official SDK admission before account reads
+  * and immediately before POST. It never calls the SDK or authorizes resend. */
+ checkoutAdmission():BillingCheckoutAdmission{return Object.freeze({authorize:this.authorizeCheckoutEffect.bind(this)});}
+ async authorizeCheckoutEffect(raw:BillingCheckoutEffect):Promise<void>{
+  const authority=this.checkoutAuthority;if(!authority)throw new AppError('UNAVAILABLE');
+  const effect=serviceCheckoutEffectV4Schema.parse(raw),active=this.activeCheckoutRequests.get(effect.operationId);requireBilling(active,'UNAVAILABLE');this.sameBinding(effect.binding);
+  await this.current.withCurrentCardServiceV4(this.binding,effect.quoteId,async l=>{
+   requireBilling(l.context.workspaceId===this.workspaceId,'FORBIDDEN');await guardedCardServicePermissionV4(l.context,this.workspaceId,this.binding,authority,null);
+   const a=await this.attempt(l.context,effect.operationId,effect.quoteId),request=await this.frozenRequest(l.context,a),q=l.frame.quote;
+   requireBilling(active&&this.activeCheckoutRequests.get(a.id)===active&&a.state==='unknown'&&a.dispatchId===active.dispatchId&&a.balanceVersion===q.revision&&a.sessionId===null&&a.paymentIntentId===null&&a.checkoutUrl===null&&canonical(request)===canonical(active.request),'UNAVAILABLE');
+   requireBilling(q.state==='accepted'&&!q.paused&&q.acceptance&&l.frame.balance.pendingAttemptIds.length===1&&l.frame.balance.pendingAttemptIds[0]===a.id&&!['review_required','overpaid'].includes(l.frame.balance.state),'UNAVAILABLE');
+   requireBilling(effect.amountMinor===request.amountMinor&&effect.configurationId===request.params.payment_method_configuration&&request.allocations.every(x=>x.amountMinor<=(l.frame.balance.lines.find(line=>line.lineId===x.lineId)?.remainingMinor??0)),'UNAVAILABLE');
+   await guardedCardServicePermissionV4(l.context,this.workspaceId,this.binding,authority,{version:BILLING_SERVICE_V4,purpose:'create_checkout',effect,snapshot:l.frame,attempt:a,request});
+   requireBilling(this.activeCheckoutRequests.get(a.id)===active,'UNAVAILABLE');
+  });
+ }
+ async createCheckout(actor:Actor,quoteId:string,attemptId:string){
+  requireBilling(this.provider&&typeof this.provider.createCheckout==='function'&&this.checkoutAuthority,'UNAVAILABLE');
+  const reserved=await this.reserveCheckout(actor,quoteId,attemptId);if(!reserved.dispatch)return reserved.attempt;
+  const request=freezeReservation(structuredClone(reserved.request)),dispatchId=reserved.attempt.dispatchId;requireBilling(dispatchId&&!this.activeCheckoutRequests.has(attemptId),'UNAVAILABLE');
+  this.activeCheckoutRequests.set(attemptId,freezeReservation({dispatchId:dispatchId!,request}));
+  let session:ReturnType<typeof cardSessionResultSchema.parse>;
   try{
-   guard();await authority.target(view,binding);guard();
-   if(reservation)await authority.authorize(view,binding,freezeReservation(structuredClone(reservation)));
-   guard();requireBilling(!failed&&pending.size===0,'UNAVAILABLE');
-  }finally{active=false;if(pending.size)await Promise.allSettled([...pending]);}
+   await this.authorizeCheckoutEffect({effect:'create_checkout',binding:this.binding,operationId:request.operationId,quoteId:request.quoteId,amountMinor:request.amountMinor,configurationId:request.params.payment_method_configuration});
+   // Outside every native TX. The paired official SDK separately re-admits at
+   // its own account-read and immediately-before-POST effect points.
+   session=cardSessionResultSchema.parse(await this.provider!.createCheckout(request));
+   requireBilling(session.accountId===this.binding.accountId&&session.livemode===false&&session.apiVersion===this.binding.apiVersion&&session.quoteId===quoteId&&session.attemptId===attemptId&&session.amountMinor===request.amountMinor&&session.currency==='USD'&&session.paymentStatus!=='no_payment_required','UNAVAILABLE');
+   const url=new URL(session.url);requireBilling(url.origin==='https://checkout.stripe.com'&&!url.username&&!url.password,'UNAVAILABLE');
+  }catch{return reserved.attempt;}finally{this.activeCheckoutRequests.delete(attemptId);}
+  // A real remote session may still accept funds after local cash/cancellation.
+  // Keep V4 under review rather than clearing an unresolved remote obligation
+  // and permitting another card attempt. Historical V3 retains its old recipe.
+  try{return await this.current.withCurrentCardServiceV4(this.binding,quoteId,l=>this.recordCheckoutSession(l,quoteId,attemptId,reserved.attempt,session,'review_required'));}
+  catch{throw new AppError('UNAVAILABLE');} // Remote effect and/or COMMIT may exist.
  }
  private async original(l:ServiceCurrentCardLedgerV4&{actor:Readonly<AccountFacts>},cmd:PrepareCardCommand){
   const exists=await one(l.context.tx,'SELECT id FROM ls_fishing_billing.card_attempts WHERE workspace_id=$1 AND id=$2',[l.context.workspaceId,cmd.operationId]);if(!exists)return null;
