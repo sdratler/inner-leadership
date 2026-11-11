@@ -276,6 +276,7 @@
  /* Keep long English and Hebrew words whole at enlarged type on narrow phones. */
  .page[data-text-reflow=true] .heroText h1{letter-spacing:-.03em}
  .page[data-text-reflow=true] :is(.section,.packageInner){padding-left:8px}
+ .page[data-text-reflow=true] .faqs summary{padding-inline-end:.25em}
  .page[data-text-reflow=true] .headerInner{padding-inline:6px;gap:4px}
 }
 @media(min-width:1000px) and (max-height:480px) and (orientation:landscape){
