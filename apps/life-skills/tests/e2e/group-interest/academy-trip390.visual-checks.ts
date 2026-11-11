@@ -135,7 +135,7 @@ export async function inspectLanding(page:Page,options:{declaredShortCase?:strin
   const action=hero.querySelector<HTMLElement>('[data-hero-action]')!,cta=action.querySelector<HTMLAnchorElement>('a')!;
   let actionPainted=true;for(let n:HTMLElement|null=cta;n;n=n.parentElement){const s=getComputedStyle(n);if(s.display==='none'||s.visibility==='hidden'||s.opacity==='0'||n.hidden||n.getAttribute('aria-hidden')==='true')actionPainted=false;}
   const photoEdges=['::before','::after'].map(edge=>getComputedStyle(hero,edge));
-  const enlargedPhotoFrame=declaredEnlargedText&&getComputedStyle(hero).display==='grid'&&photoEdges.every(edge=>edge.borderImageSource.includes(new URL(photo.currentSrc).pathname))&&Math.abs(ib.width-hb.width)<1;
+  const enlargedPhotoFrame=declaredEnlargedText&&getComputedStyle(hero).display==='grid'&&photoEdges.every(edge=>edge.backgroundImage.includes(new URL(photo.currentSrc).pathname))&&Math.abs(ib.width-hb.width)<1;
   const primaryAction:PrimaryActionSnapshot={viewport:{width:innerWidth,height:innerHeight},hero:rect(hb),photo:{...rect(ib),naturalWidth:photo.naturalWidth,naturalHeight:photo.naturalHeight},action:rect(box(action)),cta:rect(box(cta)),
    enlargedPhotoFrame,photoBackedGrid:getComputedStyle(hero).display==='grid'&&Math.abs(ib.top-hb.top)<1&&Math.abs(ib.bottom-hb.bottom)<1&&getComputedStyle(photo).objectFit==='cover',
    painted:actionPainted,initialPrimaryVisible,reflow:hero.getAttribute('data-reflow')==='true',actionPosition:getComputedStyle(action).position,declaredShortCase,declaredEnlargedText,pageFontSize:parseFloat(getComputedStyle(hero.closest('div[lang]')!).fontSize)};

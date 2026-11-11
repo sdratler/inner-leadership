@@ -302,13 +302,12 @@
   --photo-people:calc(100vw * 860 / 1143);
   --photo-water:calc(100vw * 668 / 1143);
   --photo-original:url("/groups/academy/hero-mobile-20261018.png");
-  --sky-slice:1528;
-  --water-slice:1380;
+  --photo-height:calc(100vw * 2048 / 1143);
   grid-template-rows:minmax(var(--photo-sky),auto) var(--photo-people) minmax(var(--photo-water),1fr);
   padding:0;
   overflow:clip;
  }
- .page[data-text-reflow=true] .hero picture{grid-row:2;inset:0}
+ .page[data-text-reflow=true] .hero picture{grid-row:2 / 3;inset:0}
  .page[data-text-reflow=true] .hero img{
   position:absolute;
   inset-block-start:calc(-1 * var(--photo-sky));
@@ -320,13 +319,14 @@
   position:absolute;
   inset-inline:0;
   z-index:-1;
-  border-image-source:var(--photo-original);
-  border-image-width:0;
+  background-image:var(--photo-original);
+  background-size:100% max(var(--photo-height),500%);
+  background-repeat:no-repeat;
   transform:scaleY(-1);
  }
  /* The decorative edges sample only sky and water outside the registered people band. */
- .page[data-text-reflow=true] .hero::before{grid-row:1;inset-block:0 calc(var(--photo-sky) - 1px);border-image-slice:0 0 var(--sky-slice) 0 fill}
- .page[data-text-reflow=true] .hero::after{grid-row:3;inset-block:calc(var(--photo-water) - 1px) 0;border-image-slice:var(--water-slice) 0 0 0 fill}
+ .page[data-text-reflow=true] .hero::before{grid-row:1 / 2;inset-block:0 calc(var(--photo-sky) - 1px);background-position:center top}
+ .page[data-text-reflow=true] .hero::after{grid-row:3 / 4;inset-block:calc(var(--photo-water) - 1px) 0;background-position:center bottom}
  .page[data-text-reflow=true] .hero .heroText,
  .page[data-text-reflow=true] .hero .heroAction{align-self:center;padding:12px}
  .page[data-text-reflow=true] .heroAction .action{inline-size:100%;padding:8px 4px}
@@ -341,8 +341,7 @@
   --photo-people:calc(100vw * 600 / 2048);
   --photo-water:calc(100vw * 243 / 2048);
   --photo-original:url("/groups/academy/hero-desktop-20261018.png");
-  --sky-slice:843;
-  --water-slice:900;
+  --photo-height:calc(100vw * 1143 / 2048);
  }
 }
 @media(prefers-reduced-motion:reduce){.page *{scroll-behavior:auto}}
