@@ -229,39 +229,25 @@ describe('CONTACT-SCROLL-R01 actual layout-hook event lifecycle',()=>{
   current.setPaintedTop(400);current.scroll();expect(current.link.dataset.contactReady).toBe('false');expect(current.link.style.visibility).toBe('hidden');expect(current.lift()).toBe(0);
   current.setPaintedTop(null);current.scroll();expect(current.link.dataset.contactReady).toBe('true');expect(current.lift()).toBe(0);current.cleanup();
  });
- it('stays at physical bottom-right in Hebrew and hides over the occupied corner',()=>{
-  // Public c3b HE390x844/scrollY3376 painted Range/icon/control rectangles.
-  // Replaying this geometry tests the actual hook, not a browser CSS engine.
-  const targets:Target[]=[
-   {l:194.796875,r:334,t:64.328125,b:84.328125,g:4},{l:70.609375,r:334,t:103.328125,b:120.328125,g:4},
-   {l:20.734375,r:354.25,t:242.328125,b:278.328125,g:4},{l:21.328125,r:353.65625,t:300.359375,b:319.359375,g:4},
-   {l:45.03125,r:329.96875,t:328.40625,b:347.40625,g:4},{l:60.234375,r:314.765625,t:356.453125,b:375.453125,g:4},
-   {l:315,r:355,t:412.5,b:452.5,g:12},{l:164.921875,r:299,t:414.5,b:436.5,g:4},{l:23.984375,r:299,t:451.5,b:470.5,g:4},
-   {l:233.5,r:299,t:479.546875,b:498.546875,g:4},{l:315,r:355,t:535.59375,b:575.59375,g:12},
-   {l:113.015625,r:299,t:537.59375,b:559.59375,g:4},{l:27.53125,r:299,t:574.59375,b:593.59375,g:4},
-   {l:255.171875,r:299,t:602.640625,b:621.640625,g:4},{l:315,r:355,t:658.6875,b:698.6875,g:12},
-   {l:101.625,r:299,t:660.6875,b:682.6875,g:4},{l:20.5625,r:299,t:697.6875,b:716.6875,g:4},
-   {l:140.609375,r:299,t:725.734375,b:744.734375,g:4},{l:315,r:355,t:781.78125,b:821.78125,g:12},
-   {l:166,r:299,t:783.78125,b:805.78125,g:4},{l:63.359375,r:299,t:820.78125,b:839.78125,g:4},{l:193.640625,r:299,t:848.828125,b:867.828125,g:4},
-  ];
-  const at=(left:number,right:number)=>({left,right,top:770,height:844,targets});
-  const before=mounted(false,17,390,true,at(301,357));before.flush();expect(before.lift()).toBeGreaterThan(224);before.cleanup();
-  let mobileRight=false;
-  css.walkRules(rule=>{
-   if(rule.parent?.type==='atrule'&&rule.parent.params==='(max-width:999px)'&&rule.selector.includes('.page[dir=rtl] .whatsapp')){
-    rule.walkDecls('right',d=>{mobileRight=d.value.includes('safe-area-inset-right');});
-   }
-  });
-  expect(mobileRight).toBe(true);
-  const current=mounted(false,17,390,false,at(301,357));current.flush();
-  expect(current.link.dataset.contactReady).toBe('false');expect(current.link.tabIndex).toBe(-1);expect(current.lift()).toBe(0);
-  const priorTop=current.link.getBoundingClientRect().top;current.scroll();expect(current.link.getBoundingClientRect().top).toBe(priorTop);current.cleanup();
+ it('keeps the mobile link at the same corner without scanning passing content',()=>{
+  const current=mounted(false,17,390);
+  const corner=current.link.getBoundingClientRect();
+  current.setHero(true);current.scroll();expect(current.link.tabIndex).toBe(-1);
+  current.setHero(false);current.setBlocked(true);current.scroll();
+  expect(current.link.tabIndex).toBe(0);expect(current.link.ariaHidden).toBeNull();
+  current.transitions.length=0;
+  for(let i=0;i<20;i++){current.setPaintedTop(i*20);current.scroll();}
+  expect(current.queries()).toBe(0);
+  expect(current.transitions).toEqual([]);
+  expect(current.link.getBoundingClientRect()).toEqual(corner);
+  current.setHero(true);current.scroll();expect(current.link.tabIndex).toBe(-1);
+  current.cleanup();
  });
  it('preserves higher same-node restoration in the desktop enlarged text-reflow layout',()=>{
   const current=mounted(false,34,1280),sameLink=current.link;current.flush();current.setPaintedTop(400);current.scroll();
   expect(current.link).toBe(sameLink);expect(current.link.dataset.contactReady).toBe('true');expect(current.link.style.visibility).toBe('');expect(current.lift()).toBeGreaterThan(224);expect(current.link.getBoundingClientRect().top).toBeGreaterThan(92);current.cleanup();
  });
- it('hides the fixed mobile contact over content and restores its focusability when clear',()=>{
+ it('keeps the fixed mobile contact visible at enlarged text during body scroll and resize',()=>{
   const current=mounted(false,34,390);
   const origin=current.link.getBoundingClientRect();
   current.transitions.length=0;
@@ -269,7 +255,8 @@ describe('CONTACT-SCROLL-R01 actual layout-hook event lifecycle',()=>{
   for(let i=0;i<20;i++)current.scroll();
   current.resize();
   expect(current.link.getBoundingClientRect()).toEqual(origin);
-  expect(current.link.tabIndex).toBe(-1);expect(current.link.ariaHidden).toBe('true');
+  expect(current.link.tabIndex).toBe(0);expect(current.link.ariaHidden).toBeNull();
+  expect(current.transitions).toEqual([]);
   current.setBlocked(false);current.setPaintedTop(null);current.scroll();
   expect(current.link.getBoundingClientRect()).toEqual(origin);
   expect(current.link.tabIndex).toBe(0);

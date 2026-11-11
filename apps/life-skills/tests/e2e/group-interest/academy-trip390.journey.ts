@@ -7,7 +7,7 @@ import {trip390ReservationNotice} from '../../../src/features/group-application/
 import {trip390StudentConduct} from '../../../src/features/group-application/academy-trip390-student-conduct.ts';
 import {trip390LearningAssets} from '../../../src/features/group-application/academy-trip390-learning-assets.ts';
 import {TRIP390_MEDIA_TYPE} from '../../../src/features/group-application/academy-trip390-transport.ts';
-import {scrollLandingToTop,inspectLanding,inspectDialog,inspectFaqContact,inspectBodyHeadings,inspectBodyContact,inspectHeroActionReachability,inspectContactRestoration} from './academy-trip390.visual-checks.ts';
+import {scrollLandingToTop,traceMobileContact,inspectLanding,inspectDialog,inspectFaqContact,inspectBodyHeadings,inspectBodyContact,inspectHeroActionReachability,inspectContactRestoration} from './academy-trip390.visual-checks.ts';
 import scenes from '../../../src/features/group-application/academy-scenes.json' with {type:'json'};
 
 import iconManifest from '../../../public/groups/academy/icons/r2/manifest.json' with {type:'json'};
@@ -267,6 +267,9 @@ test('landing matrix, native dialog interactions and independent holdout regress
   await page.screenshot({path:info.outputPath(`${locale}-faq-viewport.png`)});
   await page.screenshot({path:info.outputPath(`${locale}-faq-expanded.png`),fullPage:true});
   await page.setViewportSize({width:390,height:844});await page.goto('/'+locale+'/florida');
+  const contactTrace=await traceMobileContact(page);
+  expect(contactTrace.findings,JSON.stringify(contactTrace)).toEqual([]);
+  await scrollLandingToTop(page);
   const menu=page.locator('header button[aria-controls="trip390-menu"]');
   await menu.click();await expect(page.locator('#trip390-menu')).toBeVisible();
   await page.screenshot({path:info.outputPath(`${locale}-mobile-menu.png`)});
@@ -331,11 +334,7 @@ test('landing matrix, native dialog interactions and independent holdout regress
   await expect(page.locator('[data-hero-action] a')).toBeFocused();
   if(enlarged.contactMode==='blocked'){
    expect(blockedContact).not.toBeNull();
-   // Find a clear corner after the hero, keeping the original DOM handle.
-   await page.locator('[data-jlfa-intro]').scrollIntoViewIfNeeded();
-   for(let step=0;step<80&&!await blockedContact!.isVisible();step++){
-    await page.evaluate(async()=>{window.scrollBy(0,40);await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));});
-   }
+   await page.locator('#learn').evaluate(node=>node.scrollIntoView());
    await expect.poll(async()=>(await inspectBodyContact(page)).findings).toEqual([]);
    await expect.poll(async()=>(await inspectContactRestoration(page,blockedContact!)).findings).toEqual([]);
    await blockedContact!.dispose();

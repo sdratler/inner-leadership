@@ -194,11 +194,15 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, reser
   const measure=()=>{
    frame=0;
    if(dialog.current?.open)return; // Native modal makes all background controls inert.
-   // Keep the phone's fixed contact corner clear of the opening photo.
    const heroBox=hero.current?.getBoundingClientRect();
    const headerBottom=header.current?.getBoundingClientRect().bottom ?? 0;
-   if(mobile.matches && (menuOpen || (heroBox && heroBox.bottom>headerBottom))){
-    invalidate();
+   if(mobile.matches){
+    // Body sections leave this fixed corner clear in both writing directions.
+    // Crossing the hero boundary is the only scroll-driven visibility change.
+    const ready=!menuOpen && (!heroBox || heroBox.bottom<=headerBottom);
+    if(lift){lift=0;link.style.removeProperty('--contact-lift');}
+    if(link.style.visibility)link.style.visibility='';
+    if(link.dataset.contactReady!==String(ready))readiness(contactDockState(false,false,ready?'clear':'blocked'));
     return;
    }
    const image=hero.current?.querySelector('img'),asset=image&&registeredHero(image);
@@ -235,19 +239,6 @@ export function AcademyTrip390Page({initialLocale='en', initialOpen=false, reser
    page.current?.querySelectorAll<SVGSVGElement>('[data-jlfa-values] article svg').forEach(icon=>{
     addContentRect(icon.getBoundingClientRect());
    });
-   if(mobile.matches){
-    const intersects=(rect:DOMRect|ContactObstacle)=>
-     rect.left<box.right+gap && rect.right>box.left-gap &&
-     rect.top<box.bottom+gap && rect.bottom>box.top-gap;
-    const mediaAndFooter=page.current?.querySelectorAll('main img,main summary,footer') ?? [];
-    const blocked=obstacles.some(intersects) ||
-     Array.from(mediaAndFooter).some(node=>intersects(node.getBoundingClientRect()));
-    lift=0;
-    link.style.removeProperty('--contact-lift');
-    link.style.visibility='';
-    readiness(contactDockState(false,false,blocked?'blocked':'clear'));
-    return;
-   }
    if(image&&asset){
     // The source rectangle is defined in original pixels.
     const {original,region}=asset;
