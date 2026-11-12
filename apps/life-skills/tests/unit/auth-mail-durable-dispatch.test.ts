@@ -28,7 +28,7 @@ vi.mock("../../src/features/identity/store.ts", () => ({
     return null;
   }),
 }));
-vi.mock("../../src/features/identity/auth-mail.ts", () => ({ issueAuthToken: h.issue }));
+vi.mock("../../src/features/identity/auth-mail.ts", async importOriginal => ({ ...await importOriginal<typeof import('../../src/features/identity/auth-mail.ts')>(),issueAuthToken: h.issue }));
 vi.mock("../../src/features/identity/history.ts", () => ({ recordAction: h.record }));
 vi.mock("../../src/features/identity/crypto.ts", () => ({ TOKEN_PATTERN: /^[A-Za-z0-9_-]{43}$/, canonicalEmail: (email:string)=>email.trim().toLowerCase(), unseal: (_ciphertext:string,aad:string) => aad.startsWith('email:')?'owner@example.org':JSON.stringify({ locale: "en", recipient: "owner@example.org", token: "a".repeat(43) }) }));
 vi.mock("../../src/providers/email/template.ts", () => ({ authEmailContent: () => ({ subject: "reset", text: "reset" }) }));

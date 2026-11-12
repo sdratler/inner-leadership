@@ -12,6 +12,7 @@ import { groupInterestCandidateEnabled } from "./features/group-interest/candida
 import { trip390SkillFiles } from "./features/group-application/academy-trip390-learning-assets.ts";
 import { publicGroupApplicationEnvironmentEnabled } from "./features/group-application/candidate.ts";
 import { canonicalForwardedRequest } from "./features/integration/canonical-forwarded-request.ts";
+import {fishingOwnerPrivateRoute} from './lib/fishing-owner-app-scope.ts';
 
 const intakeIdentityRoutes = new Set([
   "/api/identity/csrf", "/api/identity/login", "/api/identity/session",
@@ -103,7 +104,8 @@ export function proxy(request: NextRequest) {
   // public intake/login and foundation preview outside this data-page selector.
   // The explicitly synthetic sample retains its separate preview perimeter and
   // ordinary role gate; it cannot load operational aggregates or real records.
-  const privateDataPage = /^\/(he|en)\/(?:app|family|workspace|parent|client|practitioner|attendance|calendar|checkins|commitments|forms|goals|home-practice|payments|progress|resources|updates)(?:\/|$)/.test(pathname);
+  const privateDataPage = /^\/(he|en)\/(?:app|family|workspace|parent|client|practitioner|attendance|calendar|checkins|commitments|forms|goals|home-practice|payments|progress|resources|updates)(?:\/|$)/.test(pathname)||
+    process.env.LS_FISHING_OWNER_APP_SCOPE_JSON!==undefined&&pathname.startsWith('/api/')&&!pathname.startsWith('/api/public/')&&pathname!=='/api/health';
   // These data pages/APIs depend on strict canonical HTTPS forwarding. Validate the original
   // transport before the request-header rewrite below can hide an invalid chain.
   // Forwarding never grants a session, role, case or audience permission.
@@ -181,6 +183,19 @@ export function proxy(request: NextRequest) {
   if (isolatedPreview && canonicalPrivateOrigin && !ownerPreviewPath && /^\/(he|en)\/preview(?:\/|$)/.test(pathname)) {
     return decorate(new NextResponse(null,{status:404}),headers);
   }
+  // Only an explicit validated server selection enables this restriction.
+  // It neither initializes native CRM nor replaces fresh owner/CSRF/action
+  // authorization in runtime and handlers. Public guest/provider paths retain
+  // their separate perimeter and are not selected by this private policy.
+  const ownerScopedPath=privatePath||pathname.startsWith('/api/')&&!groupApplicationPath&&!health||/^\/(en|he)(?:\/|$)/.test(pathname)&&!groupApplicationPath;
+  if(ownerScopedPath&&process.env.LS_FISHING_OWNER_APP_SCOPE_JSON!==undefined){
+    try{
+      parseIdentityConfig(process.env);
+      const decision=fishingOwnerPrivateRoute(pathname,request.method);
+      if(decision.kind==='deny')return decorate(new NextResponse(null,{status:404}),headers);
+      if(decision.kind==='redirect')return decorate(NextResponse.redirect(new URL(decision.pathname,env.LS_APP_ORIGIN)),headers);
+    }catch{return decorate(new NextResponse(null,{status:503}),headers);}
+  }
   if (!intakePath && !groupApplicationPath && !ownerPreviewPath && ((privatePath && !privateMode && !identityPreview) || (!privatePath && pathname !== "/" && !health && !robots && env.LS_APP_MODE !== "foundation_preview" && !isolatedPreviewPerimeter))) {
     return decorate(NextResponse.json({ ok:false, error:{code:"UNAVAILABLE"}, requestId:crypto.randomUUID() }, {status:503}),headers);
   }
@@ -219,11 +234,11 @@ export function proxy(request: NextRequest) {
     }
     inbound.set("x-ls-practitioner-return", practitionerReturnPath(locale, page, query));
   }
-  const practitionerDetail=/^\/(he|en)\/app\/(?:marketing|feedback|reports|forms|resources|group-applications(?:\/journey-preview)?|settings(?:\/[^/]+)?|cases\/[^/]+\/sessions(?:\/[^/]+)?)$/.exec(pathname)
+  const practitionerDetail=/^\/(he|en)\/app\/(?:marketing|feedback|reports|forms|resources|fishing-groups|group-applications(?:\/journey-preview)?|settings(?:\/[^/]+)?|cases\/[^/]+\/sessions(?:\/[^/]+)?)$/.exec(pathname)
     ??(groupInterestCandidateEnabled()?/^\/(he|en)\/app\/group-interest$/.exec(pathname):null);
   if(practitionerDetail){
     const query:Record<string,string|undefined>={};
-      for(const key of ['mode','date','view','caseId','audienceId','appointmentId','context','section','filter','month','layout','channel','state','from','to','publication','language','placement','approval','search','page','threadId','communityView','collection','concept','cycle','program','inquiryId']){const values=request.nextUrl.searchParams.getAll(key);query[key]=values.length===1?values[0]:undefined;}
+      for(const key of ['mode','date','view','caseId','audienceId','appointmentId','context','section','filter','month','layout','channel','state','from','to','publication','language','placement','approval','search','page','threadId','communityView','collection','concept','cycle','program','inquiryId','groupId','revision']){const values=request.nextUrl.searchParams.getAll(key);query[key]=values.length===1?values[0]:undefined;}
     inbound.set('x-ls-practitioner-return',practitionerDetailReturnPath(practitionerDetail[1] as 'en'|'he',pathname,query));
   }
   const parentPage = /^\/(he|en)\/family(?:\/|$)/.exec(pathname);

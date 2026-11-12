@@ -21,6 +21,7 @@ import {FOUNDER_DECISION} from "../../../src/features/group-application/academy-
 import {founderTransitionSchema} from "../../../src/features/group-application/academy-founder-transition-contract.ts";
 import {trip390CurrentInterestSchema,TRIP390_NOTICE_VERSION,TRIP390_OFFER,TRIP390_DRIVING_VERSION} from "../../../src/features/group-application/academy-trip390-contract.ts";
 import {syntheticChildFailure} from "./synthetic-child-output.ts";
+import {FISHING_OWNER_APP_SCOPE_V1} from "../../../src/lib/fishing-owner-app-scope.ts";
 
 const projects={desktop:3105,tablet768:3108,mobile390:3106,mobile340:3107} as const;
 const project=process.env.LS_GROUP_INTEREST_TEST_PROJECT as keyof typeof projects|undefined;
@@ -377,6 +378,17 @@ try{
  // Only the dedicated journey selects the prospective offer in the isolated
  // app process. An ambient selector must never change other browser modes.
  delete env.LS_ACADEMY_PUBLIC_OFFER;
+ // The existing CRM journey alone exercises the explicitly selected owner
+ // runtime. Ambient owner selection must never reconfigure other test modes.
+ delete env.LS_FISHING_OWNER_APP_SCOPE_JSON;
+ if(academyCrmOnly)Object.assign(env,{
+  LS_FISHING_OWNER_APP_SCOPE_JSON:JSON.stringify({version:FISHING_OWNER_APP_SCOPE_V1,workspaceId,ownerAccountId:f.practitioner.actor.id}),
+  LS_PROVIDER_INDEX_OWNER_ACCOUNT_ID:f.practitioner.actor.id,LS_CHILD_ACCOUNTS_ENABLED:'false',
+  LS_INQUIRY_EMAIL_QUEUE_ENABLED:'false',LS_ACADEMY_TRIP390_ACK_QUEUE_ENABLED:'false',LS_ACADEMY_TRIP390_ACK_ENABLED:'false',
+  LS_ACADEMY_TRIP390_ACK_ADMISSION_JSON:'',LS_ACADEMY_SIGNUP_CONTROLLED_SEND_ENABLED:'false',
+  LS_ACADEMY_SIGNUP_WORKER_ADMISSION_JSON:'',LS_ACADEMY_OWNER_NOTIFICATION_ENABLED:'false',
+  LS_BNA_EMAIL_WORKER_ENABLED:'false',LS_BNA_EMAIL_SEND_ENABLED:'false',LS_BNA_REPLY_MONITOR_ENABLED:'false',
+ });
  if(trip390Only)Object.assign(env,{LS_ACADEMY_PUBLIC_OFFER:TRIP390_OFFER.version,LS_PROVIDER_INDEX_OWNER_ACCOUNT_ID:f.practitioner.actor.id,
   LS_ACADEMY_TRIP390_RESERVATION_ENABLED:'true',LS_ACADEMY_TRIP390_RESERVATION_NOTICE_VERSION:TRIP390_NOTICE_VERSION,
   LS_ACADEMY_TRIP390_ACK_QUEUE_ENABLED:'false',LS_ACADEMY_TRIP390_ACK_ENABLED:'false',LS_ACADEMY_TRIP390_ACK_ADMISSION_JSON:'',
@@ -386,9 +398,13 @@ try{
   LS_COMMUNITY_FIXTURE_CA_FILE:cert,NODE_OPTIONS:`--require=${resolve("tests/e2e/community/scout-read-preload.cjs")}`,NODE_EXTRA_CA_CERTS:cert,LS_AUTH_EMAIL_ENABLED:"false",LS_CALENDAR_ENABLED:"true"});
  if(bnaRepliesOnly)Object.assign(env,{LS_BNA_OWNER_ACCOUNT_ID:f.practitioner.actor.id,LS_PROVIDER_INDEX_OWNER_ACCOUNT_ID:f.practitioner.actor.id,LS_BNA_COMBINED_PEOPLE_ENABLED:'true',LS_BNA_INQUIRY_ENABLED:'true',LS_305_CLASSIFICATION_ENABLED:'true',LS_BNA_PREFERENCES_ENABLED:'true',LS_BNA_OPTIONAL_CALENDAR_ENABLED:'true',LS_BNA_MAILBOX_REPLIES_ENABLED:'true',LS_BNA_REPLY_MONITOR_ENABLED:'false',LS_BNA_EMAIL_WORKER_ENABLED:'false',LS_BNA_EMAIL_SEND_ENABLED:'false',LS_BNA_EMAIL_CONTROLLED_SEND_ENABLED:'false',LS_BNA_EMAIL_QUEUE_ENABLED:'true',LS_ACADEMY_SIGNUP_WORKER_ENABLED:'false',LS_ACADEMY_OWNER_NOTIFICATION_ENABLED:'false'});
  // Ordinary CI modes keep all development-only guards and use Next's current compiler.
- // Retain the prior compiler for separately admitted focused modes.
+ // Dedicated Linux Fishing modes also use it; keep other focused mappings and
+ // the Windows external-node_modules workaround unchanged.
  const ordinaryCompiler=!trip390Only&&(academyOnly||academyCrmOnly||educationOnly||(!communityOnly&&!fishingOnly&&!sampleOnly&&process.env.LS_FLORIDA_JOURNEY_TEST_ONLY!=="true"&&process.env.LS_GROUP_INTEREST_PUBLIC_ONLY!=="true"&&process.env.LS_GROUP_INTEREST_CAPTURE_ONLY!=="true"));
- app=spawn(process.execPath,[resolve("node_modules/next/dist/bin/next"),"dev",ordinaryCompiler?"--turbopack":"--webpack","--experimental-https","--experimental-https-key",key,"--experimental-https-cert",cert,"--hostname","127.0.0.1","--port",String(appPort)],{env,stdio:trip390Only?['ignore','pipe','pipe']:'ignore'});
+ const exclusiveLinuxFishingCompiler=process.platform==="linux"&&trip390Only!==fishingOnly&&
+  ![academyOnly,academyCrmOnly,bnaRepliesOnly,communityOnly,educationOnly,sampleOnly].some(Boolean)&&
+  ['LS_FLORIDA_JOURNEY_TEST_ONLY','LS_FLORIDA_INSTITUTION_TEST_ONLY','LS_GROUP_INTEREST_PUBLIC_ONLY','LS_GROUP_INTEREST_CAPTURE_ONLY'].every(name=>process.env[name]!=="true");
+ app=spawn(process.execPath,[resolve("node_modules/next/dist/bin/next"),"dev",ordinaryCompiler||exclusiveLinuxFishingCompiler?"--turbopack":"--webpack","--experimental-https","--experimental-https-key",key,"--experimental-https-cert",cert,"--hostname","127.0.0.1","--port",String(appPort)],{env,stdio:trip390Only?['ignore','pipe','pipe']:'ignore'});
  let captureStartup=trip390Only;
  const tails={stdout:'',stderr:''},truncated={stdout:false,stderr:false};
  if(trip390Only)for(const channel of ['stdout','stderr'] as const){
@@ -449,7 +465,7 @@ try{
   phase="academy-crm-native-readback";
   if(!academyCrmModule||!academyCrmRuntime||!academyCrmBefore)throw new Error("ACADEMY_CRM_FIXTURE_MISSING");
   await academyCrmModule.verifyAcademyCrmBrowserEffects(f,lookupKey,academyCrmRuntime,academyCrmBefore,rateKey);
-  console.log("ACADEMY_CRM_UI_ACCEPTANCE_PASS project="+project+" ordinaryLogin=true contacts=4 activities=8 imported=0 sameOperationRetry=true newSession=true unrelatedEffects=0 providerEffects=0");
+  console.log("ACADEMY_CRM_UI_ACCEPTANCE_PASS project="+project+" ordinaryLogin=true ownerRuntime=true ownerSettings=true legacyDenied=true parentCredentialsDenied=true contacts=4 activities=8 imported=0 sameOperationRetry=true newSession=true unrelatedEffects=0 providerEffects=0");
  }
  else if(academyOnly||trip390Only){
   if(trip390Only){

@@ -1,5 +1,6 @@
 import {expect,it,vi} from 'vitest';
-const calls=vi.hoisted(()=>({snapshot:vi.fn(),page:vi.fn(),context:vi.fn(),digest:vi.fn(),headers:vi.fn(),voice:vi.fn()}));
+const calls=vi.hoisted(()=>({snapshot:vi.fn(),page:vi.fn(),context:vi.fn(),digest:vi.fn(),headers:vi.fn(),voice:vi.fn(),identity:vi.fn()}));
+vi.mock('../../../src/features/identity/runtime.ts',()=>({identityRuntime:calls.identity}));
 vi.mock('server-only',()=>({}));
 vi.mock('next/headers',()=>({headers:calls.headers}));
 vi.mock('next/navigation',()=>({notFound:()=>{throw Error('NOT_FOUND');},useRouter:()=>({push:vi.fn(),replace:vi.fn()}),useSearchParams:()=>new URLSearchParams()}));
@@ -15,6 +16,7 @@ import {AppError} from '../../../src/lib/errors.ts';
 const snapshot:MarketingSnapshot={source:'registry_only',fetchedAt:null,creatives:[],publications:[],ads:[],scout:{readyDrafts:null,sourceUrl:null,lastChecked:null,status:'unbound'}};
 function setup(){
  for(const call of Object.values(calls))call.mockReset();
+ calls.identity.mockResolvedValue({appScope:null});
  calls.snapshot.mockResolvedValue(snapshot);calls.page.mockResolvedValue({state:'BRIDGE_UNAVAILABLE',lifecycleState:'BLOCKED',reason:null,destinationConfigured:false,providerEvidenceAvailable:false,externalWriteEnabled:false,externalWritePerformed:false,noBlindRetry:false,recentRecords:[]});
  calls.headers.mockResolvedValue(new Headers({cookie:'synthetic-ordinary-session'}));
  calls.context.mockResolvedValue({actor:{role:'practitioner'},runtime:{}});calls.digest.mockResolvedValue({syntheticDigest:true});

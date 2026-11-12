@@ -1,0 +1,7 @@
+.root{min-height:100dvh;background:#f3f8fb;color:#092668;font-family:"Heebo",Arial,sans-serif;font-size:1rem;line-height:1.5}
+.header{min-height:64px;display:flex;align-items:center;justify-content:space-between;gap:24px;padding:16px 24px;background:#fff;border-block-end:1px solid #d5e1e8}
+.header a{color:inherit;padding:10px 12px;min-height:44px;display:inline-flex;align-items:center}
+.header a:focus-visible{outline:3px solid #b78000;outline-offset:3px}
+.layout{display:grid;grid-template-columns:minmax(200px,240px) minmax(0,1fr);gap:24px;max-width:1440px;margin-inline:auto;padding:24px}
+.content{min-width:0;overflow-wrap:anywhere}
+@media(max-width:800px){.layout{grid-template-columns:minmax(0,1fr);padding:16px;gap:20px}.header{padding-inline:16px}}

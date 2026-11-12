@@ -19,7 +19,7 @@ export type AcademyCrmBrowserRuntime={
 type Row=Record<string,unknown>;
 type TableSnapshot={table:string;rows:{row:Row}[]};
 export type AcademyCrmSnapshot={tables:TableSnapshot[];otherWorkspaces:TableSnapshot[];globalTables:TableSnapshot[]};
-const mutableTables=new Set(["ls_identity.people","ls_identity.sessions","ls_identity.action_history","ls_identity.foundation_audit",
+const mutableTables=new Set(["ls_identity.people","ls_identity.sessions","ls_identity.preauth_sessions","ls_identity.action_history","ls_identity.foundation_audit",
  "ls_contact_ops.cutover","ls_contact_ops.profiles","ls_contact_ops.command_receipts","ls_contact_ops.academy_crm_contacts",
  "ls_contact_ops.academy_crm_activity","ls_contact_ops.fishing_lead_revisions","ls_contact_ops.fishing_label_projection"]);
 const quote=(name:string)=>'"'+name.replaceAll('"','""')+'"';
@@ -90,10 +90,10 @@ export async function verifyAcademyCrmBrowserEffects(f:Fixture,lookupKey:Buffer,
  const rateScopes=[
   {subject:"network:unattributed-shared-network",window:900000,maximum:200},
   {subject:"login-network:unattributed-shared-network",window:900000,maximum:6},
-  ...runtime.credentials.flatMap(account=>[
-   {subject:"login-email:"+account.email,window:900000,maximum:account.role==="practitioner"?5:1},
-   {subject:"account:"+account.accountId,window:900000,maximum:150}]),
+  ...runtime.credentials.map(account=>({subject:"login-email:"+account.email,window:900000,maximum:account.role==="practitioner"?5:1})),
+  {subject:"account:"+f.practitioner.actor.id,window:900000,maximum:150},
   {subject:"academy-crm:"+f.workspaceId+":"+f.practitioner.actor.id,window:60000,maximum:10},
+  {subject:"fishing-group-preparation-owner:"+f.workspaceId+":"+f.practitioner.actor.id,window:60000,maximum:4},
  ];
  const allowedRates=new Map(rateScopes.map(scope=>[opaqueRateLimitKey(scope.subject,rateKey.toString("hex")),scope]));
  must(newRates.length===allowedRates.size&&newRates.every(({row})=>{
@@ -143,14 +143,22 @@ export async function verifyAcademyCrmBrowserEffects(f:Fixture,lookupKey:Buffer,
  const authorityRows=rows(after,"ls_contact_ops.cutover");must(authorityRows.length===1,"AUTHORITY_COUNT");
  const authority=cutoverStateSchema.parse(JSON.parse(unseal(String(authorityRows[0]!.state_ciphertext),cutoverStateAad(f.workspaceId,1),f.keyring)));
  must(authority.phase==="academy_native"&&authority.epoch===1&&authority.academy?.operationId===runtime.initializationId&&authority.nativeWritesSinceSwitch===10,"AUTHORITY_WRITE_COUNT");
- const allowedAccounts=new Set(runtime.credentials.map(value=>value.accountId));
+ // Owner-only selection must not issue any new historical parent session.
+ const allowedAccounts=new Set([String(f.practitioner.actor.id)]);
  const beforeSessions=rows(before,"ls_identity.sessions"),sessions=rows(after,"ls_identity.sessions");
  for(const prior of beforeSessions)must(sessions.some(row=>hash(row)===hash(prior)),"PREEXISTING_SESSION_CHANGED");
  const freshSessions=sessions.filter(row=>!beforeSessions.some(prior=>prior.token_digest===row.token_digest));
- must(freshSessions.length===6&&freshSessions.every(row=>allowedAccounts.has(String(row.account_id)))&&freshSessions.filter(row=>row.revoked_at!==null).length===1,"ORDINARY_SESSION_COUNT");
+ must(freshSessions.length===5&&freshSessions.every(row=>allowedAccounts.has(String(row.account_id)))&&freshSessions.filter(row=>row.revoked_at!==null).length===1,"ORDINARY_SESSION_COUNT");
+ // Five successful owner logins consume their preauth rows. The single valid
+ // but disallowed parent credential attempt retains one bounded preauth row,
+ // not a session or an account mutation. All prior rows remain exact.
+ const preauth=additions("ls_identity.preauth_sessions");
+ must(preauth.length===1&&preauth.every(row=>row.workspace_id===f.workspaceId&&/^[0-9a-f]{64}$/.test(String(row.token_digest))&&
+  Number.isFinite(Date.parse(String(row.expires_at)))&&Date.parse(String(row.expires_at))>Date.now()&&
+  Date.parse(String(row.expires_at))<=Date.now()+900000),"DENIED_PARENT_PREAUTH_ONLY");
  const actions=additions("ls_identity.action_history");
- must(actions.length===7&&actions.every(row=>allowedAccounts.has(String(row.actor_account_id)))&&
-  actions.filter(row=>row.action==="login_succeeded").length===6&&actions.filter(row=>row.action==="session_revoked").length===1,"AUTHENTICATION_ACTIONS");
+ must(actions.length===6&&actions.every(row=>allowedAccounts.has(String(row.actor_account_id)))&&
+  actions.filter(row=>row.action==="login_succeeded").length===5&&actions.filter(row=>row.action==="session_revoked").length===1,"AUTHENTICATION_ACTIONS");
  const audits=additions("ls_identity.foundation_audit");
  must(audits.every(row=>allowedAccounts.has(String(row.actor_account_id))&&row.kind==="access_denied"&&row.outcome==="denied"),"AUTHENTICATION_AUDIT_SCOPE");
  // Native readback uses the still-valid, fixture-owned original actor. Browser

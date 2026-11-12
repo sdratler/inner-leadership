@@ -25,7 +25,7 @@ export function academyMigrationInventory():Migration[]{
  const entries=JSON.parse(readFileSync(new URL('../../migrations/manifest.json',import.meta.url),'utf8')) as {name:string;sha256:string}[];
  // The existing 57-entry founder/notification prefix stays in place; the
  // additive CRM and BNA lead migrations follow it. Check every SQL checksum.
- if(entries.length!==72||entries[55]?.name!=='0136_ls_academy_founder.sql'||entries[56]?.name!=='0137_ls_academy_owner_notifications.sql'||entries[57]?.name!=='0138_ls_academy_crm.sql'||entries[58]?.name!=='0139_ls_bna_inquiries.sql'||entries[59]?.name!=='0140_ls_fishing_inquiry_followups.sql'||entries[60]?.name!=='0141_ls_owner_305_conversations.sql'||entries[61]?.name!=='0142_ls_bna_coop_interest.sql'||entries[62]?.name!=='0143_ls_owner_305_inquiry_links.sql'||entries[63]?.name!=='0144_ls_bna_support_interest.sql'||entries[64]?.name!=='0145_ls_owner_305_inbound.sql'||entries[65]?.name!=='0146_ls_bna_communication_delivery.sql'||entries[66]?.name!=='0147_ls_fishing_marketing_snapshot.sql'||entries[67]?.name!=='0148_ls_bna_email_preferences.sql'||entries[68]?.name!=='0149_ls_bna_optional_calendar.sql'||entries[69]?.name!=='0150_ls_bna_mailbox_replies.sql'||entries[70]?.name!=='0151_ls_academy_inquiry_email_verification.sql'||entries[71]?.name!=='0152_ls_inquiry_email_control_outbox.sql'||new Set(entries.map(e=>e.name)).size!==entries.length)throw Error('ACADEMY_TEST_MANIFEST_NOT_FULL_72');
+ if(entries.length!==73||entries[55]?.name!=='0136_ls_academy_founder.sql'||entries[56]?.name!=='0137_ls_academy_owner_notifications.sql'||entries[57]?.name!=='0138_ls_academy_crm.sql'||entries[58]?.name!=='0139_ls_bna_inquiries.sql'||entries[59]?.name!=='0140_ls_fishing_inquiry_followups.sql'||entries[60]?.name!=='0141_ls_owner_305_conversations.sql'||entries[61]?.name!=='0142_ls_bna_coop_interest.sql'||entries[62]?.name!=='0143_ls_owner_305_inquiry_links.sql'||entries[63]?.name!=='0144_ls_bna_support_interest.sql'||entries[64]?.name!=='0145_ls_owner_305_inbound.sql'||entries[65]?.name!=='0146_ls_bna_communication_delivery.sql'||entries[66]?.name!=='0147_ls_fishing_marketing_snapshot.sql'||entries[67]?.name!=='0148_ls_bna_email_preferences.sql'||entries[68]?.name!=='0149_ls_bna_optional_calendar.sql'||entries[69]?.name!=='0150_ls_bna_mailbox_replies.sql'||entries[70]?.name!=='0151_ls_academy_inquiry_email_verification.sql'||entries[71]?.name!=='0152_ls_inquiry_email_control_outbox.sql'||entries[72]?.name!=='0153_ls_fishing_group_preparations.sql'||new Set(entries.map(e=>e.name)).size!==entries.length)throw Error('ACADEMY_TEST_MANIFEST_NOT_FULL_73');
 
  return entries.map(entry=>{
   if(!/^\d{4}_[a-z][a-z0-9_]*\.sql$/.test(entry.name))throw Error('ACADEMY_TEST_MANIFEST_PATH_INVALID');
@@ -59,12 +59,20 @@ export async function academyWorkspace(pool:pg.Pool){
  const workspace=asId(randomUUID(),'workspace'),ring={activeKeyId:'synthetic',keys:{synthetic:randomBytes(32)}},digestKey=randomBytes(32).toString('hex'),origin='https://academy.example.invalid';
  const store=poolStore(pool),config:IdentityConfig={enabled:true,origin,workspaceId:workspace,csrfKey:randomBytes(32),lookupKey:randomBytes(32),rateLimitKey:randomBytes(32).toString('hex'),keyring:ring,sessionSeconds:3600};
  await pool.query('INSERT INTO ls_identity.workspaces(id,created_at) VALUES($1,now())',[workspace]);
- async function account(role:AccountRole){
+ async function account(role:AccountRole,demo?:{batchId:string;createdBy:string}){
   const id=asId(randomUUID(),'account'),personId=asId(randomUUID(),'person'),token=opaqueToken(),now=new Date(),expiresAt=now.getTime()+3600000;
   const client=await pool.connect();try{
    await client.query('BEGIN');
    await client.query("INSERT INTO ls_identity.people(id,workspace_id,kind,profile_ciphertext,created_at) VALUES($1,$2,'adult',$3,$4)",[personId,workspace,seal(JSON.stringify({displayName:'Synthetic '+role}),`person:${workspace}:${personId}`,ring),now]);
-   await client.query("INSERT INTO ls_identity.accounts(id,workspace_id,role,state,locale,email_blind,email_ciphertext,email_verified_at,password_hash,created_at,updated_at) VALUES($1,$2,$3,'active','en',$4,$5,$6,'synthetic-non-login-hash',$6,$6)",[id,workspace,role,createHash('sha256').update(id).digest('hex'),seal('synthetic-'+id+'@example.invalid',`email:${workspace}:${id}`,ring),now]);
+   if(demo){
+    // Registered origin enforcement requires the synthetic origin and marker
+    // together at creation. An ordinary account cannot be relabelled later.
+    await client.query('INSERT INTO ls_demo.batches(workspace_id,batch_id,created_by) VALUES($1,$2,$3)',[workspace,demo.batchId,demo.createdBy]);
+    await client.query("INSERT INTO ls_identity.accounts(id,workspace_id,role,state,locale,email_blind,email_ciphertext,email_verified_at,password_hash,created_at,updated_at,demo_batch_id) VALUES($1,$2,$3,'active','en',$4,$5,$6,'synthetic-non-login-hash',$6,$6,$7)",[id,workspace,role,createHash('sha256').update(id).digest('hex'),seal('synthetic-'+id+'@example.invalid',`email:${workspace}:${id}`,ring),now,demo.batchId]);
+    await client.query("INSERT INTO ls_demo.accounts(workspace_id,account_id,batch_id,source_key) VALUES($1,$2,$3,'SYNTHETIC-owner-boundary')",[workspace,id,demo.batchId]);
+   }else{
+    await client.query("INSERT INTO ls_identity.accounts(id,workspace_id,role,state,locale,email_blind,email_ciphertext,email_verified_at,password_hash,created_at,updated_at) VALUES($1,$2,$3,'active','en',$4,$5,$6,'synthetic-non-login-hash',$6,$6)",[id,workspace,role,createHash('sha256').update(id).digest('hex'),seal('synthetic-'+id+'@example.invalid',`email:${workspace}:${id}`,ring),now]);
+   }
    await client.query('INSERT INTO ls_identity.account_subjects(workspace_id,account_id,person_id) VALUES($1,$2,$3)',[workspace,id,personId]);
    await client.query('INSERT INTO ls_identity.sessions(token_digest,workspace_id,account_id,created_at,expires_at) VALUES($1,$2,$3,$4,$5)',[tokenDigest(token),workspace,id,now,new Date(expiresAt)]);
    await client.query('COMMIT');

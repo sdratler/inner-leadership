@@ -61,6 +61,14 @@ export function practitionerReturnPath(locale: Locale, page: "calendar" | "clien
 /** Named practitioner deep links only; no arbitrary caller/header path is trusted. */
 export function practitionerDetailReturnPath(locale:Locale,pathname:string,query:Record<string,string|string[]|undefined>):string {
  if(pathname===`/${locale}/app/group-interest`)return pathname;
+ if(pathname===`/${locale}/app/fishing-groups`){
+  const groupId=typeof query.groupId==='string'?query.groupId:'';
+  if(!isCaseId(groupId))return pathname;
+  const params=new URLSearchParams({groupId:groupId.toLowerCase()});
+  const revision=typeof query.revision==='string'?query.revision:'';
+  if(/^[1-9]\d{0,9}$/.test(revision)&&Number(revision)<=2_147_483_647)params.set('revision',revision);
+  return pathname+'?'+params;
+ }
  if(pathname===`/${locale}/app/group-applications`){
   const inquiryId=typeof query.inquiryId==='string'?query.inquiryId:'';
   return pathname+(isCaseId(inquiryId)?'?inquiryId='+inquiryId.toLowerCase():'');

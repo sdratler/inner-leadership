@@ -73,12 +73,12 @@ const copy = {
 // Client-only form actions must be ready before their buttons accept input.
 const subscribeToHydration = () => () => undefined;
 
-export function LoginClient({ locale }: { locale: Locale }) {
+export function LoginClient({ locale,ownerOnly=false }: { locale: Locale;ownerOnly?:boolean }) {
   const router = useRouter();
   const query = useSearchParams();
   const requested = query.get("mode");
   const requestedReturn = query.get("next");
-  const initialMode: Mode = requested === "invite" || requested === "reset" ? requested : "login";
+  const initialMode: Mode = requested === "reset" || !ownerOnly&&requested === "invite" ? requested : "login";
   const [mode, setMode] = useState<Mode>(initialMode);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
@@ -87,7 +87,8 @@ export function LoginClient({ locale }: { locale: Locale }) {
   const [passwordVisible, setPasswordVisible] = useState(false);
   const token = useRef<string | null>(null);
   const hydrated = useSyncExternalStore(subscribeToHydration, () => true, () => false);
-  const t = copy[locale];
+  const t = {...copy[locale],...(ownerOnly?{help:locale==='he'?'יש להתחבר באמצעות חשבון הניהול של אקדמיית הדיג.':'Sign in with your Fishing Academy owner account.',
+   forgotHelp:locale==='he'?'הזינו את כתובת הדוא״ל של חשבון הניהול.':'Enter the email address for your owner account.'}:{})};
 
   useEffect(() => {
     if (initialMode === "invite" || initialMode === "reset") {

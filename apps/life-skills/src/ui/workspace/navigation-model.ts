@@ -29,10 +29,11 @@ export function practitionerContext(pathname: string, caseId: string | null, sel
   if (pathname.includes("/app/feedback")) return [context("app_updates","app/feedback","App feedback","משוב באפליקציה",{section:"app_updates"}),context("whatsapp","app/feedback","Business WhatsApp","WhatsApp עסקי",{section:"whatsapp"})];
   if (pathname.includes("/app/reports")) return [context("due","app/reports","Due","להשלמה",{section:"due"}),context("drafts","app/reports","Drafts","טיוטות",{section:"drafts"}),context("published","app/reports","Published","פורסמו",{section:"published"}),context("history","app/reports","History","היסטוריה",{section:"history"})];
   if (pathname.includes("/app/calendar")) return [context("day","app/calendar","Day","יום",{view:"day"}),context("week","app/calendar","Week","שבוע",{view:"week"}),context("month","app/calendar","Month","חודש",{view:"month"}),context("agenda","app/calendar","Agenda","סדר יום",{view:"agenda"})];
-  if (pathname.includes("/app/clients") || pathname.includes("/app/prospects") || pathname.includes("/app/group-interest") || pathname.includes("/app/group-applications")) {
+  if (pathname.includes("/app/clients") || pathname.includes("/app/prospects") || pathname.includes("/app/group-interest") || pathname.includes("/app/group-applications") || pathname.includes("/app/fishing-groups")) {
     const people=[context("all","app/clients","All","הכול",{section:"all"}),context("prospects","app/clients","Prospects","מתעניינים",{section:"prospects"}),context("audience","app/clients","Content audience","קהל תוכן",{section:"audience"}),context("whatsapp_group","app/clients","WhatsApp group","קבוצת WhatsApp",{section:"whatsapp_group"}),context("needs_review","app/clients","Needs review","לבדיקה",{section:"needs_review"}),context("paid","app/clients","Paid awaiting booking","שולם, ממתינים למועד",{section:"paid"}),context("active","app/clients","Active","פעילים",{section:"active"}),context("archived","app/clients","Archived","בארכיון",{section:"archived"})];
     const applications=context("group_applications","app/group-applications","Fishing inquiries","פניות לדיג");
-    return groupInterestEnabled?[applications,...people,context("groups","app/group-interest","Groups","קבוצות")]:[applications,...people];
+    const fishingGroups=context("fishing_groups","app/fishing-groups","Fishing groups","קבוצות דיג");
+    return groupInterestEnabled?[applications,fishingGroups,...people,context("groups","app/group-interest","Groups","קבוצות")]:[applications,fishingGroups,...people];
   }
   if (pathname.includes("/app/marketing")) return community?communityViews.map(view=>context(view.key,'app/marketing',view.en,view.he,{section:'community',communityView:view.key})):[context("overview","app/marketing","Overview","סקירה",{section:"overview"}),context("content_calendar","app/marketing","Content Calendar","יומן תוכן",{section:"content_calendar"}),context("creatives","app/marketing","Creatives","קריאייטיב",{section:"creatives"}),context("community","app/marketing","Community","קהילה",{section:"community"}),context("ads","app/marketing","Ads","מודעות",{section:"ads"})];
   if (pathname.includes("/app/payments")) return [context("overview","app/payments","Overview","סקירה",{section:"overview"}),context("awaiting","app/payments","Awaiting","ממתינים",{section:"awaiting"}),context("paid","app/payments","Paid","שולמו",{section:"paid"}),context("credits","app/payments","Credits","יתרות",{section:"credits"}),context("refunds","app/payments","Refunds","החזרים",{section:"refunds"})];
@@ -86,7 +87,7 @@ export function settingsItems(role: WorkspaceRole): readonly NavItem[] {
 export function activeItem(pathname: string, locale: Locale, role: WorkspaceRole): NavItem | undefined {
   const path = pathname.replace(new RegExp(`^/${locale}/`), "").replace(/\/$/, "");
   if (/^app\/cases\//.test(path) || role === "practitioner" && ['app/practice','app/forms','app/resources'].includes(path)) return primaryNavigation.practitioner.find(x => x.key === "clients");
-  if (["app/prospects","app/providers","app/group-interest","app/group-applications","app/group-applications/journey-preview"].includes(path)) return primaryNavigation.practitioner.find(x => x.key === "clients");
+  if (["app/prospects","app/providers","app/group-interest","app/group-applications","app/group-applications/journey-preview"].includes(path) || role === "practitioner" && path === "app/fishing-groups") return primaryNavigation.practitioner.find(x => x.key === "clients");
   return [...primaryNavigation[role], ...navigationGroups[role].flatMap(g => g.items), ...settingsItems(role), ...(role === "practitioner" ? [item("private-notes","app/private-notes","Private case notes","רשימות פרטיות בתיק")] : [])].find(x => x.path === path);
 }
 export type Crumb = { label: string; path?: string; query?: Readonly<Record<string,string>> };
@@ -119,6 +120,7 @@ export function breadcrumbItems(locale: Locale, role: WorkspaceRole, pathname: s
     return [home,{label:locale==="he"?"אנשים":"People",path:"app/clients"},{label:locale==="he"?"התיק הנבחר":"Selected case",path:`app/cases/${caseId}`},{label:child?.[locale]??(locale==="he"?"סקירה":"Overview")}];
   }
   if(role==="practitioner"&&pathname.endsWith("/app/group-interest"))return [home,{label:locale==="he"?"אנשים":"People",path:"app/clients"},{label:locale==="he"?"קבוצות":"Groups"}];
+  if(role==="practitioner"&&pathname.endsWith("/app/fishing-groups"))return [home,{label:locale==="he"?"אנשים":"People",path:"app/clients"},{label:locale==="he"?"קבוצות דיג":"Fishing groups"}];
   if(role==="practitioner"&&pathname.endsWith("/app/group-applications"))return [home,{label:locale==="he"?"אנשים":"People",path:"app/clients"},{label:locale==="he"?"פניות לדיג":"Fishing inquiries"}];
   if(role==="practitioner"&&pathname.endsWith("/app/group-applications/journey-preview"))return [home,{label:locale==="he"?"אנשים":"People",path:"app/clients"},{label:locale==="he"?"פניות לדיג":"Fishing inquiries",path:"app/group-applications"},{label:locale==="he"?"מסלולי ההורים בפלורידה":"Florida parent journeys"}];
   const found = activeItem(pathname, locale, role);

@@ -1,7 +1,8 @@
 import {describe,it,expect,vi,beforeEach} from 'vitest';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {communityView} from '../../../src/features/community-reply/views.ts';
-const boundary=vi.hoisted(()=>({role:vi.fn(),headers:vi.fn(),digest:vi.fn(),marketing:vi.fn(),source:vi.fn()}));
+const boundary=vi.hoisted(()=>({role:vi.fn(),headers:vi.fn(),digest:vi.fn(),marketing:vi.fn(),source:vi.fn(),identity:vi.fn()}));
+vi.mock('../../../src/features/identity/runtime.ts',()=>({identityRuntime:boundary.identity}));
 vi.mock('server-only',()=>({}));
 vi.mock('next/headers',()=>({headers:boundary.headers}));
 vi.mock('next/navigation',()=>({notFound:()=>{throw Error('NOT_FOUND');}}));
@@ -13,7 +14,7 @@ vi.mock('../../../src/features/community-reply/settings-panel.tsx',()=>({Communi
 import Page from '../../../src/app/[locale]/app/marketing/page.tsx';
 import {AppError} from '../../../src/lib/errors.ts';
 const source={title:'DEMO canonical source',sourceUrl:'https://drive.google.com/file/d/demo-source/view',declaredVersion:'2.0',driveRevision:'13',modifiedAt:'2026-10-05T10:00:00Z',checkedAt:'2026-10-05T14:00:00Z',sha256:'a'.repeat(64),text:'DEMO guide contents'};
-beforeEach(()=>{vi.clearAllMocks();boundary.headers.mockResolvedValue(new Headers({cookie:'synthetic-ordinary-session'}));boundary.role.mockResolvedValue({actor:{role:'practitioner'},runtime:{}});boundary.source.mockResolvedValue(source);});
+beforeEach(()=>{vi.clearAllMocks();boundary.identity.mockResolvedValue({appScope:null});boundary.headers.mockResolvedValue(new Headers({cookie:'synthetic-ordinary-session'}));boundary.role.mockResolvedValue({actor:{role:'practitioner'},runtime:{}});boundary.source.mockResolvedValue(source);});
 describe('one selected Community page',()=>{
  it('defaults absent, unknown, inherited and repeated selectors without guessing an administrative view',()=>{
   for(const value of [undefined,null,'constructor','__proto__','toString','settings',['budget','budget']])expect(communityView(value)).toBe('opportunities');

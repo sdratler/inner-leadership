@@ -7,7 +7,9 @@ import { assertInquirySchemaApply,assertInquirySchemaProof,assertInquirySchemaPr
  inquirySchemaProof,inquirySchemaTarget,inquirySchemaTargetBinding,readInquiryEmailCatalog,type InquirySchemaProof,type InquirySchemaStage } from '../../src/db/inquiry-email-control-schema-release.ts';
 
 const manifest=JSON.parse(readFileSync('migrations/manifest.json','utf8')) as {name:string;sha256:string}[];
-const files=manifest.map(f=>({name:f.name,checksum:f.sha256,sql:readFileSync('migrations/'+f.name,'utf8')}));
+const currentFiles=manifest.map(f=>({name:f.name,checksum:f.sha256,sql:readFileSync('migrations/'+f.name,'utf8')}));
+// The already-used 151/152 operator remains bound to its exact historical source inventory.
+const files=currentFiles.slice(0,72);
 const history=(prefix:number,installed:InquirySchemaStage=0)=>[...files.slice(0,prefix),...files.slice(70,70+installed)].map(({name,checksum})=>({name,checksum}));
 const git='a'.repeat(40),deployment=randomUUID(),h=(s:string)=>owner305Hash(s);
 const syntheticEnv={RAILWAY_PROJECT_ID:inquirySchemaTarget.projectId,RAILWAY_ENVIRONMENT_ID:inquirySchemaTarget.environmentId,
@@ -30,6 +32,11 @@ function proof():InquirySchemaProof {
 }
 
 describe('selected verification schema',()=>{
+ it('pins the historical72 source and rejects the broadened current73 inventory',()=>{
+  expect(currentFiles).toHaveLength(73);
+  expect(h(JSON.stringify(manifest.slice(0,72)))).toBe('e09c4a9d43608609aaf83ca391168b60d4d7604a816c9744e50d73371134d3af');
+  expect(()=>inquiryEmailSchemaPlan(currentFiles,history(67),0)).toThrow();
+ });
  it.each([67,70])('selects only 151 and 152 after the exact %i-entry prefix',prefix=>{
   const list=inquiryEmailSchemaPlan(files,history(prefix),0);
   expect(list.pending.map(f=>f.name)).toEqual(selected.map(f=>f.name));
