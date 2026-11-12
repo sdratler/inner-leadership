@@ -109,6 +109,17 @@ export async function inspectLanding(page:Page,options:{declaredShortCase?:strin
   const hb=box(hero),ib=box(photo),header=box(document.querySelector('header')!);
   const width=document.documentElement.clientWidth;
   if(document.documentElement.scrollWidth>innerWidth+1||reading.scrollWidth>width+1)findings.push('page-horizontal-overflow');
+  if(width<=999){
+   // Measure the reading column itself, not its full-bleed section background.
+   // Reserving the WhatsApp footprint on one side shifts all of these while
+   // the hero and page still pass their outer-width checks.
+   for(const selector of ['[data-jlfa-intro] > div:first-child','#learn > div:first-child','#values h2','#faq > div:first-child']){
+    const node=document.querySelector(selector);
+    if(!node){findings.push('mobile-reading-column-missing:'+selector);continue;}
+    const r=box(node),left=r.left,right=width-r.right;
+    if(Math.abs(left-right)>2||Math.min(left,right)<12||Math.max(left,right)>26)findings.push('mobile-reading-gutters:'+selector);
+   }
+  }
   if(Math.abs(hb.left)>1||Math.abs(hb.right-width)>1)findings.push('hero-boxed');
   if(!photo.complete||!photo.naturalWidth)findings.push('hero-image-unloaded');
   const headingBlocks=hero.querySelectorAll('[data-hero-heading]'),actions=hero.querySelectorAll('[data-hero-action]');
@@ -256,7 +267,7 @@ export async function scrollLandingToTop(page:Page){
  });
 }
 
-/** A floating action may overlap empty row padding, never the question/glyph. */
+/** Desktop avoids the FAQ text; phones let it scroll past the fixed circle. */
 export async function inspectFaqContact(page:Page){
  const result=await page.evaluate(reading=>{
   const findings:string[]=[],wa=document.querySelector<HTMLAnchorElement>('a[class*="whatsapp"]')!;
@@ -265,7 +276,7 @@ export async function inspectFaqContact(page:Page){
   const icon=wa.querySelector('svg')!.getBoundingClientRect();
   const wrongCorner=innerWidth>999&&getComputedStyle(wa).direction==='rtl'?icon.right>100:icon.left<innerWidth-100;
   if(b.width<48||b.height<48||b.left<0||b.right>innerWidth||wrongCorner||b.top<0||b.bottom>innerHeight)findings.push('faq-contact-placement');
-  for(const summary of document.querySelectorAll('[data-trip390-faq] summary')){
+  if(innerWidth>999)for(const summary of document.querySelectorAll('[data-trip390-faq] summary')){
    const walker=document.createTreeWalker(summary,NodeFilter.SHOW_TEXT);
    for(let text=walker.nextNode();text;text=walker.nextNode()){
     if(!text.textContent?.trim())continue;
@@ -312,10 +323,19 @@ export async function inspectBodyContact(page:Page){
   const wa=document.querySelector<HTMLAnchorElement>('a[class*="whatsapp"]')!,b=wa.getBoundingClientRect(),findings:string[]=[];
   const visible=getComputedStyle(wa).visibility==='visible'&&getComputedStyle(wa).display!=='none';
   if(!visible||wa.tabIndex!==0||wa.getAttribute('aria-hidden')==='true')findings.push('body-contact-unavailable');
-  const protectedNodes=innerWidth<=999?document.querySelectorAll('main img,main summary,main a,footer a'):[];
+  const mobile=innerWidth<=999;
+  const covered:{node:Element;x:number;y:number;top:number;measure:()=>DOMRect|undefined}[]=[];
+  const inspectOverlap=(node:Element,r:DOMRect,issue:string,measure:()=>DOMRect|undefined=()=>node.getBoundingClientRect())=>{
+   if(!visible||r.width<=0||r.height<=0||r.left>=b.right||r.right<=b.left||r.top>=b.bottom||Math.min(r.bottom,reading.bottom)<=b.top)return;
+   if(!mobile){findings.push(issue);return;}
+   const x=(Math.max(r.left,b.left)+Math.min(r.right,b.right))/2;
+   const y=(Math.max(r.top,b.top)+Math.min(r.bottom,b.bottom))/2;
+   if(wa.contains(document.elementFromPoint(x,y)))covered.push({node,x,y,top:r.top,measure});
+  };
+  const protectedNodes=mobile?document.querySelectorAll('main img,main summary,main a,footer a'):[];
   for(const node of protectedNodes){
    const r=node.getBoundingClientRect();
-   if(r.width&&r.height&&r.left<b.right&&r.right>b.left&&r.top<b.bottom&&r.bottom>b.top)findings.push('body-contact-over-image-or-control');
+   inspectOverlap(node,r,'body-contact-over-image-or-control');
   }
   for(const node of document.querySelectorAll('main p,main li,main h2,main h3,main summary')){
    if(node.closest('dialog')||!node.getClientRects().length)continue;
@@ -326,14 +346,31 @@ export async function inspectBodyContact(page:Page){
    for(let text=walker.nextNode();text;text=walker.nextNode()){
     if(!text.textContent?.trim())continue;
     const range=document.createRange();range.selectNodeContents(text);
-    for(const r of range.getClientRects()){
-     if(visible&&r.width>0&&r.height>0&&r.left<b.right&&r.right>b.left&&r.top<b.bottom&&Math.min(r.bottom,reading.bottom)>b.top)findings.push('body-contact-over-text');
+    const lines=Array.from(range.getClientRects());
+    for(const [index,line] of lines.entries()){
+     inspectOverlap(node,line,'body-contact-over-text',()=>range.getClientRects()[index]);
     }
    }
   }
   for(const icon of document.querySelectorAll('[data-jlfa-values] article svg')){
    const r=icon.getBoundingClientRect();
-   if(visible&&r.width>0&&r.height>0&&r.left<b.right&&r.right>b.left&&r.top<b.bottom&&Math.min(r.bottom,reading.bottom)>b.top)findings.push('body-contact-over-value-icon');
+   inspectOverlap(icon,r,'body-contact-over-value-icon');
+  }
+  // A passing line may go behind the circle; a pinned or unreachable line
+  // cannot. Move the document, check the same content, then restore the stop.
+  if(covered.length){
+   const originalY=scrollY;
+   try{
+    window.scrollBy({top:Math.ceil(b.height)+8,behavior:'instant'});
+    const headerBottom=document.querySelector('header')!.getBoundingClientRect().bottom;
+    for(const {node,x,y,top,measure} of covered){
+     const current=measure();
+     if(!current){findings.push('mobile-content-fragment-missing');continue;}
+     const newY=y+current.top-top;
+     if(newY>=b.top||newY<=headerBottom)findings.push('mobile-content-cannot-scroll-clear');
+     else if(node.matches('a,summary')&&!node.contains(document.elementFromPoint(x,newY)))findings.push('mobile-control-still-obstructed');
+    }
+   }finally{window.scrollTo({top:originalY,behavior:'instant'});}
   }
   return {findings,position:{left:b.left,top:b.top,width:b.width,height:b.height}};
  },await readingViewport(page));

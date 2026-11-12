@@ -233,9 +233,6 @@
   --contact-size:52px;
   --contact-right:max(16px,env(safe-area-inset-right));
  }
- /* This is physical right in both EN and HE, matching the floating anchor.
-    Full-width section backgrounds continue underneath the button. */
- .page :is(.section,.packageInner,.footer){padding-right:calc(var(--contact-right) + var(--contact-size) + 8px)}
  .page .whatsapp,.page[dir=rtl] .whatsapp{
   inset-inline:auto;right:var(--contact-right);bottom:max(16px,env(safe-area-inset-bottom));
   inline-size:var(--contact-size);block-size:var(--contact-size);background:#168642;border:0
@@ -275,7 +272,6 @@
  .page{--contact-right:max(8px,env(safe-area-inset-right));--contact-size:48px}
  /* Keep long English and Hebrew words whole at enlarged type on narrow phones. */
  .page[data-text-reflow=true] .heroText h1{letter-spacing:-.03em}
- .page[data-text-reflow=true] :is(.section,.packageInner){padding-left:8px}
  .page[data-text-reflow=true] .faqs summary{padding-inline-end:.25em}
  .page[data-text-reflow=true] .headerInner{padding-inline:6px;gap:4px}
 }
@@ -307,6 +303,8 @@
 }
 @media(max-width:767px){
  .page .hero img{object-position:30% center}
+ .heroAction{gap:20px}
+ .page .heroPillars{font-size:clamp(18px,5.72vw,24px);word-spacing:clamp(2px,1vw,4px)}
 }
 @media(max-width:999px){
  /* For enlarged type the original occupies its own natural-width plane.
