@@ -9,7 +9,7 @@ from __future__ import annotations
 import argparse, hashlib, json, re, shutil, subprocess, sys
 from pathlib import Path
 
-VERSIONED_ASSETS=('assets/css/site.css','assets/js/config.js','assets/js/site-react.js')
+VERSIONED_ASSETS=('assets/css/site.css','assets/js/google-ads.js','assets/js/config.js','assets/js/site-react.js')
 PUBLIC_ASSETS=(
     *VERSIONED_ASSETS,
     'assets/js/site.js',
