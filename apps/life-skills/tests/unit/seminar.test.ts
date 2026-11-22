@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
-import { seminar, seminarHasPassed, recipientDigits, seminarPublicPath, contactUrl, seminarInvitation } from "../../src/features/seminar/config.ts";
+import { seminar, seminarHasPassed, seminarPublicPath, contactUrl, seminarInvitation } from "../../src/features/seminar/config.ts";
 import { proxy } from "../../src/proxy.ts";
 
 afterEach(() => vi.unstubAllEnvs());
@@ -23,13 +23,12 @@ describe("seminar public boundary", () => {
     expect(seminarHasPassed(new Date("2026-11-23T05:00:00Z"))).toBe(true);
     expect(seminarHasPassed(new Date("2026-11-22T20:00:00Z"))).toBe(false);
   });
-  it("builds the correct contact, page invitation and client-only recipient draft inputs", () => {
+  it("builds the correct contact and current event invitation", () => {
     expect(contactUrl()).toContain("https://wa.me/13054278909?text=");
     expect(new URL(contactUrl()).searchParams.get("text")).toBe("Hi Rabbi Shlomo, I saw the Bass Fishing Seminar flyer. Please send me the details.");
     expect(seminarInvitation()).toContain(seminar.publicUrl);
     expect(seminarInvitation(true)).toContain("next Bass Fishing Seminar");
-    expect(recipientDigits("+1", "(305) 427-8909")).toBe("13054278909");
-    expect(recipientDigits("+972", "52-123-4567")).toBe("972521234567");
-    for (const [code, number] of [["+1", "abc3055550123"], ["+972", "0521234567"], ["0", "12345678"], ["+1", "123"], ["+1", "1234567890123456"]]) expect(recipientDigits(code!, number!)).toBeNull();
+    expect(seminarInvitation()).toContain("Sierra Lake, Boca Raton");
+    expect(seminarInvitation()).toContain("Bring your fishing tackle.");
   });
 });

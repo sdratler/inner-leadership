@@ -32,13 +32,7 @@ export function seminarInvitation(past = false): string {
     ? `Interested in the next Bass Fishing Seminar with Rabbi Shlomo? Ask for details: ${seminar.publicUrl}`
     : `Join ${seminar.host} for ${seminar.title}! ${seminar.audience}. ${seminar.shareDate}, ${seminar.place}. ${seminar.reminder} Details and directions: ${seminar.publicUrl}`;
 }
-export const seminarDescription = `${seminar.title} with ${seminar.host}. ${seminar.audience}. ${seminar.dateShort}, ${seminar.timeLabel}, ${seminar.place}. ${seminar.reminder} Flyer, directions and WhatsApp.`;
-export function recipientDigits(countryCode: string, number: string): string | null {
-  if (!/^\+?[1-9]\d{0,3}$/.test(countryCode.trim()) || !/^[\d\s().-]+$/.test(number)) return null;
-  const local = number.replace(/\D/g, "");
-  const full = countryCode.replace("+", "").trim() + local;
-  return /^[1-9]\d{7,14}$/.test(full) && !local.startsWith("0") ? full : null;
-}
+export const seminarDescription = "Nov 22 · 2:30 PM · Sierra Lake, Boca Raton. Boys ages 8–15 with Rabbi Shlomo.";
 export function contactUrl(past = false): string {
   const text = past ? "Hi Rabbi Shlomo, please send me details about the next Bass Fishing Seminar." : "Hi Rabbi Shlomo, I saw the Bass Fishing Seminar flyer. Please send me the details.";
   return `https://wa.me/${seminar.phoneDigits}?text=${encodeURIComponent(text)}`;

@@ -5,12 +5,12 @@ import { SeminarSharing } from "../../../../features/seminar/sharing.tsx";
 import styles from "../../../../features/seminar/seminar.module.css";
 
 export const metadata: Metadata = {
-  title: `${seminar.title} · ${seminar.dateShort} · Fishing Academy`,
+  title: `${seminar.title} | Fishing Academy`,
   description,
-  icons: { icon: seminar.logo },
+  icons: { icon: { url: seminar.logo, type: "image/png" }, apple: seminar.logo },
   alternates: { canonical: seminar.publicUrl },
-  openGraph: { title: `${seminar.title} · ${seminar.dateShort} · ${seminar.timeLabel}`, description, url: seminar.publicUrl, type: "website", siteName: seminar.academy, images: [{ url: new URL(seminar.logo, seminar.publicUrl).href, alt: seminar.academy }] },
-  twitter: { card: "summary", title: `${seminar.title} · ${seminar.dateShort}`, description, images: [new URL(seminar.logo, seminar.publicUrl).href] },
+  openGraph: { title: seminar.title, description, url: seminar.publicUrl, type: "website", siteName: "Fishing Academy", images: [{ url: new URL(seminar.logo, seminar.publicUrl).href, width: 1254, height: 1254, alt: seminar.academy }] },
+  twitter: { card: "summary", title: seminar.title, description, images: [new URL(seminar.logo, seminar.publicUrl).href] },
 };
 export default async function SeminarPage({ params }: { params: Promise<{ locale: string }> }) {
   if ((await params).locale !== "en") notFound();
@@ -19,8 +19,7 @@ export default async function SeminarPage({ params }: { params: Promise<{ locale
     <div className={styles.shell}>
       <header className={styles.brand}>
         {/* eslint-disable-next-line @next/next/no-img-element -- exact approved image, no image proxy */}
-        <img src={seminar.logo} alt={seminar.academy} width="112" height="112" />
-        <p>Jewish Leadership<br /><strong>Fishing Academy</strong></p>
+        <img src={seminar.logo} alt={seminar.academy} width="1254" height="1254" />
       </header>
       <section className={styles.intro} aria-labelledby="seminar-title">
         <p className={styles.eyebrow}>{past ? "Ask about the next seminar" : "A Sunday by the lake"}</p>
