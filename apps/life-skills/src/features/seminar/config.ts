@@ -32,7 +32,7 @@ export function seminarInvitation(past = false): string {
     ? `Interested in the next Bass Fishing Seminar with Rabbi Shlomo? Ask for details: ${seminar.publicUrl}`
     : `Join ${seminar.host} for ${seminar.title}! ${seminar.audience}. ${seminar.shareDate}, ${seminar.place}. ${seminar.reminder} Details and directions: ${seminar.publicUrl}`;
 }
-export const seminarDescription = "Nov 22 · 2:30 PM · Sierra Lake, Boca Raton. Boys ages 8–15 with Rabbi Shlomo.";
+export const seminarDescription = `${seminar.dateShort} · ${seminar.timeLabel}. ${seminar.place}.`;
 export function contactUrl(past = false): string {
   const text = past ? "Hi Rabbi Shlomo, please send me details about the next Bass Fishing Seminar." : "Hi Rabbi Shlomo, I saw the Bass Fishing Seminar flyer. Please send me the details.";
   return `https://wa.me/${seminar.phoneDigits}?text=${encodeURIComponent(text)}`;
