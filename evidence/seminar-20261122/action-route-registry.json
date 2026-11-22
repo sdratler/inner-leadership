@@ -1,0 +1,31 @@
+{
+  "task": "JLFA-SEMINAR-MOBILE-DESTINATION-20261122-01",
+  "scope": "anonymous public Fishing seminar; no submissions or saved recipients",
+  "routes": [
+    {"path":"/fish","access":"public GET/HEAD","handler":"bounded BNA gateway -> /en/florida/seminar","expected":"seminar HTML; no BNA cookies forwarded"},
+    {"path":"/fishing-academy/seminar","access":"public GET/HEAD","handler":"bounded BNA gateway -> /en/florida/seminar","expected":"seminar HTML"},
+    {"path":"/en/florida/seminar","access":"public GET/HEAD","handler":"Next seminar page and Fishing proxy","expected":"English seminar; wrong locale/nested private routes not admitted"},
+    {"path":"/seminar/bass-fishing-seminar-20261122.jpg","access":"public GET/HEAD","handler":"static exact file","expected":"owner downloaded JPEG unchanged"},
+    {"path":"/seminar/seminar-page-qr.png","access":"public GET/HEAD","handler":"static exact file","expected":"decoded permanent page URL"},
+    {"path":"/seminar/seminar-page-qr.svg","access":"public GET/HEAD","handler":"static exact file","expected":"same deterministic QR matrix"}
+  ],
+  "actions": [
+    {"label":"WhatsApp Rabbi Shlomo","handler":"contactUrl","expected":"13054278909 prefilled draft"},
+    {"label":"Get directions","handler":"exact supplied Maps href","expected":"26.3539417,-80.162461"},
+    {"label":"Call","handler":"tel:+13054278909","expected":"system phone app"},
+    {"label":"View full-size flyer","handler":"static JPEG href","expected":"uncropped full size"},
+    {"label":"Download flyer","handler":"download anchor","expected":"original supplied JPEG bytes"},
+    {"label":"Share on WhatsApp","handler":"wa.me/?text","expected":"invitation plus permanent page URL"},
+    {"label":"Copy link","handler":"clipboard; selectable fallback","expected":"success status or selectable URL"},
+    {"label":"Share flyer","handler":"navigator.canShare/share","expected":"file share or explicit download/link fallback"},
+    {"label":"Show QR","handler":"native dialog.showModal","expected":"white quiet zone; page QR; keyboard trap; close/Escape focus restore"},
+    {"label":"Close QR","handler":"dialog.close","expected":"return focus to Show QR"},
+    {"label":"QR PNG/SVG","handler":"download anchors","expected":"same decoded page URL"},
+    {"label":"Send link to a number","handler":"native details disclosure","expected":"show client-only number inputs"},
+    {"label":"Open WhatsApp draft","handler":"recipientDigits + window.open","expected":"validate; no backend request/storage; user sends in WhatsApp"},
+    {"label":"Explore Fishing Academy","handler":"main Academy href","expected":"existing main page unchanged"}
+  ],
+  "mobile":"320/375/390/430px, 44px controls, no horizontal overflow; see browser report",
+  "disabled_reason":null,
+  "evidence":"README.md; focused seminar/proxy unit tests; private browser report; CI and live receipt pending"
+}

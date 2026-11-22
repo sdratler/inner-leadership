@@ -1,4 +1,10 @@
-# Life Skills / כישורי חיים
+# Jewish Leadership Fishing Academy
+
+The current project is **Fishing Academy**. `inner-leadership` is the legacy GitHub repository name and `apps/life-skills` is the existing application directory; neither name identifies a separate current program. Start at [Fishing Academy setup and sources](docs/FISHING-ACADEMY-START-HERE.md) and [AGENTS.md](AGENTS.md).
+
+The material below records earlier Life Skills implementation history. Current Fishing decisions and the latest directly authorized task govern active work. Repository/service renaming is a separate dependency-aware cleanup; preserve existing deployment links until that work is tested.
+
+## Historical repository introduction
 
 This repository contains the bilingual Life Skills website source and the separate private-application code. Current business intent comes from the registered Drive contracts; this README is a navigation page, not another brand kit or offer specification.
 
