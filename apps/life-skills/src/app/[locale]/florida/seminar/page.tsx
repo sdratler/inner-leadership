@@ -32,6 +32,7 @@ export default async function SeminarPage({ params }: { params: Promise<{ locale
           <p><span>{past ? "Past seminar" : "When"}</span><time dateTime={seminar.startsAt}>{seminar.dateLabel}<br /><strong>{seminar.timeLabel}</strong></time></p>
           <p><span>Where</span><strong>{seminar.place}</strong></p>
         </div>
+        <p className={styles.reminder}>{seminar.reminder}</p>
         <div className={styles.actions}>
           <a className={styles.primary} href={contactUrl(past)} target="_blank" rel="noopener noreferrer">WhatsApp Rabbi Shlomo <span aria-hidden="true">↗</span></a>
           <a className={styles.secondary} href={seminar.directions} target="_blank" rel="noopener noreferrer">Get directions <span aria-hidden="true">↗</span></a>
@@ -41,7 +42,7 @@ export default async function SeminarPage({ params }: { params: Promise<{ locale
       <figure className={styles.flyer}>
         <a href={seminar.flyer} target="_blank" rel="noopener noreferrer" aria-label="Open the full-size seminar flyer">
           {/* eslint-disable-next-line @next/next/no-img-element -- preserve original flyer bytes and proportions */}
-          <img src={seminar.flyer} alt={`${seminar.title}: ${seminar.hook}. ${seminar.audience}. ${seminar.shareDate}, ${seminar.place}. ${seminar.host}, ${seminar.phone}.`} width="1254" height="1254" />
+          <img src={seminar.flyer} alt={`${seminar.title}: ${seminar.hook}. ${seminar.audience}. ${seminar.shareDate}, ${seminar.place}. ${seminar.reminder} ${seminar.host}, ${seminar.phone}. Scan the QR for seminar details.`} width="1254" height="1254" />
         </a>
         <figcaption><a href={seminar.flyer} target="_blank" rel="noopener noreferrer">View full-size flyer</a><a href={seminar.flyer} download="Bass-Fishing-Seminar-November-22.jpg">Download flyer</a></figcaption>
       </figure>

@@ -14,6 +14,7 @@
 .details p { display:grid; grid-template-columns:3.3em minmax(0,1fr); gap:14px; margin:0; font-size:.94rem; line-height:1.5; }
 .details p>span { color:#586c7c; font-size:.78rem; padding-top:3px; }
 .details strong { font-weight:650; }
+.reminder { margin:0 0 18px; font-size:.95rem; line-height:1.5; font-weight:700; color:#805910; }
 .actions { display:grid; gap:10px; }
 .primary,.secondary,.qrButton { display:flex; align-items:center; justify-content:center; gap:12px; width:100%; min-height:50px; padding:12px 14px; border:1px solid #c8d4dc; border-radius:10px; font:inherit; font-size:.93rem; line-height:1.4; font-weight:700; text-decoration:none; text-align:center; cursor:pointer; background:#fff; color:#102b46; }
 .primary { background:#102f4c; border-color:#102f4c; color:#fff; }

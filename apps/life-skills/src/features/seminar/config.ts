@@ -10,7 +10,8 @@ export const seminar = Object.freeze({
   shareDate: "Sunday, November 22 at 2:30 PM",
   timeLabel: "2:30 PM · Eastern Time",
   timeZone: "America/New_York",
-  place: "Silver Palms Park Lake, Boca Raton",
+  place: "Sierra Lake, Boca Raton",
+  reminder: "Bring your fishing tackle.",
   host: "Rabbi Shlomo Dratler",
   phone: "305-427-8909",
   phoneDigits: "13054278909",
@@ -29,9 +30,9 @@ export function seminarHasPassed(now = new Date()): boolean {
 export function seminarInvitation(past = false): string {
   return past
     ? `Interested in the next Bass Fishing Seminar with Rabbi Shlomo? Ask for details: ${seminar.publicUrl}`
-    : `Join ${seminar.host} for ${seminar.title}! ${seminar.audience}. ${seminar.shareDate}, ${seminar.place}. Details and directions: ${seminar.publicUrl}`;
+    : `Join ${seminar.host} for ${seminar.title}! ${seminar.audience}. ${seminar.shareDate}, ${seminar.place}. ${seminar.reminder} Details and directions: ${seminar.publicUrl}`;
 }
-export const seminarDescription = `${seminar.title} with ${seminar.host}. ${seminar.audience}. ${seminar.dateShort}, ${seminar.timeLabel}, ${seminar.place}. Flyer, directions and WhatsApp.`;
+export const seminarDescription = `${seminar.title} with ${seminar.host}. ${seminar.audience}. ${seminar.dateShort}, ${seminar.timeLabel}, ${seminar.place}. ${seminar.reminder} Flyer, directions and WhatsApp.`;
 export function recipientDigits(countryCode: string, number: string): string | null {
   if (!/^\+?[1-9]\d{0,3}$/.test(countryCode.trim()) || !/^[\d\s().-]+$/.test(number)) return null;
   const local = number.replace(/\D/g, "");

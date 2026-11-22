@@ -67,7 +67,7 @@ export function SeminarSharing({ past }: { past: boolean }) {
       {/* eslint-disable-next-line @next/next/no-img-element -- deterministic, separately decoded QR export */}
       <img className={styles.qr} src={seminar.qrPng} alt={`QR code for ${seminar.publicUrl}`} width="512" height="512" />
       <strong className={styles.qrAddress}>bneineviimacademy.org/fish</strong>
-      <p className={styles.small}>This QR opens the seminar page.<br />The QR on the flyer opens directions.</p>
+      <p className={styles.small}>This QR and the QR on the flyer open the seminar page.<br />Choose Get directions on the page for the lake location.</p>
       <a className={styles.secondary} href={seminar.qrPng} download="Fishing-Seminar-QR.png">Download QR PNG</a>
     </dialog>
   </section>;
