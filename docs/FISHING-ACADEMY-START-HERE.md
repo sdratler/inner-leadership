@@ -20,4 +20,6 @@ Use the existing Railway secret store and configured authenticated deployment ac
 
 Current scoped task: `JLFA-SEMINAR-MOBILE-DESTINATION-20261122-01`; [engineering evidence](../evidence/seminar-20261122/README.md).
 
+Released 22 November 2026: https://bneineviimacademy.org/fish. Exact runtime identities and remaining handset checks are in [release.json](../evidence/seminar-20261122/release.json). The release-evidence branch contains documentation only after the verified app commit; it does not imply another running deployment.
+
 Owner clarification `JLFA-LOCAL-PROJECT-IDENTITY-20261122-01`: make Fishing Academy the clear current identity. Track a later coordinated repository/service/package-name cleanup in the existing Fishing log; do not rename deployment dependencies as part of the seminar release. Historical source and legitimate records remain intact. Backend and billing work remain paused.
