@@ -1,6 +1,6 @@
 {
   "task": "JLFA-SEMINAR-MOBILE-DESTINATION-20261122-01",
-  "scope": "anonymous public Fishing seminar; no submissions or saved recipients",
+  "scope": "anonymous public Fishing seminar; no submissions or recipient entry",
   "routes": [
     {"path":"/fish","access":"public GET/HEAD","handler":"bounded BNA gateway -> /en/florida/seminar","expected":"seminar HTML; no BNA cookies forwarded"},
     {"path":"/fishing-academy/seminar","access":"public GET/HEAD","handler":"bounded BNA gateway -> /en/florida/seminar","expected":"seminar HTML"},
@@ -25,5 +25,5 @@
   ],
   "mobile":"320/375/390/430px, 44px controls, no horizontal overflow; see browser report",
   "disabled_reason":null,
-  "evidence":"README.md; focused seminar/proxy unit tests; private browser report; CI and live receipt pending"
+  "evidence":"refinement-03.md; refinement-03-release.json; focused seminar/proxy unit tests and private browser reports"
 }

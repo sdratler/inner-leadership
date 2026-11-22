@@ -2,6 +2,11 @@
 
 The current project is **Fishing Academy**. `inner-leadership` is the legacy GitHub repository name and `apps/life-skills` is the existing application directory; neither name identifies a separate current program. Start at [Fishing Academy setup and sources](docs/FISHING-ACADEMY-START-HERE.md) and [AGENTS.md](AGENTS.md).
 
+Public seminar: https://bneineviimacademy.org/fish . The November22 Sierra Lake
+correction and centered brand/sharing refinement are deployed; see the exact
+[release receipt](evidence/seminar-20261122/refinement-03-release.json).
+Physical-phone preview/sharing/scanning remains distinct from verified deployment.
+
 The material below records earlier Life Skills implementation history. Current Fishing decisions and the latest directly authorized task govern active work. Repository/service renaming is a separate dependency-aware cleanup; preserve existing deployment links until that work is tested.
 
 ## Historical repository introduction

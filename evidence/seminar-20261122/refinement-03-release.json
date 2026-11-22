@@ -1,0 +1,146 @@
+{
+  "task": "JLFA-SEMINAR-MOBILE-DESTINATION-20261122-01",
+  "changes": [
+    "CORRECTION-02",
+    "REFINEMENT-03"
+  ],
+  "status": "deployed_and_anonymously_verified",
+  "verifiedAt": "2026-11-22T18:42:39Z",
+  "publicUrl": "https://bneineviimacademy.org/fish",
+  "app": {
+    "repository": "sdratler/inner-leadership",
+    "commit": "07e2e4e5d9a333860a8708da8d7f9d111d14c052",
+    "branch": "main",
+    "projectId": "3b756632-1f66-4f75-a016-eabc37aa0d67",
+    "serviceId": "0267d061-f3ce-4a0a-82d4-ce133e4501e9",
+    "environmentId": "dd91bd71-57cc-45e6-a75b-8c858491d7c7",
+    "deploymentId": "d098e69d-c61a-4c70-9b86-6ccd086da889",
+    "deploymentStatus": "SUCCESS"
+  },
+  "gateway": {
+    "commit": "b2f4bdc551155bb05b6116cc19507badab9fb368",
+    "deploymentId": "754cd0b5-28a0-4e37-8179-9f1a4e62e4b4",
+    "status": "SUCCESS",
+    "changedForThisRefinement": false
+  },
+  "requirements": {
+    "recipientEntry": "removed; WhatsApp chooses recipients",
+    "design": "centered approved Fishing navy/gold/white; exact locked logo",
+    "event": "Sierra Lake, Boca Raton; Bring your fishing tackle.; original date/time/phone preserved",
+    "directions": "https://www.google.com/maps/dir/?api=1&destination=26.3539417,-80.162461",
+    "preview": {
+      "title": "Bass Fishing Seminar",
+      "description": "November 22, 2026 · 2:30 PM · Eastern Time. Sierra Lake, Boca Raton.",
+      "descriptionCharacters": 68,
+      "image": "https://bneineviimacademy.org/groups/brand/jlfa-logo-locked-v1.png",
+      "favicon": "exact locked Academy logo",
+      "verifiedInInitialHeadWithWhatsAppUserAgent": true
+    }
+  },
+  "artifacts": [
+    {
+      "url": "https://bneineviimacademy.org/seminar/bass-fishing-seminar-20261122.jpg",
+      "sha256": "7f0b1388bb99fc9aa64448d00b5edbf40e7cec79df59d00672a354a63130d155",
+      "bytes": 927263,
+      "qrPayload": "https://bneineviimacademy.org/fish"
+    },
+    {
+      "url": "https://bneineviimacademy.org/seminar/seminar-page-qr.png",
+      "sha256": "1e404524dd5fc1048874944a04ab95c78f5fbd47510b744c7fe4b8c12fc26446",
+      "bytes": 1050,
+      "qrPayload": "https://bneineviimacademy.org/fish"
+    },
+    {
+      "url": "https://bneineviimacademy.org/seminar/seminar-page-qr.svg",
+      "sha256": "3294b581f7b186a53becc531c6bd4692713a7bc068c2710dc4f07b8ec8dca3c3",
+      "bytes": 10065,
+      "sameDeterministicMatrix": true
+    }
+  ],
+  "checks": {
+    "productionBuild": "exit0",
+    "scopedLint": "pass",
+    "independentSeminarProxyTests": 91,
+    "independentReviewer": "seminar_review",
+    "independentCodeAndActualPublicVisualReview": "pass",
+    "protectedCi": {
+      "url": "https://github.com/sdratler/inner-leadership/actions/runs/45048619795",
+      "finalAttempt": 2,
+      "status": "success",
+      "firstAttempt": "retained: historical mobile founder readback404;81outertests passed; same-SHA rerun passed with no code/check changes; cause unknown",
+      "controlIntegrity": "success"
+    },
+    "anonymousBrowsers": [
+      "Chromium mobile emulation",
+      "WebKit"
+    ],
+    "widths": [
+      320,
+      375,
+      390,
+      430
+    ],
+    "textEnlargement": {
+      "method": "200% CSS root font size",
+      "widths": [
+        320,
+        390,
+        430
+      ],
+      "status": "pass"
+    },
+    "actions": [
+      "contact/directions",
+      "WhatsApp chooser invitation",
+      "recipient form absent",
+      "copy success/fallback",
+      "native flyer share stub/fallback",
+      "QR background inert, Escape and focus restore",
+      "downloads GET/HEAD and exact bytes"
+    ],
+    "consoleErrors": 0,
+    "publicRegressions": "school, EN/HE Fishing and inquiry page text hashes unchanged; exact logo/heroes unchanged",
+    "privateBoundary": "private API401; anonymous private-app browser redirected to/en/login; nested public children404; POST/fish405",
+    "inquiryAdmission": {
+      "binding": "sourceCommit and LIFE_SKILLS_RELEASE_COMMIT only",
+      "changedSourceHashKeys": [],
+      "hashedSourceFiles": 23,
+      "originalPolicyAuthorityPreserved": true,
+      "readbackAndAdmissionValidation": "pass",
+      "policySha256": "c8a453eaba37f974c3011914bd97821af4694d5715a486b0c3cd54ad8f69d7eb",
+      "runtime": "startup ready; existing worker CYCLE_COMPLETE events observed",
+      "testSubmissionOrSend": false
+    }
+  },
+  "screenshots": {
+    "privateDirectory": ".private/seminar-20261122/refinement-live",
+    "openedByRoot": [
+      "viewport-390.png",
+      "mobile-320.png",
+      "qr-390.png"
+    ],
+    "openedByIndependentReviewer": [
+      "viewport-390.png",
+      "mobile-390.png",
+      "mobile-320.png",
+      "qr-390.png"
+    ],
+    "mobileScreenshot": "C:/Users/sdrat/Fishing Academy/.private/seminar-20261122/refinement-live/mobile-390.png"
+  },
+  "remaining": {
+    "physicalPhone": {
+      "status": "unverified",
+      "owner": "operator",
+      "next": "Check actual WhatsApp preview/cache and native flyer sharing; scan Show QR and downloaded QR on a handset",
+      "softwareDeploymentBlocked": false
+    },
+    "localProjectSidebar": {
+      "folder": "C:/Users/sdrat/Fishing Academy",
+      "sourceReady": true,
+      "registeredAndChatMoved": false,
+      "next": "Operator opens the local folder as a Codex project and moves this chat in the sidebar; app tool requires user folder-access step"
+    },
+    "legacyTechnicalNames": "later coordinated cleanup; current program/folder clearly Fishing Academy"
+  },
+  "previousReleaseReceipt": "release.json"
+}

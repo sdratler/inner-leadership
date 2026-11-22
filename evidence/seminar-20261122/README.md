@@ -1,5 +1,14 @@
 # JLFA-SEMINAR-MOBILE-DESTINATION-20261122-01
 
+Current refinement: [refinement-03-release.json](refinement-03-release.json)
+records CORRECTION-02 + REFINEMENT-03, including Sierra Lake, the final corrected
+flyer, removed recipient form, centered Fishing branding and compact logo preview.
+The original release is retained in [release.json](release.json). The intake and
+pre-release checkpoints below are historical; their pending statuses are
+superseded by the dated exact release receipts, not erased.
+
+## Original implementation record
+
 Baseline: `d6f54cc05a1e58e794985c35c954fca9ed5949fb`, same as observed Railway deployment `1f262f0d-225e-48ae-9bcc-79107051b142`. New clean local checkout, branch `codex/fishing-seminar-mobile-20261122`. Existing remote PRs inspected; no overlapping seminar implementation was observed. Historical integrator chat is not accessible from this host; no cross-host lease or ownership transfer is claimed.
 
 ## Task-specific design brief

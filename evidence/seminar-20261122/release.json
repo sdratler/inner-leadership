@@ -1,0 +1,51 @@
+{
+  "task_id": "JLFA-SEMINAR-MOBILE-DESTINATION-20261122-01",
+  "verified_at": "2026-11-22T16:26:23Z",
+  "status": "deployed_anonymously_verified",
+  "public_url": "https://bneineviimacademy.org/fish",
+  "app": {
+    "repository": "sdratler/inner-leadership",
+    "commit": "3cd41cb1b097d856fcc64af8b76da34e53d9cfb7",
+    "pull_request": "https://github.com/sdratler/inner-leadership/pull/249",
+    "ci": "https://github.com/sdratler/inner-leadership/actions/runs/45040379847",
+    "control_ci": "https://github.com/sdratler/inner-leadership/actions/runs/45040376214",
+    "deployment_id": "1ff2dedc-0cc4-4471-93e3-7e9eba8311e0",
+    "deployment_status": "SUCCESS",
+    "project_id": "3b756632-1f66-4f75-a016-eabc37aa0d67",
+    "environment_id": "dd91bd71-57cc-45e6-a75b-8c858491d7c7",
+    "service_id": "0267d061-f3ce-4a0a-82d4-ce133e4501e9"
+  },
+  "gateway": {
+    "repository": "shloimie-beep/bnei-neviim-academy",
+    "branch": "codex/fishing-launch-cache-20261112",
+    "commit": "b2f4bdc551155bb05b6116cc19507badab9fb368",
+    "pull_request": "https://github.com/shloimie-beep/bnei-neviim-academy/pull/199",
+    "deployment_id": "754cd0b5-28a0-4e37-8179-9f1a4e62e4b4",
+    "deployment_status": "SUCCESS",
+    "project_id": "bd5b6d78-5e83-4e83-89b2-cd5f52ed7889",
+    "environment_id": "3ce30933-49c7-4b90-8c36-a5afd67df329",
+    "service_id": "4079db35-5f4a-44ef-a767-3406c74f6005"
+  },
+  "public_files": {
+    "flyer": {"url":"https://bneineviimacademy.org/seminar/bass-fishing-seminar-20261122.jpg","sha256":"4a4d3219ae6246daaaecf4fdbf0a26f391ae6bbcd63d7c989305f957bc6f0eef","bytes":333297},
+    "qr_png": {"url":"https://bneineviimacademy.org/seminar/seminar-page-qr.png","sha256":"1e404524dd5fc1048874944a04ab95c78f5fbd47510b744c7fe4b8c12fc26446","decoded":"https://bneineviimacademy.org/fish"},
+    "qr_svg": {"url":"https://bneineviimacademy.org/seminar/seminar-page-qr.svg","sha256":"3294b581f7b186a53becc531c6bd4692713a7bc068c2710dc4f07b8ec8dca3c3"}
+  },
+  "checks": {
+    "anonymous_public_host": true,
+    "live_chromium_webkit_widths": [320,375,390,430],
+    "initial_html_metadata": true,
+    "correct_contact": "305-427-8909",
+    "original_flyer_bytes": true,
+    "downloaded_png_decoded": true,
+    "private_api_401": true,
+    "anonymous_private_page_navigates_login": true,
+    "existing_public_page_text_and_asset_hashes_unchanged": true,
+    "inquiry_release_policy_preserved_and_rebound": true,
+    "independent_source_visual_live_review": "passed",
+    "test_submission_or_message": false
+  },
+  "remaining_handset_checks": ["Physical QR scan","Actual WhatsApp app handoff","WhatsApp preview/cache","Native flyer share sheet"],
+  "local_project": "C:/Users/sdrat/Fishing Academy",
+  "legacy_name_cleanup": "JLFA-LOCAL-PROJECT-IDENTITY-20261122-01, separately tracked; current program is Fishing Academy"
+}
