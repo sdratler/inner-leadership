@@ -11,7 +11,7 @@
 .audience { font-size:.95rem; font-weight:650; margin:0 0 24px; }
 .audience span { display:block; font-weight:400; color:#405a70; padding-top:4px; }
 .details { display:grid; gap:16px; padding:20px 0; border-top:1px solid #d7e0e5; }
-.details p { display:grid; grid-template-columns:49px 1fr; gap:14px; margin:0; font-size:.94rem; line-height:1.5; }
+.details p { display:grid; grid-template-columns:3.3em minmax(0,1fr); gap:14px; margin:0; font-size:.94rem; line-height:1.5; }
 .details p>span { color:#586c7c; font-size:.78rem; padding-top:3px; }
 .details strong { font-weight:650; }
 .actions { display:grid; gap:10px; }
