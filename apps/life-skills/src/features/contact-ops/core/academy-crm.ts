@@ -29,19 +29,38 @@ export type AcademyInitialization=z.infer<typeof academyInitializationSchema>;
 export const academyContactOriginSchema=z.object({kind:z.enum(["manual","inquiry"]),
  program:z.literal(ACADEMY_CRM_PROGRAM),initializationId:uuid,sourceApplicationId:uuid.nullable(),
  sourceDigest:digest.nullable(),language:z.enum(["en","he"]),...endpoint,createdAt:z.iso.datetime()}).strict()
- .refine(hasEndpoint).refine(value=>value.kind==="inquiry"?
-  value.sourceApplicationId!==null&&value.sourceDigest!==null:value.sourceApplicationId===null&&value.sourceDigest===null);
+ .refine(value=>value.kind==="inquiry"?
+  hasEndpoint(value)&&value.sourceApplicationId!==null&&value.sourceDigest!==null:
+  value.sourceApplicationId===null&&value.sourceDigest===null);
 export type AcademyContactOrigin=z.infer<typeof academyContactOriginSchema>;
+export const academyLeadSourceSchema=z.enum(["unknown","facebook","referral","website","other"]);
+export const academyConversationChannelSchema=z.enum(["unknown","whatsapp","messenger","phone","email","in_person","other"]);
+const reviewedPhone=z.string().refine(value=>normalizePhone(value)===value&&(!value.startsWith("+1")||/^\+1\d{10}$/.test(value)));
+// Owner labels describe a conversation. They do not establish a platform identity, permission or provider binding.
+export const academyTrackingShape={
+ leadSource:academyLeadSourceSchema.optional(),conversationChannel:academyConversationChannelSchema.optional(),
+ confirmedPhone:reviewedPhone.nullable().optional(),
+};
 export const academyAdminFieldsSchema=z.object({stage:z.string().trim().min(1).max(120),
  nextAction:z.string().max(500).nullable(),followUpDate:z.string().refine(dateOnly).nullable(),
- notes:z.string().max(5000)}).strict();
+ notes:z.string().max(5000),...academyTrackingShape}).strict();
 export const academyManualFieldsSchema=z.object({name:z.string().trim().min(1).max(120),
- language:z.enum(["en","he"]),relationship:z.enum(["guardian","adult_partner"]),...endpoint,...academyAdminFieldsSchema.shape}).strict().refine(hasEndpoint);
+ language:z.enum(["en","he"]),relationship:z.enum(["guardian","adult_partner"]),phone:reviewedPhone.nullable(),email,...academyAdminFieldsSchema.shape}).strict()
+ .refine(value=>value.confirmedPhone===undefined)
+ .refine(value=>hasEndpoint(value)||value.notes.trim().length>0,
+  {message:"A manual contact without a confirmed phone or email needs a conversation note",path:["notes"]});
+
+/** A name is only a collision warning for provisional leads. Never merge identities by name. */
+export function provisionalNameConflict(a:{name:string;phone:string|null;email:string|null},
+ b:{name:string;phone:string|null;email:string|null}):boolean {
+ const normalize=(name:string)=>name.normalize("NFKC").trim().replace(/\s+/g," ").toLowerCase();
+ return (!hasEndpoint(a)||!hasEndpoint(b))&&normalize(a.name)===normalize(b.name);
+}
 const command={operationId:uuid,expectedEpoch:academyEpoch};
 export const academyCrmCommandSchema=z.discriminatedUnion("action",[
  z.object({action:z.literal("create"),...command,fields:academyManualFieldsSchema}).strict(),
  z.object({action:z.literal("from_inquiry"),...command,sourceApplicationId:uuid,sourceDigest:digest,
-  fields:academyAdminFieldsSchema}).strict(),
+  differentAdultProof:digest.optional(),fields:academyAdminFieldsSchema}).strict(),
  z.object({action:z.literal("update"),...command,personId:uuid,
   expectedVersion:z.number().int().min(1).max(2147483645),fields:academyAdminFieldsSchema}).strict(),
  z.object({action:z.literal("note"),...command,personId:uuid,
@@ -53,7 +72,9 @@ export const academyCrmResultSchema=z.object({personId:uuid,version:z.number().i
 export type AcademyCrmResult=z.infer<typeof academyCrmResultSchema>;
 export const academyActivitySchema=z.object({operationId:uuid,kind:z.enum(["created","updated","note"]),
  recordedAt:z.iso.datetime(),recordedBy:uuid,text:z.string().max(5000),
- result:academyCrmResultSchema,fields:academyAdminFieldsSchema.optional()}).strict();
+ result:academyCrmResultSchema,fields:academyAdminFieldsSchema.optional(),differentAdult:z.object({
+  sourceApplicationId:uuid,sourceDigest:digest,compared:z.array(z.object({personId:uuid,version:z.number().int().positive()}).strict()).min(1)
+ }).strict().optional()}).strict();
 export type AcademyActivity=z.infer<typeof academyActivitySchema>;
 export type AcademyContact={personId:string;name:string;version:number;origin:AcademyContactOrigin;
  fields:z.infer<typeof academyAdminFieldsSchema>;outboundEligible:false};
