@@ -1,4 +1,5 @@
 import {z} from "zod";
+import {keysInterestSchema} from '../keys-trip/contract.ts';
 import {campaignAttributionSchema} from "./academy-campaign-contract.ts";
 import {academyIntakeSchema,academyDriveMinutes} from "./academy-intake.ts";
 import {academyRegistrationSchema,ACADEMY_REGISTRATION_VERSION} from './academy-registration.ts';
@@ -170,7 +171,9 @@ const legacyFloridaCurrentFieldsSchema=z.union([floridaParentApplicationFieldsSc
 export const floridaGroupApplicationFieldsSchema=z.union([legacyFloridaCurrentFieldsSchema,trip390CurrentInterestSchema]);
 export const floridaGroupApplicationReadableFieldsSchema=z.union([floridaParentApplicationFieldsSchema,floridaParentLegacyReadableFieldsSchema,floridaSchoolInquiryFieldsSchema,trip390InterestSchema]);
 
-export const groupApplicationFieldsSchema=z.union([floridaGroupApplicationReadableFieldsSchema,israelReadableFieldsSchema]);
+// Keys is a separately admitted, send-free endpoint. Read compatibility does
+// not admit its payload through the historical or monthly public transports.
+export const groupApplicationFieldsSchema=z.union([floridaGroupApplicationReadableFieldsSchema,israelReadableFieldsSchema,keysInterestSchema]);
 export const groupApplicationReplaySchema=z.object({operationId:z.string().uuid(),fields:groupApplicationFieldsSchema}).strict();
 export const israelGroupApplicationCommandSchema=z.object({operationId:z.string().uuid(),fields:currentGroupApplicationFieldsSchema}).strict();
 export const floridaGroupApplicationCommandSchema=z.object({operationId:z.string().uuid(),fields:floridaGroupApplicationFieldsSchema}).strict();

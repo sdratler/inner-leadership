@@ -13,6 +13,7 @@ import { trip390SkillFiles } from "./features/group-application/academy-trip390-
 import { publicGroupApplicationEnvironmentEnabled } from "./features/group-application/candidate.ts";
 import { canonicalForwardedRequest } from "./features/integration/canonical-forwarded-request.ts";
 import { seminarPublicPath } from "./features/seminar/config.ts";
+import { keysPublicPath } from "./features/keys-trip/config.ts";
 
 const intakeIdentityRoutes = new Set([
   "/api/identity/csrf", "/api/identity/login", "/api/identity/session",
@@ -112,7 +113,7 @@ export function proxy(request: NextRequest) {
   // These data pages/APIs depend on strict canonical HTTPS forwarding. Validate the original
   // transport before the request-header rewrite below can hide an invalid chain.
   // Forwarding never grants a session, role, case or audience permission.
-  if (privateDataPage || ["/api/goals", "/api/commitments", "/api/home-practice", "/api/checkins", "/api/updates", "/api/owner-digest", "/api/community-threads", "/api/provider-index", "/api/provider-referrals", "/api/private/contact-acquisition", "/api/private/acquisition/call-events", "/api/private/group-interest", "/api/private/group-placement", "/api/private/group-applications", "/api/private/group-applications/founder", "/api/private/bna-inquiries", "/api/private/bna-preferences", "/api/private/bna-optional-calendar", "/api/private/bna-mailbox-replies", "/api/private/owner-305-conversations"].includes(pathname)||/^\/api\/(?:notifications|marketing)(?:\/|$)/.test(pathname)) {
+  if (privateDataPage || ["/api/private/keys-interest", "/api/private/keys-chat"].includes(pathname) || ["/api/goals", "/api/commitments", "/api/home-practice", "/api/checkins", "/api/updates", "/api/owner-digest", "/api/community-threads", "/api/provider-index", "/api/provider-referrals", "/api/private/contact-acquisition", "/api/private/acquisition/call-events", "/api/private/group-interest", "/api/private/group-placement", "/api/private/group-applications", "/api/private/group-applications/founder", "/api/private/bna-inquiries", "/api/private/bna-preferences", "/api/private/bna-optional-calendar", "/api/private/bna-mailbox-replies", "/api/private/owner-305-conversations"].includes(pathname)||/^\/api\/(?:notifications|marketing)(?:\/|$)/.test(pathname)) {
     try {
       if (request.nextUrl.hash || requestHost !== canonicalOrigin.host.toLowerCase()) throw new Error("invalid transport");
       if (request.headers.has("x-forwarded-proto") || request.headers.has("x-forwarded-host")) {
@@ -134,7 +135,9 @@ export function proxy(request: NextRequest) {
     return decorate(NextResponse.next(), headers);
   }
   const intakePath = intakeReleasePath(pathname, process.env);
-  const groupApplicationPath=groupApplicationReleasePath(pathname,process.env) || seminarPublicPath(pathname,request.method);
+  const keysIntakePath = pathname === "/api/public/keys-interest" && ["GET", "POST"].includes(request.method) &&
+    process.env.LS_KEYS_INTEREST_ENABLED === "true" && publicGroupApplicationEnvironmentEnabled(process.env);
+  const groupApplicationPath=groupApplicationReleasePath(pathname,process.env) || seminarPublicPath(pathname,request.method) || keysPublicPath(pathname,request.method) || keysIntakePath;
   const ownerPreviewPath = /^\/(he|en)\/preview\/intake\/?$/.test(pathname) || pathname === "/api/intake-preview";
   if (ownerPreviewPath && !ownerPreviewConfig(process.env)) return decorate(new NextResponse(null,{status:404}),headers);
   if (intakePath && ["/auth/invite", "/auth/reset"].includes(pathname)) {
@@ -223,6 +226,12 @@ export function proxy(request: NextRequest) {
       query[key] = values.length === 1 ? values[0] : undefined;
     }
     inbound.set("x-ls-practitioner-return", practitionerReturnPath(locale, page, query));
+  }
+  const keysOwnerPage = /^\/(he|en)\/app\/keys\/?$/.exec(pathname);
+  if (keysOwnerPage) {
+    const references = request.nextUrl.searchParams.getAll("reference");
+    const reference = references.length === 1 && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(references[0]!) ? references[0]!.toLowerCase() : "";
+    inbound.set("x-ls-practitioner-return", `/${keysOwnerPage[1]}/app/keys${reference ? `?reference=${reference}` : ""}`);
   }
   const practitionerDetail=/^\/(he|en)\/app\/(?:marketing|feedback|reports|forms|resources|group-applications(?:\/journey-preview)?|settings(?:\/[^/]+)?|cases\/[^/]+\/sessions(?:\/[^/]+)?)$/.exec(pathname)
     ??(groupInterestCandidateEnabled()?/^\/(he|en)\/app\/group-interest$/.exec(pathname):null);
