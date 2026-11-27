@@ -106,7 +106,8 @@ grant to stop the separate chat connection. Preserve recorded inquiry/consent
 and followup history. Do not modify versioned historical contracts to advertise
 a future trip: introduce a new version and keep the old decoder available.
 
-Use the phone call-to-action in the prepared marketing copy until the actual
-public form has passed its live save/readback check. Exact rental cost, mileage,
-cargo space, pickup route, bridge access and minyan remain operational questions;
-they are not implied by collecting nonbinding interest.
+Use the WhatsApp call-to-action (https://wa.me/13054278909) in the prepared
+marketing copy until the actual public form has passed its live save/readback
+check. Exact rental cost, mileage, cargo space, pickup route, bridge access and
+minyan remain operational questions; they are not implied by collecting
+nonbinding interest.
