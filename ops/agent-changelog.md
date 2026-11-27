@@ -18,7 +18,7 @@ JLFA-TRIP-CALENDAR-CREDITS-BRAINSTORM-20261127-01 / RELEASE-03.
 Production activation, live feature availability and release receipts are
 recorded under RELEASE-03 in the current Fishing change log and continuation.
 
-## 27 November 2026 — Individual-trip package implemented locally
+## 27 November 2026 — Original local implementation checkpoint
 
 Received and hash-verified HANDOVER-01 for
 JLFA-TRIP-CALENDAR-CREDITS-BRAINSTORM-20261127-01. DECISIONS-04 and scoped

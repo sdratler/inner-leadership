@@ -1,4 +1,4 @@
-# Individual-trip implementation
+# Individual-trip implementation handover
 
 Same source task `JLFA-TRIP-CALENDAR-CREDITS-BRAINSTORM-20261127-01`,
 HANDOVER-01 / controlling DECISIONS-04 plus scoped DECISIONS-05. Operator requested implementation on
@@ -31,7 +31,7 @@ must not look like a confirmed seat. Private parent/owner screens show only thei
 authorized real state. Desktop/mobile/RTL, keyboard, recovery and empty/expired
 states require actual inspected renders, separately from tests.
 
-Current status: local implementation and review complete; shared integration /
+At the original local handover, implementation and review were complete; shared integration /
 release OPEN. Full335file/4,682test regression passed with two workers. Actual
 native-service/PGlite browser harness passed23states; source/provider/handset
 acceptance remains separate. See [exact local checks](local-checks.md),

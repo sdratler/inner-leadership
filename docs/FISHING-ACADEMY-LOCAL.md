@@ -61,36 +61,33 @@ or real provider connection. Its private images/report are kept outside Git.
 
 ## Adoption and release
 
-Existing integration/release ownership is preserved. The feature-local schema
-proposal consists of `schema.sql`, `registration-schema.sql`, then
-`mail-schema.sql`. They seed no customers or jobs. The shared integrator must
-assign the additive migration/checksum and adopt it through the existing release
-procedure; this package has not applied production DDL or edited the protected
-migration/control manifest. PR244 also proposes a historical migration, so do
-not copy its numbering or broadly merge its monthly-billing branch.
+RELEASE-03 integrates the November handover in PR 252. The public landing uses
+the owner-supplied November 22 Bass Fishing Seminar photograph. Both locales
+retain the full scene and use accessible text for the Academy title and motto.
 
-All feature flags default off. `env.example` in the feature folder documents
-names only. Keep actual secrets in the existing provider configuration; do not
-copy all Railway keys into a new project file or commit an environment file.
-The runtime pins its Fishing workspace and exact owner account independently
-of other program identities.
+The application migration is `migrations/0153_ls_individual_fishing_trips.sql`.
+Use `scripts/release-individual-trips.ts` with the existing Fishing service's
+verified database connection, exact release identity and matching backup and
+isolated restore proof. The operator supports the complete and selective prior
+migration histories. It verifies the original Fishing owner, takes the shared
+migration lock, and records only the trip migration. A repeat execution checks
+the installed schema.
 
-Registration/operational sending admissions currently remain `null`. They need
-the existing release owner's exact purpose, origin and original database-target
-binding before activation. Configured Gmail credentials alone grant no new send
-purpose. The Stripe lookup port is read-only and requires a dedicated restricted
-key, exact account/mode admission and invoice metadata binding:
-`fishing_workspace_id`, `fishing_household_id`, `fishing_offer_id`,
-`fishing_quote_id`. Runtime provider binding remains held; no real invoices or
-charges were created during implementation.
+The existing Railway service holds the secrets. The feature's `env.example`
+lists the names for public access, native registration, transactional mail,
+read-only Stripe lookup and the private Site connection. The local checkout
+needs only synthetic configuration for development and tests. Each mail and
+invoice purpose binds its own provider to the original database pool and CA.
 
-The owner-chat server adapter is implemented and tested synthetically; the
-previous stateless regular-chat Site is not thereby connected. Its actual
-caller binding/read-edit-reread remains a separate acceptance step.
+The private Fishing chat Site pairs with a current, authenticated owner
+session. Approve or revoke its short-lived connection in the owner workspace.
+Actual dates, transport and pickup arrangements belong to the owner when
+creating a departure. A request for possible dates is free.
 
-The public photo projection in `public-photo.ts` is deliberately unadmitted.
-The source references `1000281043.jpg`; generated flyers and collages do not
-replace those genuine original bytes. Bind the actual original, SHA256,
-dimensions and source receipt before enabling public landing/image admission.
-Then inspect the actual WhatsApp chat/Status preview and tap-through on a
-physical phone. Browser metadata or emulation alone cannot establish that result.
+Release-03 receipts belong in the existing Fishing change log and continuation.
+The project keeps the original photograph, account and recovery material, and
+mobile acceptance evidence under ignored `.private/trips-20261127`. The QR and
+screenshot handoff is under its `live` subfolder after public verification.
+Check WhatsApp preview, tap-through and the device share sheet on a handset.
+
+[Fishing change log](https://docs.google.com/document/d/1PExKb2PwAFAHlBtgmQ9RU-JdfTfQ-jTk41SpWetn7w8/edit?tab=t.smqvpaadni43) · [Fishing continuation](https://docs.google.com/document/d/1q-GDEaL9JmmVfy1meQrGvu3V4H2XNJ4jp2b17ZrP6bE/edit?tab=t.5ucllbuab4bn)
