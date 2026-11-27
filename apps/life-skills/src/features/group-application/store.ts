@@ -1,4 +1,5 @@
 import "server-only";
+import {isKeysInterest} from '../keys-trip/contract.ts';
 import {campaignAttributionSchema,type CampaignAttribution} from "./academy-campaign-contract.ts";
 import {randomUUID} from "node:crypto";
 import {z} from "zod";
@@ -36,8 +37,8 @@ export type GroupApplicationReviewPage={items:GroupApplicationRecord[];nextCurso
 export class PublicGroupApplicationStore{
  constructor(private readonly db:IdentityStore,private readonly workspaceId:WorkspaceId,private readonly ring:Keyring,
   private readonly digestKey:string,private readonly clock:IdentityClock=systemClock,private readonly emailQueueEnabled=false,private readonly founder?:AcademyFounderStore,
-  private readonly reviewProgram:FloridaProgramId="sunday_fishing_academy",private readonly ownerNotificationsEnabled=false){floridaProgramIdSchema.parse(reviewProgram);}
- private inOwnerScope(item:GroupApplicationRecord){return isTrip390Interest(item.fields)?this.reviewProgram==='sunday_fishing_academy':isFloridaGroupApplication(item.fields)&&item.fields.programId===this.reviewProgram;}
+  private readonly reviewProgram:FloridaProgramId="sunday_fishing_academy",private readonly ownerNotificationsEnabled=false,private readonly keysOwnerAccountId=''){floridaProgramIdSchema.parse(reviewProgram);}
+ private inOwnerScope(item:GroupApplicationRecord,actor:Actor){if(isKeysInterest(item.fields))return this.reviewProgram==='sunday_fishing_academy'&&actor.id===this.keysOwnerAccountId;return isTrip390Interest(item.fields)?this.reviewProgram==='sunday_fishing_academy':isFloridaGroupApplication(item.fields)&&item.fields.programId===this.reviewProgram;}
  private cursorAad(actor:Actor){return `ls_service_interest/review_cursor/v1/${this.workspaceId}/${actor.id}/${this.reviewProgram}`;}
  private searchDigest(search:string){return privateDigest({domain:"public-group-review-search/v1",search},this.digestKey);}
  private readCursor(actor:Actor,cursor:string,search:string):string{
@@ -49,7 +50,7 @@ export class PublicGroupApplicationStore{
  }
  private nextCursor(actor:Actor,id:string,search:string){return Buffer.from(seal(JSON.stringify({id,searchDigest:this.searchDigest(search)}),this.cursorAad(actor),this.ring)).toString("base64url");}
  private requestDigest(fields:GroupApplicationFields){return groupApplicationRequestDigest(this.workspaceId,fields,this.digestKey);}
- private contactDigest(fields:GroupApplicationFields){return isTrip390Interest(fields)?
+ private contactDigest(fields:GroupApplicationFields){return isTrip390Interest(fields)||isKeysInterest(fields)?
   privateDigest({domain:"public-group-application-contact/v1",workspace:this.workspaceId,contact:fields.email},this.digestKey):isFloridaGroupApplication(fields)?
   privateDigest({domain:"public-group-application-contact/v1",workspace:this.workspaceId,contact:fields.contact},this.digestKey):
   privateDigest({domain:"public-group-application-contact/v1",workspace:this.workspaceId,phone:fields.parentPhone},this.digestKey);}
@@ -153,7 +154,7 @@ export class PublicGroupApplicationStore{
    while(scanned<Math.min(rows.length,200)&&items.length<50){
     const item=this.decode(rows[scanned++]!);
     // Scope is trusted server composition, never a browser program filter.
-    if(this.inOwnerScope(item)&&(!needle||JSON.stringify({id:item.id,fields:item.fields}).normalize("NFKC").toLocaleLowerCase().includes(needle)))items.push(item);
+    if(this.inOwnerScope(item,actor)&&(!needle||JSON.stringify({id:item.id,fields:item.fields}).normalize("NFKC").toLocaleLowerCase().includes(needle)))items.push(item);
    }
    // A scan may end on a retired row. Do not expose that row's identifier as
    // pagination metadata; bind the opaque cursor to this owner/program/search.
@@ -169,6 +170,6 @@ export class PublicGroupApplicationStore{
   requirePractitioner(await freshActor(tx,actor,this.clock.now()));
   const rows=await tx.query<Row>(select+" WHERE workspace_id=$1 AND id=$2",[this.workspaceId,id]);
   if(rows.length===0)throw new AppError("NOT_FOUND");if(rows.length!==1)throw new AppError("UNAVAILABLE");const item=this.decode(rows[0]!);
-  if(!this.inOwnerScope(item))throw new AppError("NOT_FOUND");return item;
+  if(!this.inOwnerScope(item,actor))throw new AppError("NOT_FOUND");return item;
  }
 }

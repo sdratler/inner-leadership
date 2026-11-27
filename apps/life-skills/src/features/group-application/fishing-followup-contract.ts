@@ -1,4 +1,5 @@
 import {z} from "zod";
+import {keysContactCorrectionSchema} from '../keys-trip/contract.ts';
 import {inquirySourceCorrectionSchema} from "../inquiry-source-correction.ts";
 
 export const fishingFollowupCommandSchema=z.object({
@@ -7,6 +8,7 @@ export const fishingFollowupCommandSchema=z.object({
  note:z.string().trim().min(1).max(5000),nextAction:z.string().trim().max(500).nullable(),
  dueDate:z.iso.date().nullable(),waitingCondition:z.string().trim().max(500).nullable(),
  sourceCorrection:inquirySourceCorrectionSchema.optional(),
+ keysContactCorrection:keysContactCorrectionSchema.optional(),
 }).strict().superRefine((value,ctx)=>{
  if(Boolean(value.nextAction)!==Boolean(value.dueDate))
   ctx.addIssue({code:"custom",path:["dueDate"],message:"dated action required"});
@@ -20,6 +22,7 @@ export const fishingFollowupStateSchema=z.object({
  nextAction:z.string().max(500).nullable(),dueDate:z.iso.date().nullable(),
  waitingCondition:z.string().max(500).nullable(),
  sourceCorrection:inquirySourceCorrectionSchema.optional(),
+ keysContactCorrection:keysContactCorrectionSchema.optional(),
 }).strict().superRefine((value,ctx)=>{
  if(Boolean(value.nextAction)!==Boolean(value.dueDate))
   ctx.addIssue({code:"custom",path:["dueDate"],message:"dated action required"});
