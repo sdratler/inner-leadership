@@ -8,7 +8,7 @@ import { individualTripLandingMetadata, tripLandingUrls, TRIP_LOCKED_LOGO, type 
 // owner photograph is asserted by these pure metadata and markup tests.
 const origin = 'https://bneineviimacademy.org';
 const photo = { src: origin + '/groups/academy/photos/synthetic-recent-bass-fixture.jpg', width: 1200, height: 1600, alt: 'Synthetic approved-photo input fixture, not an image approval' };
-const input = (locale: 'en' | 'he' = 'en'): TripLandingMetadataInput => ({ locale, publicUrl: origin + (locale === 'he' ? '/he/fishing-academy/trips' : '/fishing-academy/trips'), photo: { ...photo } });
+const input = (locale: 'en' | 'he' = 'en'): TripLandingMetadataInput => ({ locale, publicUrl: origin + (locale === 'he' ? '/he/fishing-academy/trips' : '/fishing-academy/trips'), photo: { ...photo },signupOpen:true });
 
 describe('current-trip photo-led public metadata', () => {
   it.each(['en', 'he'] as const)('uses the supplied photo as the %s preview and keeps the locked logo exclusively as favicon', locale => {
@@ -79,12 +79,13 @@ describe('current-trip photo-led public metadata', () => {
   });
 });
 
-describe('unmounted candidate landing markup', () => {
+describe('current-trip landing markup', () => {
   it.each(['en', 'he'] as const)('keeps the exact supplied photo, truthful provenance and free-date action in %s', locale => {
     const value = input(locale), markup = renderToStaticMarkup(createElement(IndividualTripLanding, { ...value, photo: { ...photo, src: '/groups/academy/photos/synthetic-recent-bass-fixture.jpg' } }));
     expect(markup).toContain(`lang="${locale}"`); expect(markup).toContain(`dir="${locale === 'he' ? 'rtl' : 'ltr'}"`);
     expect(markup).toContain('src="/groups/academy/photos/synthetic-recent-bass-fixture.jpg"'); expect(markup).toContain('width="1200" height="1600"');
-    expect(markup).toContain('Bass Fishing Seminar / Sunday 11/22/26 • Boca Raton'); expect(markup).toContain('Torah • Fishing • Self-Governance');
+    expect(markup).toContain('Bass Fishing Seminar'); expect(markup).toContain('Sunday Nov 22, 2026'); expect(markup).toContain('Boca Raton'); expect(markup).toContain('dateTime="2026-11-22"');
+    expect(markup).toContain('Jewish Leadership</span><span>Fishing Academy'); expect(markup).toContain('Torah Leadership'); expect(markup).toContain('Self-Governance'); expect(markup).toContain('Torah • Fishing • Self-Governance');
     expect(markup).toContain(`href="/${locale}/trips"`); expect(markup).toContain('https://wa.me/13054278909?text=');
     expect(markup).not.toContain('tel:'); expect(markup).not.toContain('/_next/image'); expect(markup).not.toMatch(/\$|USD|₪|650|305-491-6674/);
     expect(markup).toContain(locale === 'he' ? 'במהלך פסח' : 'during Pesach'); expect(markup).toContain(locale === 'he' ? 'לא אישור מקום' : 'not a confirmed place');
@@ -92,5 +93,21 @@ describe('unmounted candidate landing markup', () => {
   });
   it('requires an explicit photo prop and never manufactures a hero fallback', () => {
     expect(() => renderToStaticMarkup(createElement(IndividualTripLanding, { ...input(), photo: undefined } as never))).toThrow();
+  });
+  it.each(['en','he'] as const)('held signup gives all three %s actions actual WhatsApp drafts with no latent signup promises',locale=>{
+    const value={...input(locale),signupOpen:false},markup=renderToStaticMarkup(createElement(IndividualTripLanding,value));
+    expect(markup).not.toContain(`href="/${locale}/trips"`);
+    expect(markup).not.toMatch(/Free adult account|Free signup|register your interest|same account|חשבון חינם להורה|באותו חשבון/);
+    const links=[...markup.matchAll(/<a[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>/g)];
+    const actions=links.filter(([,href,text])=>href!.startsWith('https://wa.me/13054278909?text=')&&/WhatsApp|וואטסאפ/.test(text!));
+    expect(actions.length).toBeGreaterThanOrEqual(4);
+    expect(markup).toContain(encodeURIComponent(locale==='he'?'כולל תאריכים אפשריים במהלך פסח':'including possible dates during Pesach'));
+    const metadata=individualTripLandingMetadata(value);
+    expect(JSON.stringify(metadata)).not.toMatch(/for free|Free signup|register your|ללא עלות|הירשמו/);
+    expect(metadata.openGraph).toMatchObject({images:[{url:photo.src}]});
+  });
+  it('defaults to contact when signup capability was not supplied',()=>{
+    const {signupOpen:_,...value}=input();void _;
+    expect(renderToStaticMarkup(createElement(IndividualTripLanding,value))).not.toContain('href="/en/trips"');
   });
 });

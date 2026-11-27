@@ -7,6 +7,7 @@ import type { Locale } from "../../lib/locale.ts";
 import { publicAuthAction, sessionInfo, takeAuthTokenFragment } from "./client.ts";
 import { loginReturnDestination } from "./login-return.ts";
 import styles from "./login-client.module.css";
+import { isTripSiteCaller,tripSiteCallerFromHash,tripSiteOwnerLoginHref,tripSiteOwnerReturn } from '../individual-trips/site-chat-contract.ts';
 
 type Mode = "login" | "forgot" | "invite" | "reset";
 type Role = Awaited<ReturnType<typeof sessionInfo>>["role"];
@@ -77,9 +78,11 @@ export function LoginClient({ locale }: { locale: Locale }) {
   const router = useRouter();
   const query = useSearchParams();
   // Keep only in-memory entry context when the secret fragment is removed.
-  const [entry]=useState(()=>({mode:query.get('mode'),next:query.get('next')}));
+  const [entry]=useState(()=>({mode:query.get('mode'),next:query.get('next'),chatCaller:query.get('chatCaller')}));
   const requested = entry.mode;
   const requestedReturn = entry.next;
+  const callerRef=useRef<string|null>(isTripSiteCaller(entry.chatCaller)?entry.chatCaller:null);
+  const [siteCaller,setSiteCaller]=useState<string|null>(isTripSiteCaller(entry.chatCaller)?entry.chatCaller:null);
   const fishingEntry=requestedReturn===`/${locale}/trips`||requestedReturn===`/${locale}/trips/owner`;
   const initialMode: Mode = requested === "invite" || requested === "reset" ? requested : "login";
   const [mode, setMode] = useState<Mode>(initialMode);
@@ -93,6 +96,10 @@ export function LoginClient({ locale }: { locale: Locale }) {
   const t = copy[locale];
 
   useEffect(() => {
+    if(requestedReturn===`/${locale}/trips/owner`&&!callerRef.current){
+      const inherited=tripSiteCallerFromHash(window.location.hash);
+      if(inherited){callerRef.current=inherited;void Promise.resolve().then(()=>setSiteCaller(inherited));}
+    }
     if (initialMode === "invite" || initialMode === "reset") {
       if(!token.current)token.current = takeAuthTokenFragment(window.location, window.history);
       setTokenReady(Boolean(token.current));
@@ -100,10 +107,10 @@ export function LoginClient({ locale }: { locale: Locale }) {
       return;
     }
     void sessionInfo().then(current => {
-      const destination = loginReturnDestination(locale, current.role, requestedReturn);
+      const destination = tripSiteOwnerReturn(locale,current.role,loginReturnDestination(locale, current.role, requestedReturn),callerRef.current);
       if (destination) router.replace(destination);
     }).catch(() => undefined);
-  }, [initialMode, locale, requestedReturn, router, t.token]);
+  }, [initialMode, locale, requestedReturn, router, t.token,entry.chatCaller]);
 
   async function login(form: FormData) {
     if (busy) return;
@@ -111,7 +118,7 @@ export function LoginClient({ locale }: { locale: Locale }) {
     try {
       await publicAuthAction("login", { email: form.get("email"), password: form.get("password") });
       const current = await sessionInfo();
-      const destination = loginReturnDestination(locale, current.role, requestedReturn);
+      const destination = tripSiteOwnerReturn(locale,current.role,loginReturnDestination(locale, current.role, requestedReturn),callerRef.current);
       if (!destination) { setStatus(t.unsupported); return; }
       router.replace(destination); router.refresh();
     } catch (error) {
@@ -138,7 +145,8 @@ export function LoginClient({ locale }: { locale: Locale }) {
     try {
       await publicAuthAction(mode === "invite" ? "invites/accept" : "reset/complete", { token: token.current, password });
       token.current = null; setTokenReady(false); setPasswordVisible(false); setMode("login"); setStatus(t.completed);
-      window.history.replaceState(null, "", `/${locale}/login${fishingEntry?'?next='+encodeURIComponent(requestedReturn!):''}`);
+      window.history.replaceState(null, "", fishingEntry&&requestedReturn===`/${locale}/trips/owner`&&isTripSiteCaller(siteCaller)
+        ?tripSiteOwnerLoginHref(locale,siteCaller):`/${locale}/login${fishingEntry?'?next='+encodeURIComponent(requestedReturn!):''}`);
     } catch { setStatus(t.token); }
     finally { setBusy(false); }
   }
@@ -172,7 +180,8 @@ export function LoginClient({ locale }: { locale: Locale }) {
         <button className={styles.secondary} disabled={busy || !hydrated} type="button" onClick={() => { setPasswordVisible(false); setMode("forgot"); setStatus(""); }}>{t.forgot}</button>
       </form>}
       <p className={styles.status} role="status" aria-live="polite">{status}</p>
-      {mode !== "invite" && mode !== "reset" && <Link className={styles.language} href={`/${language}/login${fishingEntry?'?next='+encodeURIComponent(`/${language}/trips${requestedReturn!.endsWith('/owner')?'/owner':''}`):''}`}>{language === "he" ? "עברית" : "English"}</Link>}
+      {mode !== "invite" && mode !== "reset" && <Link className={styles.language} href={fishingEntry&&requestedReturn===`/${locale}/trips/owner`&&isTripSiteCaller(siteCaller)
+        ?tripSiteOwnerLoginHref(language,siteCaller):`/${language}/login${fishingEntry?'?next='+encodeURIComponent(`/${language}/trips${requestedReturn!.endsWith('/owner')?'/owner':''}`):''}`}>{language === "he" ? "עברית" : "English"}</Link>}
     </section>
   </main>;
 }

@@ -286,5 +286,9 @@
   {
     "name": "0152_ls_inquiry_email_control_outbox.sql",
     "sha256": "5b1a719efc48dd1ebf62d0b8fc4973a749354c7b3ad61b4397dc66734d6cb3a8"
+  },
+  {
+    "name": "0153_ls_individual_fishing_trips.sql",
+    "sha256": "9b2f2275ef99791c1fd6a24a617f8cc252208016ca0f6d001e9c30d423257a1d"
   }
 ]

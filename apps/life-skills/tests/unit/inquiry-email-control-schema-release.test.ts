@@ -58,8 +58,8 @@ describe('selected verification schema',()=>{
  });
  it('rejects reordered, missing, extra, or altered installed files',()=>{
   expect(()=>inquiryEmailSchemaPlan([...files].reverse(),history(67),0)).toThrow();
-  expect(()=>inquiryEmailSchemaPlan(files.slice(0,-1),history(67),0)).toThrow();
-  expect(()=>inquiryEmailSchemaPlan([...files,{name:'0153_fixture.sql',sql:'select 1',checksum:h('select 1')}],history(67),0)).toThrow();
+  expect(()=>inquiryEmailSchemaPlan(files.filter(f=>f.name!==selected[1].name),history(67),0)).toThrow();
+  expect(()=>inquiryEmailSchemaPlan([...files,{name:'0154_fixture.sql',sql:'select 1',checksum:h('select 1')}],history(67),0)).toThrow();
   const drift=history(70);drift[68]!.checksum=h('different applied bytes');
   expect(()=>inquiryEmailSchemaPlan(files,drift,0)).toThrow();
  });

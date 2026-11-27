@@ -7,6 +7,9 @@ export interface IdentityStore {
   /** Server-owned capability bound to original initialized driver provenance.
    * Absence means no target-binding claim; callers must not infer it from env. */
   bindDatabaseTarget?(expectedUrl:string):IdentityStore|null;
+  /** Explicit Fishing release provenance. Unlike the rehearsal capability,
+   * requires the original pool's verified TLS settings and exact target. */
+  bindFishingDatabaseTarget?(expectedUrl:string,expectedCaSha256:string):IdentityStore|null;
 }
 export async function one<T extends object>(tx: SqlSession, statement: string, values: readonly unknown[] = []): Promise<T | null> {
   const rows = await tx.query<T>(statement, values);

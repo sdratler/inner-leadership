@@ -6,17 +6,25 @@
 .brand strong { display:block; max-width:31ch; font-size:.92rem; line-height:1.35; font-weight:750; }
 .brand span { display:block; font-size:.73rem; color:#657785; margin-top:4px; letter-spacing:.08em; }
 .headerContact { display:flex; align-items:center; gap:10px; min-height:44px; color:#173b59; font-size:.83rem; font-weight:650; text-decoration:none; }
-.hero { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.08fr); grid-template-areas:"intro photo" "actions photo"; gap:8px 48px; padding-block:54px; align-items:start; }
+.hero { display:grid; grid-template-columns:minmax(0,2.25fr) minmax(0,1fr); grid-template-areas:"photo intro" "photo actions"; grid-template-rows:auto 1fr; gap:0 32px; padding-block:34px 46px; align-items:start; }
 .intro { grid-area:intro; padding-top:24px; }
 .eyebrow { color:#805c17; font-size:.73rem; font-weight:750; letter-spacing:.1em; text-transform:uppercase; margin:0 0 18px; }
 .page h1,.page h2 { font-family:Georgia,"Times New Roman",serif; font-weight:550; letter-spacing:-.035em; color:#132e46; text-wrap:balance; }
-.page h1 { font-size:clamp(2.5rem,4.7vw,4.05rem); line-height:1.05; margin:0 0 22px; max-width:12ch; }
+.intro h2 { font-size:clamp(1.9rem,2.7vw,2.65rem); line-height:1.12; margin:0 0 20px; max-width:14ch; }
 .pillars { display:inline-block; color:#173b59; font-size:.78rem; font-weight:650; padding-block:0 14px; margin:0; line-height:1.6; letter-spacing:.015em; }
 .lead { font-size:1rem; color:#526676; margin:0; max-width:45ch; }
 .photo { grid-area:photo; min-width:0; margin:0; }
+.photoScene { position:relative; isolation:isolate; display:flex; flex-direction:column; container-type:inline-size; background:#173b59; }
+.photoScene::after { content:""; position:absolute; inset:0; z-index:0; pointer-events:none; background:linear-gradient(180deg,rgba(4,21,33,.67),rgba(4,21,33,.28) 17%,transparent 33%,transparent 76%,rgba(4,21,33,.7)); }
 .photo img { display:block; width:100%; height:auto; object-fit:contain; background:#f2f5f6; }
-.photo figcaption { color:#647685; font-size:.7rem; margin-top:10px; line-height:1.6; text-align:start; }
-.heroActions { grid-area:actions; padding-top:22px; max-width:425px; }
+.page .photoTitle { position:absolute; z-index:1; inset-block-start:5%; inset-inline:5%; margin:0; color:white; font-family:Georgia,"Times New Roman",serif; font-size:clamp(1.45rem,3.2vw,3rem); font-weight:550; line-height:1.06; letter-spacing:-.025em; text-shadow:0 2px 12px rgba(0,0,0,.25); text-align:center; }
+.photoTitle { order:-1; }
+.photoTitle span { display:block; }
+.photoMotto { position:absolute; z-index:1; order:1; inset-inline:4%; inset-block-end:4%; color:white; font-size:clamp(.7rem,1.1vw,.95rem); line-height:1.4; font-weight:650; letter-spacing:.02em; text-align:center; margin:0; text-shadow:0 1px 8px rgba(0,0,0,.8); }
+.photoMotto span { color:#edc961; padding-inline:.2em; }
+.photo figcaption { color:#647685; font-size:.75rem; margin-top:9px; line-height:1.6; text-align:center; }
+.photo figcaption span { padding-inline:.25em; }
+.heroActions { grid-area:actions; padding-top:24px; max-width:425px; }
 .primary,.secondary { display:inline-flex; align-items:center; justify-content:center; gap:14px; min-height:52px; padding:13px 22px; border:1px solid transparent; border-radius:7px; font:inherit; font-size:.92rem; font-weight:750; line-height:1.5; text-decoration:none; cursor:pointer; text-align:center; }
 .primary { background:#edc961; color:#102d47; width:100%; }
 .primary:hover { background:#e1b84c; color:#102d47; }
@@ -56,11 +64,18 @@
 .footer a { display:flex; gap:12px; align-items:center; min-height:44px; font-size:.93rem; color:#173b59; font-weight:750; text-underline-offset:4px; }
 .page[dir="rtl"] { font-family:"Heebo",Arial,sans-serif; }
 .page[dir="rtl"] h1,.page[dir="rtl"] h2 { font-family:"Heebo",Arial,sans-serif; letter-spacing:-.025em; font-weight:700; }
-.page[dir="rtl"] h1 { line-height:1.17; max-width:13ch; }
+.page[dir="rtl"] .photoTitle { font-family:Georgia,"Times New Roman",serif; font-weight:550; letter-spacing:-.025em; }
 @media(max-width:760px) {
   .header { gap:12px; padding-block:14px; }.brand { gap:12px; }.brand img { width:64px; }.brand strong { font-size:.81rem; }.brand span { font-size:.69rem; }.headerContact { font-size:.74rem; max-width:14ch; text-align:end; }
-  .hero { grid-template-columns:minmax(0,1fr); grid-template-areas:"intro" "photo" "actions"; gap:22px; padding-block:28px 38px; }.intro { padding:0; }.eyebrow { margin-bottom:12px; }.page h1 { font-size:clamp(2.2rem,8.8vw,3.5rem); max-width:17ch; margin-bottom:18px; }.pillars { font-size:.74rem; padding-bottom:12px; }.lead { font-size:.94rem; max-width:54ch; }.photo figcaption { font-size:.66rem; }.heroActions { padding-top:0; max-width:none; }.expectation { max-width:65ch; }
+  .hero { grid-template-columns:minmax(0,1fr); grid-template-areas:"photo" "actions" "intro"; gap:23px; padding-block:22px 34px; }.intro { padding:0; }.eyebrow { margin-bottom:10px; }.intro h2 { font-size:clamp(1.8rem,7vw,2.7rem); max-width:21ch; margin-bottom:12px; }.pillars { font-size:.74rem; padding-bottom:10px; }.lead { font-size:.94rem; max-width:54ch; }.page .photoTitle { font-size:clamp(1.32rem,6vw,2.7rem); }.photoMotto { font-size:clamp(.68rem,2.7vw,.95rem); }.heroActions { padding-top:0; max-width:none; }.expectation { max-width:65ch; }
   .section { padding-block:36px; }.gains { grid-template-columns:repeat(2,minmax(0,1fr)); gap:25px; }.gains p { font-size:.82rem; }.learning { grid-template-columns:1fr; gap:24px; padding:25px; margin-bottom:36px; }.learning ul { gap:12px 16px; }.plan .primary { width:100%; min-width:0; }.page h2 { font-size:1.8rem; }
+}
+/* Enlarged text or an unusually narrow viewport moves the HTML out of the
+   scene. The complete photograph stays visible between readable text bands. */
+@container(max-width:12rem) {
+  .page .photoTitle { position:relative; inset:auto; padding:16px 12px; font-size:1.4rem; background:#173b59; }
+  .photoMotto { position:relative; inset:auto; padding:14px 12px; font-size:.8rem; background:#173b59; }
+  .photoScene img { position:relative; z-index:1; }
 }
 @media(max-width:380px) {
   .shell { width:calc(100% - 32px); }.brand img { width:54px; }.brand strong { font-size:.74rem; }.brand span { font-size:.65rem; }.headerContact { font-size:.7rem; max-width:12ch; }.gains { grid-template-columns:1fr; gap:22px; }.gains p { max-width:55ch; }.learning { padding:22px 18px; }.learning ul { grid-template-columns:1fr; gap:10px; }.shareActions>* { flex:1 1 130px; min-width:0; }.pillars { font-size:.68rem; }

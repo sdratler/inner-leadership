@@ -31,8 +31,10 @@ The bounded candidate lives in `apps/life-skills/src/features/individual-trips`:
   request-bound jobs, terminal uncertainty and no historical queue drain.
 - Signed, expiring owner-chat grants calling the same native services with exact
   caller, durable nonce and in-transaction grant/session revocation checks.
-- Photo-led public landing component/initial metadata for
-  `/{locale}/florida/trips`, held until the exact selected original is available.
+- Photo-led public landing and share metadata for `/{locale}/florida/trips`.
+  RELEASE-03 uses the owner-supplied Bass Fishing Seminar photo. The local
+  original and the publication receipt are private. The stripped export
+  is served from `/trips/fishing-academy-bass-20261122.jpg`.
 
 The main Academy page, original inquiry and historical `/fish` seminar remain
 their own routes. No legacy monthly offer, old consent, customer import or BNA

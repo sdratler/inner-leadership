@@ -1,10 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { TRIP_LANDING_COPY, TRIP_LOCKED_LOGO, tripLandingUrls, type ApprovedTripPhoto, type TripLandingLocale } from './metadata.ts';
+import { tripLandingCopy, TRIP_LOCKED_LOGO, tripLandingUrls, type ApprovedTripPhoto, type TripLandingLocale } from './metadata.ts';
 import styles from './landing.module.css';
 
-export type IndividualTripLandingProps = { locale: TripLandingLocale; publicUrl: string; photo: ApprovedTripPhoto };
+export type IndividualTripLandingProps = { locale: TripLandingLocale; publicUrl: string; photo: ApprovedTripPhoto; signupOpen?: boolean };
 const copy = {
   en: {
     academy: 'Jewish Leadership Fishing Academy', region: 'South Florida', eyebrow: 'With Rabbi Shlomo Dratler',
@@ -59,16 +59,23 @@ const copy = {
     foot: 'אפשר לשאול כל שאלה. לפתיחת טיוטת וואטסאפ לרב שלמה:',
   },
 } as const;
+const contactCopy={
+  en:{choose:'Ask about dates on WhatsApp',free:'Ask about possible dates. Opening WhatsApp does not confirm a place.',expectation:'Rabbi Shlomo can help with timing, pickup and the next steps.',plansBody:'Ask Rabbi Shlomo about possible Sunday local outings or Keys trips for your boys. He’ll help you explore dates and discuss the trip details.',seasonBody:'Ask about Summer or Pesach trips, including possible trips during Pesach. You can share dates or weeks that might work for your family.',seasonAction:'Ask about Summer or Pesach on WhatsApp',seasonDraft:'Hi Rabbi Shlomo, I’d like to ask about Summer or Pesach fishing trips for my boys, including possible dates during Pesach.'},
+  he:{choose:'וואטסאפ על תאריכי הטיולים',free:'אפשר לשאול על תאריכים. פתיחת וואטסאפ אינה אישור מקום.',expectation:'הרב שלמה ישמח לעזור בתאריכים, באיסוף ובצעדים הבאים.',plansBody:'אפשר לפנות לרב שלמה לגבי יציאות דיג מקומיות בימי ראשון או טיולים לקיז לבנים שלכם, לברר תאריכים ולדבר על פרטי הטיול.',seasonBody:'אפשר לשאול על טיולי קיץ או פסח, כולל טיולים במהלך פסח. ציינו תאריכים או שבועות שיכולים להתאים למשפחה שלכם.',seasonAction:'וואטסאפ לגבי הקיץ או פסח',seasonDraft:'שלום הרב שלמה, אשמח לשאול על טיולי דיג לבנים שלי בקיץ או בפסח, כולל תאריכים אפשריים במהלך פסח.'},
+} as const;
 
-/** Candidate localized presentation. Root admits the exact genuine photograph
- * before mounting this component; neither props nor a fixture proves approval. */
-export function IndividualTripLanding({ locale, publicUrl, photo }: IndividualTripLandingProps) {
+/** The caller admits the exact publication export; props alone are not an
+ * image-approval or live-publication certificate. Text remains accessible HTML. */
+export function IndividualTripLanding({ locale, publicUrl, photo, signupOpen=false }: IndividualTripLandingProps) {
   const imageUrl = new URL(photo.src, publicUrl).href;
   const urls = tripLandingUrls({ locale, publicUrl, photo: { ...photo, src: imageUrl } });
-  const t = copy[locale], entry = `/${locale}/trips`;
+  const t = copy[locale], selected=signupOpen?t:{...t,...contactCopy[locale]};
   const [notice, setNotice] = useState(''), [showFallback, setShowFallback] = useState(false);
   const contact = `https://wa.me/13054278909?text=${encodeURIComponent(t.draft)}`;
-  const invitation = `${TRIP_LANDING_COPY[locale].invitation} ${urls.publicUrl}`;
+  const entry=signupOpen?`/${locale}/trips`:contact;
+  const seasonEntry=signupOpen?entry:`https://wa.me/13054278909?text=${encodeURIComponent(contactCopy[locale].seasonDraft)}`;
+  const external=signupOpen?{}:{target:'_blank',rel:'noopener noreferrer'};
+  const invitation = `${tripLandingCopy(locale,signupOpen).invitation} ${urls.publicUrl}`;
   async function copyLink() {
     try { await navigator.clipboard.writeText(urls.publicUrl); setNotice(t.copied); setShowFallback(false); }
     catch { setNotice(t.copyFallback); setShowFallback(true); }
@@ -84,21 +91,25 @@ export function IndividualTripLanding({ locale, publicUrl, photo }: IndividualTr
         <a className={styles.headerContact} href={contact} target="_blank" rel="noopener noreferrer">{t.whatsapp} <span aria-hidden="true">↗</span></a>
       </header>
       <section className={styles.hero} aria-labelledby="trip-landing-title">
+        <figure className={styles.photo}>
+          <div className={styles.photoScene}>
+            {/* eslint-disable-next-line @next/next/no-img-element -- exact proportional publication export, without image proxy or crop */}
+            <img src={photo.src} width={photo.width} height={photo.height} alt={photo.alt} fetchPriority="high" decoding="async" />
+            <h1 className={styles.photoTitle} id="trip-landing-title" lang="en" dir="ltr"><span>Jewish Leadership</span><span>Fishing Academy</span></h1>
+            <p className={styles.photoMotto} lang="en" dir="ltr">Torah Leadership <span aria-hidden="true">•</span> Self-Governance</p>
+          </div>
+          <figcaption dir="ltr">Bass Fishing Seminar <span aria-hidden="true">·</span> <time dateTime="2026-11-22">Sunday Nov 22, 2026</time> <span aria-hidden="true">·</span> Boca Raton</figcaption>
+        </figure>
         <div className={styles.intro}>
           <p className={styles.eyebrow}>{t.eyebrow}</p>
-          <h1 id="trip-landing-title">{t.title}</h1>
+          <h2>{t.title}</h2>
           <p className={styles.pillars} dir="ltr">Torah • Fishing • Self-Governance</p>
           <p className={styles.lead}>{t.intro}</p>
         </div>
-        <figure className={styles.photo}>
-          {/* eslint-disable-next-line @next/next/no-img-element -- consume approved original bytes with no proxy or crop */}
-          <img src={photo.src} width={photo.width} height={photo.height} alt={photo.alt} fetchPriority="high" decoding="async" />
-          <figcaption dir="ltr">Bass Fishing Seminar / Sunday 11/22/26 • Boca Raton</figcaption>
-        </figure>
         <div className={styles.heroActions}>
-          <a className={styles.primary} href={entry}>{t.choose}<span aria-hidden="true">↗</span></a>
-          <p className={styles.free}>{t.free}</p>
-          <p className={styles.expectation}>{t.expectation}</p>
+          <a className={styles.primary} href={entry} {...external}>{selected.choose}<span aria-hidden="true">↗</span></a>
+          <p className={styles.free}>{selected.free}</p>
+          <p className={styles.expectation}>{selected.expectation}</p>
         </div>
       </section>
       <section className={styles.section} aria-labelledby="trip-gains-title">
@@ -109,8 +120,8 @@ export function IndividualTripLanding({ locale, publicUrl, photo }: IndividualTr
         <div><h2 id="trip-learning-title">{t.learningTitle}</h2><p>{t.learningIntro}</p></div>
         <ul>{t.skills.map(skill => <li key={skill}><span aria-hidden="true">✓</span>{skill}</li>)}</ul>
       </section>
-      <section className={styles.plan} aria-labelledby="trip-plan-title"><h2 id="trip-plan-title">{t.plansTitle}</h2><p>{t.plansBody}</p><a className={styles.primary} href={entry}>{t.choose}<span aria-hidden="true">↗</span></a></section>
-      <section className={styles.seasons} aria-labelledby="trip-season-title"><h2 id="trip-season-title">{t.seasonTitle}</h2><p>{t.seasonBody}</p><a className={styles.textLink} href={entry}>{t.seasonAction}<span aria-hidden="true">↗</span></a></section>
+      <section className={styles.plan} aria-labelledby="trip-plan-title"><h2 id="trip-plan-title">{t.plansTitle}</h2><p>{selected.plansBody}</p><a className={styles.primary} href={entry} {...external}>{selected.choose}<span aria-hidden="true">↗</span></a></section>
+      <section className={styles.seasons} aria-labelledby="trip-season-title"><h2 id="trip-season-title">{t.seasonTitle}</h2><p>{selected.seasonBody}</p><a className={styles.textLink} href={seasonEntry} {...external}>{selected.seasonAction}<span aria-hidden="true">↗</span></a></section>
       <section className={styles.share} aria-labelledby="trip-share-title"><h2 id="trip-share-title">{t.shareTitle}</h2>
         <div className={styles.shareActions}><a className={styles.secondary} href={`https://wa.me/?text=${encodeURIComponent(invitation)}`} target="_blank" rel="noopener noreferrer">{t.share}</a><button className={styles.secondary} type="button" onClick={() => void copyLink()}>{t.copy}</button></div>
         <p className={styles.notice} role="status" aria-live="polite">{notice}</p>

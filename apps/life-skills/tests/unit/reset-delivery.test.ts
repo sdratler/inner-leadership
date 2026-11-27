@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
-const mocks=vi.hoisted(()=>({process:vi.fn(),dispatch:vi.fn(),send:vi.fn()}));
+const mocks=vi.hoisted(()=>({process:vi.fn(),dispatch:vi.fn(),send:vi.fn(),construct:vi.fn()}));
 vi.mock("../../src/providers/email/dispatch.ts",()=>({processResetRequest:mocks.process,dispatchOneAuthMail:mocks.dispatch}));
-vi.mock("../../src/providers/email/gmail.ts",()=>({parseGmailAuthConfig:()=>({from:"office@bneineviimacademy.org"}),GmailAuthTransport:class{send=mocks.send;}}));
+vi.mock("../../src/providers/email/gmail.ts",()=>({parseGmailAuthConfig:()=>({from:"office@bneineviimacademy.org"}),GmailAuthTransport:class{constructor(...args:unknown[]){mocks.construct(...args);}send=mocks.send;}}));
 import { scheduleResetDelivery } from "../../src/providers/email/reset-delivery.ts";
 const origin="https://life-skills.example.org",id="123e4567-e89b-12d3-a456-426614174000";
 const rt={store:{},config:{origin},clock:{}} as Parameters<typeof scheduleResetDelivery>[2];
@@ -18,8 +18,8 @@ describe("accepted-request-only Gmail reset delivery",()=>{
    await mocks.dispatch.mock.calls[0]![3].send({from:'office@bneineviimacademy.org',to:'owner@example.org',subject:'old',text:origin+'/auth/reset#token='+'a'.repeat(43),idempotencyKey:'ls-auth-'+id});
    const sent=mocks.send.mock.calls[0]![0],line=sent.text.split('\n').find((line:string)=>line.startsWith(origin+'/')),url=new URL(line);
    expect(sent.to).toBe('owner@example.org');expect(url.hash).toBe('#token='+'a'.repeat(43));expect(url.searchParams.get('token')).toBeNull();
-   if(entry.startsWith('fishing-trips')){expect(url.searchParams.get('next')).toBe(`/${locale}/trips${entry.endsWith('owner')?'/owner':''}`);expect(sent.subject).toContain(locale==='he'?'האקדמיה לדיג':'Fishing Academy');}
-   else expect(url.searchParams.get('next')).toBeNull();
+   if(entry.startsWith('fishing-trips')){expect(url.searchParams.get('next')).toBe(`/${locale}/trips${entry.endsWith('owner')?'/owner':''}`);expect(sent.subject).toContain(locale==='he'?'האקדמיה לדיג':'Fishing Academy');expect(mocks.construct.mock.calls.at(-1)![2]).toBe('JLFA Office');}
+   else {expect(url.searchParams.get('next')).toBeNull();expect(mocks.construct.mock.calls.at(-1)![2]).toBe('Life Skills');}
   }
  });
  test("does no provider or eligibility work before response and scopes exact request/outbox",async()=>{

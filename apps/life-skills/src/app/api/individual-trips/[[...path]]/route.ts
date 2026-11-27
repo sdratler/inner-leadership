@@ -11,6 +11,10 @@ export const dynamic='force-dynamic';
 async function handle(request:Request){
  try{
   const runtime=await individualTripsRuntime(),canonical=canonicalForwardedRequest(request);
+  if(new URL(canonical.url).pathname==='/api/individual-trips/site-chat'){
+   if(!runtime.siteChat)return failureResponse(new AppError('UNAVAILABLE'),newRequestId());
+   const response=await runtime.siteChat.handle(canonical);scheduleOperational(runtime);return response;
+  }
   if(new URL(canonical.url).pathname==='/api/individual-trips/chat'){
    if(!runtime.chat)return failureResponse(new AppError('UNAVAILABLE'),newRequestId());
    const response=await runtime.chat.handle(canonical);

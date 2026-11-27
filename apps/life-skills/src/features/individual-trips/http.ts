@@ -28,9 +28,10 @@ export type OwnerTripAction=z.infer<typeof ownerTripActionSchema>;
 export interface TripHttpDependencies {
  config:IdentityConfig;trips:IndividualTripStore;registration:IndividualTripRegistrationService;
  sessions:IdentitySessions;auth:IdentityAuthService;limits:RateLimitStore;
- capabilities:{stripeLookup:boolean;mailAdmission:boolean;ownerChat:boolean};
+ capabilities:{stripeLookup:boolean;mailAdmission:boolean;ownerChat:boolean;siteChat?:boolean};
  ownerAction(actor:Actor,input:OwnerTripAction):Promise<unknown>;
  chat?:{grant(actor:Actor,input:unknown):Promise<unknown>;revoke(actor:Actor,id:string):Promise<unknown>};
+ siteChat?:{connect(actor:Actor,input:unknown):Promise<unknown>;revoke(actor:Actor,callerId:string):Promise<unknown>;connections(actor:Actor):Promise<unknown>};
 }
 function secure(response:Response):Response{
  response.headers.set('Cache-Control','private, no-store');response.headers.set('Referrer-Policy','no-referrer');
@@ -47,7 +48,7 @@ export class IndividualTripsHttp {
    const {config}=this.deps,url=new URL(request.url),path=url.pathname;
    if(!config.enabled)throw new AppError('UNAVAILABLE');
    if(url.origin!==config.origin||url.search)throw new AppError('INVALID_REQUEST');
-   if(!(['/api/individual-trips','/api/individual-trips/register','/api/individual-trips/owner-action','/api/individual-trips/chat-grants'].includes(path))||!['GET','POST'].includes(request.method)||path!=='/api/individual-trips'&&request.method!=='POST')throw new AppError('NOT_FOUND');
+   if(!(['/api/individual-trips','/api/individual-trips/register','/api/individual-trips/owner-action','/api/individual-trips/chat-grants'].includes(path))||!['GET','POST'].includes(request.method)||!['/api/individual-trips','/api/individual-trips/chat-grants'].includes(path)&&request.method!=='POST')throw new AppError('NOT_FOUND');
    if(request.method==='POST')verifyMutationOrigin(request,config.origin);
    if(path==='/api/individual-trips/register'){
     const token=tripCookie(request,'__Host-ls-preauth');if(!token)throw new AppError('FORBIDDEN');
@@ -61,17 +62,27 @@ export class IndividualTripsHttp {
    const token=tripCookie(request,SESSION_COOKIE);if(!token)throw new AppError('UNAUTHENTICATED');
    const actor=await this.deps.sessions.actor(token);
    await this.limit('account:'+actor.id,150);
+   if(request.method==='GET'&&path.endsWith('/chat-grants')){
+    if(!this.deps.siteChat||!this.deps.capabilities.siteChat)throw new AppError('UNAVAILABLE');
+    return secure(successResponse(await this.deps.siteChat.connections(actor),requestId));
+   }
    if(request.method==='GET'){
     const state=await this.deps.trips.read(actor);
     return secure(successResponse({role:actor.role==='practitioner'?'owner':'parent',state,capabilities:actor.role==='practitioner'?this.deps.capabilities:{stripeLookup:false,mailAdmission:false,ownerChat:false}},requestId));
    }
    verifyCsrfToken(request.headers.get('x-csrf-token'),this.deps.sessions.csrf(token));
    if(path.endsWith('/chat-grants')){
-    if(!this.deps.chat||!this.deps.capabilities.ownerChat)throw new AppError('UNAVAILABLE');
     const input=await readJson(request,z.discriminatedUnion('action',[
      z.object({action:z.literal('create'),callerId:z.string(),minutes:z.number(),write:z.boolean()}).strict(),
      z.object({action:z.literal('revoke'),grantId:z.uuid()}).strict(),
+     z.object({action:z.literal('connect_site'),callerId:z.string(),minutes:z.number().int().min(1).max(30)}).strict(),
+     z.object({action:z.literal('revoke_site'),callerId:z.string()}).strict(),
     ]));
+    if(input.action==='connect_site'||input.action==='revoke_site'){
+     if(!this.deps.siteChat||!this.deps.capabilities.siteChat)throw new AppError('UNAVAILABLE');
+     return secure(successResponse(input.action==='connect_site'?await this.deps.siteChat.connect(actor,{callerId:input.callerId,minutes:input.minutes}):await this.deps.siteChat.revoke(actor,input.callerId),requestId));
+    }
+    if(!this.deps.chat||!this.deps.capabilities.ownerChat)throw new AppError('UNAVAILABLE');
     return secure(successResponse(input.action==='create'?await this.deps.chat.grant(actor,{callerId:input.callerId,minutes:input.minutes,write:input.write}):await this.deps.chat.revoke(actor,input.grantId),requestId));
    }
    if(path.endsWith('/owner-action')){

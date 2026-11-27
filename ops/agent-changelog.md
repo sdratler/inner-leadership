@@ -1,5 +1,23 @@
 # Verified engineering changes
 
+## 27 November 2026 — Fishing trip photo and release integration
+
+JLFA-TRIP-CALENDAR-CREDITS-BRAINSTORM-20261127-01 / RELEASE-03.
+
+- [x] Mounted the owner's original Bass Fishing Seminar photograph, preserved
+  its full composition and added the Academy title and Torah leadership motto.
+  English and Hebrew mobile and desktop views received rendered review.
+- [x] Integrated the scoped trip migration, protected native mail/provider
+  bindings and the connection to the existing private Fishing owner Site.
+- [x] Rehearsed migration 0153 against both supported predecessor histories.
+  A failed catalog check rolled back both tables and ledger. A repeated
+  successful apply made no changes. Existing schemas retained their fingerprints.
+- [x] The November candidate at b868efc3 passed protected application CI,
+  including 978 native PostgreSQL tests, and its trusted control check.
+
+Production activation, live feature availability and release receipts are
+recorded under RELEASE-03 in the current Fishing change log and continuation.
+
 ## 27 November 2026 — Individual-trip package implemented locally
 
 Received and hash-verified HANDOVER-01 for

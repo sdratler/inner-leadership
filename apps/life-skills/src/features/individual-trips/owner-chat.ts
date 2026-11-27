@@ -10,6 +10,7 @@ import { one } from '../identity/store.ts';
 import type { Actor } from '../identity/types.ts';
 import { tripCommandSchema } from './contract.ts';
 import type { IndividualTripStore } from './store.ts';
+import { isTripSiteCaller,TRIP_SITE_ID,TRIP_SITE_COMMAND_TYPES } from './site-chat-contract.ts';
 
 const grantInput=z.object({callerId:z.string().regex(/^[A-Za-z0-9:_-]{8,160}$/),minutes:z.number().int().min(1).max(30),write:z.boolean()}).strict();
 const signed=z.object({grantId:z.uuid(),callerId:grantInput.shape.callerId,nonce:z.uuid(),timestamp:z.number().int().positive(),action:z.enum(['read','command']),command:tripCommandSchema.optional()}).strict();
@@ -26,11 +27,62 @@ type Grant={ownerId:string;callerId:string;secret:string;scopes:string[];session
  * interfaces call the same native service; this module holds no trip ledger. */
 export class IndividualTripOwnerChat {
  constructor(private readonly trips:IndividualTripStore){}
+ async connectSite(actor:Actor,raw:unknown){
+  const input=z.object({callerId:z.string().refine(isTripSiteCaller),minutes:z.number().int().min(1).max(30)}).strict().safeParse(raw);
+  if(!input.success)throw new AppError('INVALID_REQUEST');
+  await this.trips.read(actor);if(actor.id!==this.trips.config.ownerAccountId||actor.role!=='practitioner')throw new AppError('NOT_FOUND');
+  return this.trips.database.transaction(async tx=>{
+   await lockWorkspace(tx,this.trips.identity.workspaceId);const current=await freshActor(tx,actor,this.trips.clock.now());
+   if(current.role!=='practitioner'||!current.emailVerifiedAt)throw new AppError('NOT_FOUND');
+   const id=randomUUID(),secret=opaqueToken(),now=this.trips.clock.now(),expiresAt=new Date(Math.min(actor.expiresAt,now.getTime()+input.data.minutes*60000));
+   if(expiresAt<=now)throw new AppError('UNAUTHENTICATED');
+   await tx.query('UPDATE ls_individual_trips.chat_grants SET revoked_at=$4 WHERE workspace_id=$1 AND owner_account_id=$2 AND caller_id=$3 AND revoked_at IS NULL AND $5=ANY(scopes)',[actor.workspaceId,actor.id,input.data.callerId,now,'site:'+TRIP_SITE_ID]);
+   await tx.query('INSERT INTO ls_individual_trips.chat_grants(workspace_id,id,owner_account_id,caller_id,secret_ciphertext,scopes,session_digest,actor_expires_at,created_at,expires_at) VALUES($1,$2,$3,$4,$5,$6::text[],$7,$8,$9,$10)',
+    [actor.workspaceId,id,actor.id,input.data.callerId,seal(secret,`trip-chat:${actor.workspaceId}:${id}`,this.trips.identity.keyring),`{read,command,site:${TRIP_SITE_ID}}`,actor.sessionDigest,new Date(actor.expiresAt),now,expiresAt]);
+   // Raw native grant references and secret never leave this connection path.
+   return{connected:true,siteId:TRIP_SITE_ID,callerId:input.data.callerId,expiresAt:expiresAt.toISOString(),allowedCommands:TRIP_SITE_COMMAND_TYPES};
+  });
+ }
+ async revokeSite(actor:Actor,callerId:string){
+  if(!isTripSiteCaller(callerId))throw new AppError('INVALID_REQUEST');
+  await this.trips.read(actor);if(actor.id!==this.trips.config.ownerAccountId||actor.role!=='practitioner')throw new AppError('NOT_FOUND');
+  await this.trips.database.transaction(async tx=>{await lockWorkspace(tx,actor.workspaceId);await freshActor(tx,actor,this.trips.clock.now());
+   await tx.query('UPDATE ls_individual_trips.chat_grants SET revoked_at=$4 WHERE workspace_id=$1 AND owner_account_id=$2 AND caller_id=$3 AND revoked_at IS NULL AND $5=ANY(scopes)',[actor.workspaceId,actor.id,callerId,this.trips.clock.now(),'site:'+TRIP_SITE_ID]);});
+  return{revoked:true,callerId};
+ }
+ async siteConnections(actor:Actor){
+  await this.trips.read(actor);if(actor.id!==this.trips.config.ownerAccountId||actor.role!=='practitioner')throw new AppError('NOT_FOUND');
+  return this.trips.database.transaction(async tx=>{
+   await lockWorkspace(tx,actor.workspaceId);await freshActor(tx,actor,this.trips.clock.now());
+   const rows=await tx.query<{callerId:string;expiresAt:Date;createdAt:Date;active:boolean}>(`SELECT g.caller_id AS "callerId",g.expires_at AS "expiresAt",g.created_at AS "createdAt",
+    (g.revoked_at IS NULL AND g.expires_at>GREATEST($3::timestamptz,clock_timestamp()) AND s.revoked_at IS NULL AND s.expires_at>GREATEST($3::timestamptz,clock_timestamp())) AS active
+    FROM ls_individual_trips.chat_grants g JOIN ls_identity.sessions s ON s.workspace_id=g.workspace_id AND s.account_id=g.owner_account_id AND s.token_digest=g.session_digest
+    WHERE g.workspace_id=$1 AND g.owner_account_id=$2 AND $4=ANY(g.scopes) ORDER BY g.created_at DESC,g.id DESC LIMIT 100`,[actor.workspaceId,actor.id,this.trips.clock.now(),'site:'+TRIP_SITE_ID]);
+   const seen=new Set<string>(),connections=rows.filter(row=>{if(seen.has(row.callerId))return false;seen.add(row.callerId);return true;}).slice(0,20)
+    .map(row=>({...row,expiresAt:new Date(row.expiresAt).toISOString(),createdAt:new Date(row.createdAt).toISOString()}));
+   return{siteId:TRIP_SITE_ID,allowedCommands:TRIP_SITE_COMMAND_TYPES,connections};
+  });
+ }
+ async executeSite(input:Omit<SignedTripChatInput,'grantId'>){
+  if(!isTripSiteCaller(input.callerId)||input.action==='command'&&(!input.command||!(TRIP_SITE_COMMAND_TYPES as readonly string[]).includes(input.command.type)))throw new AppError('FORBIDDEN');
+  const delegated=await this.trips.database.transaction(async tx=>{
+   await lockWorkspace(tx,this.trips.identity.workspaceId);
+   const grants=await tx.query<{id:string;secret:string;expiresAt:Date}>(`SELECT id,secret_ciphertext AS secret,expires_at AS "expiresAt" FROM ls_individual_trips.chat_grants
+    WHERE workspace_id=$1 AND owner_account_id=$2 AND caller_id=$3 AND revoked_at IS NULL AND expires_at>GREATEST($4::timestamptz,clock_timestamp()) AND $5=ANY(scopes)
+    ORDER BY created_at DESC,id DESC LIMIT 2 FOR UPDATE`,[this.trips.config.workspaceId,this.trips.config.ownerAccountId,input.callerId,this.trips.clock.now(),'site:'+TRIP_SITE_ID]);
+   if(grants.length!==1)throw new AppError('UNAUTHENTICATED');
+   const grant=grants[0]!,request:SignedTripChatInput={...input,grantId:grant.id};
+   const secret=unseal(grant.secret,`trip-chat:${this.trips.config.workspaceId}:${grant.id}`,this.trips.identity.keyring);
+   return{request,signature:tripChatSignature(secret,request),expiresAt:new Date(grant.expiresAt).toISOString()};
+  });
+  return{value:await this.execute(delegated.request,delegated.signature),expiresAt:delegated.expiresAt};
+ }
  async grant(actor:Actor,raw:unknown){
   const input=grantInput.safeParse(raw);if(!input.success)throw new AppError('INVALID_REQUEST');
   await this.trips.read(actor);if(actor.id!==this.trips.config.ownerAccountId||actor.role!=='practitioner')throw new AppError('NOT_FOUND');
   return this.trips.database.transaction(async tx=>{
-   await lockWorkspace(tx,this.trips.identity.workspaceId);await freshActor(tx,actor,this.trips.clock.now());
+   await lockWorkspace(tx,this.trips.identity.workspaceId);const current=await freshActor(tx,actor,this.trips.clock.now());
+   if(current.role!=='practitioner'||!current.emailVerifiedAt)throw new AppError('NOT_FOUND');
    const id=randomUUID(),secret=opaqueToken(),now=this.trips.clock.now(),expiresAt=new Date(Math.min(actor.expiresAt,now.getTime()+input.data.minutes*60000));
    if(expiresAt<=now)throw new AppError('UNAUTHENTICATED');
    await tx.query('INSERT INTO ls_individual_trips.chat_grants(workspace_id,id,owner_account_id,caller_id,secret_ciphertext,scopes,session_digest,actor_expires_at,created_at,expires_at) VALUES($1,$2,$3,$4,$5,$6::text[],$7,$8,$9,$10)',[actor.workspaceId,id,actor.id,input.data.callerId,seal(secret,`trip-chat:${actor.workspaceId}:${id}`,this.trips.identity.keyring),input.data.write?'{read,command}':'{read}',actor.sessionDigest,new Date(actor.expiresAt),now,expiresAt]);
@@ -56,7 +108,8 @@ export class IndividualTripOwnerChat {
    const secret=unseal(grant.secret,`trip-chat:${this.trips.config.workspaceId}:${input.grantId}`,this.trips.identity.keyring),expected=tripChatSignature(secret,input);
    if(!timingSafeEqual(Buffer.from(signature),Buffer.from(expected)))throw new AppError('UNAUTHENTICATED');
    const actor:Actor={id:asId(grant.ownerId,'account'),workspaceId:this.trips.identity.workspaceId,personId:asId(grant.personId,'person'),role:'practitioner',state:'active',locale:grant.locale,sessionDigest:grant.sessionDigest,expiresAt:new Date(grant.actorExpiresAt).getTime()};
-   await freshActor(tx,actor,this.trips.clock.now());
+   const current=await freshActor(tx,actor,this.trips.clock.now());
+   if(current.role!=='practitioner'||!current.emailVerifiedAt)throw new AppError('UNAUTHENTICATED');
    const nonce=await tx.query('INSERT INTO ls_individual_trips.chat_nonces(workspace_id,grant_id,nonce,used_at) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING RETURNING nonce',[actor.workspaceId,input.grantId,input.nonce,this.trips.clock.now()]);
    if(nonce.length!==1)throw new AppError('CONFLICT');return actor;
   });

@@ -1,5 +1,6 @@
 import {createHash} from 'node:crypto';
 import type {AppliedMigration,Migration} from './migration-plan.ts';
+import { INDIVIDUAL_TRIP_MIGRATION,isIndividualTripMigration } from './individual-trip-migration.ts';
 
 export const INQUIRY_EMAIL_CONTROL_MIGRATIONS=Object.freeze([
  {name:'0151_ls_academy_inquiry_email_verification.sql',sha256:'579c47ae32379edd9e850c712289cc4b13847e1c05030885d43834687eaa486e'},
@@ -19,9 +20,11 @@ export function planAfterInquiryEmailControl(sorted:readonly Migration[],applied
  if(!exact(sorted[66],{name:'0147_ls_fishing_marketing_snapshot.sql',sha256:'6419f05b3cf4d17add4f49fdb4c2eabe8f8cad2afe6f1b004398ab6f4327c755'}))return;
  if(deferred.some((item,i)=>!exact(sorted[67+i],item))||INQUIRY_EMAIL_CONTROL_MIGRATIONS.some((item,i)=>!exact(sorted[70+i],item)))return;
  const first=applied.findIndex(item=>item.name===INQUIRY_EMAIL_CONTROL_MIGRATIONS[0].name);
- if(first<67||first>70||applied.length-first<1||applied.length-first>2)return;
+ const suffix=applied.length-first>2 ? [...INQUIRY_EMAIL_CONTROL_MIGRATIONS,INDIVIDUAL_TRIP_MIGRATION] : INQUIRY_EMAIL_CONTROL_MIGRATIONS;
+ if(first<67||first>70||applied.length-first<1||applied.length-first>suffix.length)return;
+ if(suffix.length===3&&!isIndividualTripMigration(sorted[72]))return;
  if(applied.slice(0,first).some((item,i)=>item.name!==sorted[i]?.name||item.checksum!==sorted[i]?.checksum))return;
- if(applied.slice(first).some((item,i)=>item.name!==INQUIRY_EMAIL_CONTROL_MIGRATIONS[i]?.name||item.checksum!==INQUIRY_EMAIL_CONTROL_MIGRATIONS[i]?.sha256))return;
+ if(applied.slice(first).some((item,i)=>item.name!==suffix[i]?.name||item.checksum!==suffix[i]?.sha256))return;
  const installed=new Set(applied.map(item=>item.name));
  return sorted.filter(item=>!installed.has(item.name));
 }

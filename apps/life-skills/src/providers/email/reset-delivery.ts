@@ -26,7 +26,7 @@ export async function scheduleResetDelivery(request: Request, response: Response
   const fishing=env.LS_INDIVIDUAL_TRIPS_ENABLED==='true'&&typeof runtime.config.workspaceId==='string'&&env.LS_INDIVIDUAL_TRIPS_WORKSPACE_ID===runtime.config.workspaceId&&(entry==='fishing-trips'||entry==='fishing-trips-owner');
   schedule(async () => {
     try {
-      const config = parseGmailAuthConfig(env), provider = new GmailAuthTransport(config);
+      const config = parseGmailAuthConfig(env), provider = new GmailAuthTransport(config,fetch,fishing?'JLFA Office':'Life Skills');
       const outboxId = await processResetRequest(runtime.store, runtime.config, runtime.clock, requestId);
       if (!outboxId) return;
       const transport = {

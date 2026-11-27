@@ -16,7 +16,10 @@ function createDatabase() {
     max: 5, connectionTimeoutMillis: 5000, idleTimeoutMillis: 30000,
   });
   // Capture the actual original pool options, never a later environment read.
-  const boundTarget=Object.freeze({digest:createHash("sha256").update(pool.options.connectionString??"").digest("hex"),tlsDisabled:pool.options.ssl===false});
+  const boundTarget=Object.freeze({digest:createHash("sha256").update(pool.options.connectionString??"").digest("hex"),tlsDisabled:pool.options.ssl===false,
+    tlsVerified:typeof pool.options.ssl==='object'&&pool.options.ssl!==null&&pool.options.ssl.rejectUnauthorized===true,
+    caDigest:typeof pool.options.ssl==='object'&&pool.options.ssl!==null&&typeof pool.options.ssl.ca==='string'&&pool.options.ssl.ca.trim()
+      ?createHash('sha256').update(pool.options.ssl.ca).digest('hex'):null});
   // No SQL, connection-string or exception-object logging.
   pool.on("error", () => { instance = undefined; void pool.end().catch(() => undefined); });
   const raw = drizzle(pool, { schema });
@@ -46,5 +49,18 @@ export function databaseBoundToTarget(expectedUrl:string){
     instance=createDatabase();
   }
   return instance.boundTarget.tlsDisabled&&instance.boundTarget.digest===createHash("sha256").update(expectedUrl).digest("hex")?instance.db:null;
+}
+/** Explicit Fishing release capability. Preserve the one-argument rehearsal
+ * helper above. No SQL, reconnection, credential output or pool retargeting. */
+export function databaseBoundToFishingTarget(expectedUrl:string,expectedCaSha256:string){
+  if(!/^[a-f0-9]{64}$/.test(expectedCaSha256))return null;
+  if(!instance){
+    const current=serverEnvironment();
+    if(current.LS_DATABASE_URL!==expectedUrl||current.LS_DATABASE_TLS!=='verify-full'||!current.LS_DATABASE_CA?.trim()||
+       createHash('sha256').update(current.LS_DATABASE_CA).digest('hex')!==expectedCaSha256)return null;
+    instance=createDatabase();
+  }
+  return instance.boundTarget.tlsVerified&&instance.boundTarget.caDigest===expectedCaSha256&&
+    instance.boundTarget.digest===createHash('sha256').update(expectedUrl).digest('hex')?instance.db:null;
 }
 export async function closeDatabase() { const old = instance; instance = undefined; if (old) await old.close(); }

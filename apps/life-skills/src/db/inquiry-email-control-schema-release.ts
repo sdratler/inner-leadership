@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { planMigrations, type AppliedMigration, type Migration } from './migration-plan.ts';
 import { INQUIRY_EMAIL_CONTROL_MIGRATIONS } from './inquiry-email-control-history.ts';
+import { isIndividualTripMigration } from './individual-trip-migration.ts';
 import { owner305Hash, type Owner305ReleaseQuery } from './owner-305-schema-release.ts';
 
 const prefixSha256 = 'c378aefbf0c6acc192481c8dd5408c173613d315835bb843a2ff9416e2b03174';
@@ -30,7 +31,7 @@ export function inquirySchemaTargetBinding(env:Env) {
 /** Only the exact 67/70 predecessor and the reviewed 151/152 suffix. A generic
  * plan may expose deferred BNA migrations. Never give that plan to a runner. */
 export function validateInquirySchemaSource(files:readonly Migration[]) {
- if (files.length !== 72 || files.some((file,n) => (n>0 && files[n-1]!.name >= file.name) || owner305Hash(file.sql) !== file.checksum))
+ if ((files.length !== 72 && !(files.length===73 && isIndividualTripMigration(files[72]))) || files.some((file,n) => (n>0 && files[n-1]!.name >= file.name) || owner305Hash(file.sql) !== file.checksum))
   throw schemaFailure('SOURCE_MISMATCH');
  if (owner305Hash(JSON.stringify(files.slice(0,70).map(f=>({name:f.name,sha256:f.checksum})))) !== prefixSha256) throw schemaFailure('SOURCE_PREFIX_MISMATCH');
  for (const [n,pin] of INQUIRY_EMAIL_CONTROL_MIGRATIONS.entries()) {
@@ -46,7 +47,7 @@ export function inquiryEmailSchemaPlan(files:readonly Migration[],history:readon
  const expected = [...files.slice(0,prefix),...files.slice(70,70+stage)];
  if(history.length !== expected.length || history.some((row,n)=>row.name!==expected[n]!.name || row.checksum!==expected[n]!.checksum))
   throw schemaFailure('LEDGER_CATALOG_CONFLICT');
- return {prefix,stage,pending:files.slice(70+stage),ledgerSha256:owner305Hash(JSON.stringify(history.map(({name,checksum})=>({name,checksum}))))};
+ return {prefix,stage,pending:files.slice(70+stage,72),ledgerSha256:owner305Hash(JSON.stringify(history.map(({name,checksum})=>({name,checksum}))))};
 }
 
 const restorationStep=z.object({name:z.string(),sha256:sha,catalogSha256:sha}).strict();

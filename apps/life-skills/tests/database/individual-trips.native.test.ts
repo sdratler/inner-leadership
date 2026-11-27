@@ -1,5 +1,4 @@
 import { randomBytes,randomUUID } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
 import { afterAll,beforeAll,expect,it,vi } from 'vitest';
 vi.mock('server-only',()=>({}));
 import { fixture,poolStore,type Fixture } from './calendar/fixture.ts';
@@ -18,7 +17,6 @@ beforeAll(async()=>{
  isolated=await historicalPracticeDatabase('0118_ls_contact_delta_history.sql');
  const client=await isolated.pool.connect();try{await migrate({query:async(sql,values)=>client.query(sql,values?[...values]:undefined)},isolated.inventory,false);}finally{client.release();}
  vi.stubEnv('TEST_DATABASE_URL',isolated.url);vi.stubEnv('LS_CALENDAR_TEST_ALLOW','true');f=await fixture();
- for(const file of ['schema.sql','registration-schema.sql','mail-schema.sql'])await f.pool.query(await readFile(new URL('../../src/features/individual-trips/'+file,import.meta.url),'utf8'));
  const identity:IdentityConfig={enabled:true,workspaceId:f.workspaceId,origin:'https://synthetic.invalid',keyring:f.keyring,csrfKey:randomBytes(32),lookupKey:randomBytes(32),rateLimitKey:randomBytes(32).toString('hex'),sessionSeconds:28800};
  trips=new IndividualTripStore(poolStore(f.pool),identity,{workspaceId:f.workspaceId,ownerAccountId:f.practitioner.actor.id,origin:identity.origin},systemClock);
 },60000);
