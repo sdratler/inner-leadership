@@ -1,6 +1,6 @@
 {
   "task": "JLFA-TRIP-CALENDAR-CREDITS-BRAINSTORM-20261127-01",
-  "sourceCommit": "72102e2e5d673c3b57a0559faac4497188f0e390",
+  "sourceCommit": "a21e06838865d602950275a22d59ed31f594b15a",
   "scope": "Git blob source fingerprints plus local checkout bytes (Windows CRLF may differ); not a business/asset master or provider admission",
   "files": [
     {
@@ -75,10 +75,10 @@
     },
     {
       "path": "apps/life-skills/src/features/individual-trips/engine.ts",
-      "sha256": "44d2a5f56190095c3ce5d8acb389c25e1ac68ef07a9792d5adf95d68b80bb8c0",
-      "bytes": 39316,
-      "localCheckoutSha256": "44d2a5f56190095c3ce5d8acb389c25e1ac68ef07a9792d5adf95d68b80bb8c0",
-      "localCheckoutBytes": 39316
+      "sha256": "40ea74ff0fb63cedece0bbed6fe01b2baa667705b9a3697667d932ef3e75f2e2",
+      "bytes": 39470,
+      "localCheckoutSha256": "40ea74ff0fb63cedece0bbed6fe01b2baa667705b9a3697667d932ef3e75f2e2",
+      "localCheckoutBytes": 39470
     },
     {
       "path": "apps/life-skills/src/features/individual-trips/env.example",
