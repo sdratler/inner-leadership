@@ -5,6 +5,10 @@ Current DECISIONS-04 and scoped DECISIONS-05 were consumed; Product, Website,
 Architecture and UI revisions were refreshed and unchanged at final checks.
 This is implementation evidence, not an adopted offer/asset master.
 
+The source fingerprint records exact Git blob bytes and separate local checkout
+bytes. Windows CRLF differs in five existing shared files; those local hashes
+are not substituted for the Linux/Git source hashes used during release.
+
 ## Automated evidence
 
 - Final `npx vitest run --maxWorkers=2`: **335 files / 4,682 tests passed**.
