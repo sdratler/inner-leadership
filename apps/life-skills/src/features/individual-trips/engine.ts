@@ -73,7 +73,7 @@ export function projectTripState(state: TripState, actor: TripActor): TripState 
   result.households = [family]; result.offers = result.offers.filter(row => row.householdId === family.id).map(row => ({ ...row, ownerNote: '', exceptions: [] }));
   const departures = new Set(result.offers.map(row => row.departureId));
   result.departures = result.departures.filter(row => departures.has(row.id)).map(row => ({ ...row, attendance: row.attendance.filter(item => childIds.has(item.childId)), ownerResourceId: '', transport: { ...row.transport, vehicleId: '' }, otherNonpayingChildren: [] }));
-  result.receipts = result.receipts.filter(row => row.householdId === family.id); result.allocations = result.allocations.filter(row => row.householdId === family.id); result.creditLedger = result.creditLedger.filter(row => row.householdId === family.id);
+  result.receipts = result.receipts.filter(row => row.householdId === family.id).map(row=>({...row,...(row.creditResolutions?{creditResolutions:row.creditResolutions.map(resolution=>({...resolution,note:'',ownerAccountId:''}))}:{})})); result.allocations = result.allocations.filter(row => row.householdId === family.id); result.creditLedger = result.creditLedger.filter(row => row.householdId === family.id);
   result.waitlist=result.waitlist.filter(row=>row.householdId===family.id).map(row=>({...row,note:''}));
   return result;
 }

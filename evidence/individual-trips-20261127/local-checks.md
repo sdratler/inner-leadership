@@ -108,6 +108,9 @@ synthetic/private browser storage or raw intake in Git. Representative names:
 - Activation/reset preserves the fixed Fishing return path in memory after
   removing the secret fragment. A bounded locale/program presentation header
   changes no reset eligibility, recipient, token authority or CSRF requirement.
+- The parent receipt projection blanks internal credit-review notes/operator IDs
+  while preserving amount/time and lineage. Stored state and owner view remain
+  unchanged;166 feature tests and independent25engine tests passed after this fix.
 
 The initial mail-newline review finding was withdrawn after byte inspection and
 a runtime real-newline assertion; no formatting failure was reproduced.

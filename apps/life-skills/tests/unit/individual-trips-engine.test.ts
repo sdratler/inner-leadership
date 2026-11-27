@@ -51,6 +51,7 @@ describe('free household and independent seasonal interest', () => {
     h.run(h.owner,{type:'receipt.resolve_credit',receiptId:receipt.id,amountMinor:1000,note:'Owner verified actual overpayment and grants household credit'});
     expect(householdCreditMinor(h.state,family.parent.householdId!)).toBe(16000);
     expect(h.state.receipts[0]!.unappliedMinor).toBe(0);expect(h.state.offers[0]!.children[0]!.status).toBe('cancelled');
+    const parentView=projectTripState(h.state,family.parent);expect(JSON.stringify(parentView)).not.toContain('Owner verified actual overpayment');expect(parentView.receipts[0]!.creditResolutions?.[0]).toMatchObject({amountMinor:1000,note:'',ownerAccountId:''});
     denied(()=>h.run(h.owner,{type:'receipt.resolve_credit',receiptId:receipt.id,amountMinor:1000,note:'duplicate'}));
     expect(allocatedLive(h.state)+householdCreditMinor(h.state,family.parent.householdId!)).toBe(16000);
   });
