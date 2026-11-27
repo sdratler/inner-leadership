@@ -1,4 +1,30 @@
-# Seminar refinement coordination — 22 November 2026
+# Fishing Academy coordination
+
+## Individual trips — 27 November 2026
+
+Task: JLFA-TRIP-CALENDAR-CREDITS-BRAINSTORM-20261127-01 / HANDOVER-01,
+controlling DECISIONS-04 plus scoped DECISIONS-05. Current operator requests implementation from Downloads.
+Clean baseline351752fd (application tree07e2e4e5), new branch
+codex/fishing-individual-trips-20261127. Package SHA256fb5053cd610c248f2b948674fafa3d601ebd0831fa5ad7ad1d4264d314d493f4.
+
+Existing shared integrator01a15d31-30f4-7d80-9fe3-639906d74f04 remains the
+recorded integration/release owner. Read attempt returned unavailable durable
+host; no handoff acknowledgment/ownership transfer is claimed. Existing PR244,
+251 and shared-header PR229 remain untouched. Root owns this directly requested
+local slice; shared integration must preserve existing contracts/records.
+
+| Worker | Bounded files / scope | Deliverable / dependency | State |
+| --- | --- | --- | --- |
+| root | Integration of the bounded new individual-trip candidate, native persistence/HTTP/routes, requirements/source/changelog | One native Fishing authority; preserved existing runtime; full unit regression and actual rendered23states including account activation/reset | Final checks / release OPEN |
+| seminar_review | Read-only reuse, authorization/money/mail/native grant and actual rendered review; no edits/provider mutations | Findings corrected and independently rechecked; no remaining critical/major finding in reviewed candidate states | Stopped after handoff; final native seam read requested |
+| seminar_gateway | Disjoint pure domain/tests, native store/HTTP tests, then public landing/metadata modules | Scoped work handed back; no shared source/provider changes; protected photo remains unadmitted | Completed bounded work / stopped |
+| trip_registration | Disjoint adult invitation/mail, workspace UI/CSS, then operational mail/schema/tests | Scoped work handed back; real SQL mail rollback/replay and successful/unknown delivery evidence synthetic only | Completed bounded work / stopped |
+
+Only root writes shared requirement/source/ledger state. Private intake and package
+stay in ignored .private/trips-20261127. No copied raw package or credentials in Git.
+No existing timer resumes, real invoices/charges/messages or destructive migration.
+
+## Historical seminar refinement — 22 November 2026
 
 Task: JLFA-SEMINAR-MOBILE-DESTINATION-20261122-01 / REFINEMENT-03, including
 prepared CORRECTION-02. Current direct operator authorized page implementation

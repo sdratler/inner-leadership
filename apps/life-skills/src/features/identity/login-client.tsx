@@ -76,8 +76,11 @@ const subscribeToHydration = () => () => undefined;
 export function LoginClient({ locale }: { locale: Locale }) {
   const router = useRouter();
   const query = useSearchParams();
-  const requested = query.get("mode");
-  const requestedReturn = query.get("next");
+  // Keep only in-memory entry context when the secret fragment is removed.
+  const [entry]=useState(()=>({mode:query.get('mode'),next:query.get('next')}));
+  const requested = entry.mode;
+  const requestedReturn = entry.next;
+  const fishingEntry=requestedReturn===`/${locale}/trips`||requestedReturn===`/${locale}/trips/owner`;
   const initialMode: Mode = requested === "invite" || requested === "reset" ? requested : "login";
   const [mode, setMode] = useState<Mode>(initialMode);
   const [busy, setBusy] = useState(false);
@@ -91,7 +94,7 @@ export function LoginClient({ locale }: { locale: Locale }) {
 
   useEffect(() => {
     if (initialMode === "invite" || initialMode === "reset") {
-      token.current = takeAuthTokenFragment(window.location, window.history);
+      if(!token.current)token.current = takeAuthTokenFragment(window.location, window.history);
       setTokenReady(Boolean(token.current));
       if (!token.current) setStatus(t.token);
       return;
@@ -120,8 +123,8 @@ export function LoginClient({ locale }: { locale: Locale }) {
     if (busy || resetAccepted) return;
     setBusy(true); setStatus("");
     try {
-      await publicAuthAction("reset/request", { email: form.get("email") }, locale);
-      setResetAccepted(true); setStatus(t.resetAccepted);
+      await publicAuthAction("reset/request", { email: form.get("email") }, locale,fishingEntry?(requestedReturn!.endsWith('/owner')?'fishing-trips-owner':'fishing-trips'):undefined);
+      setResetAccepted(true); setStatus(fishingEntry?(locale==='he'?'הבקשה התקבלה. עבור חשבון מתאים תתווסף הודעת איפוס לתור השליחה. בדקו בדוא״ל קישור התקף ל־15 דקות.':'Request received. An eligible account’s reset email is queued for delivery. Check your inbox for a link valid for 15 minutes.'):t.resetAccepted);
     } catch { setStatus(t.unavailable); }
     finally { setBusy(false); }
   }
@@ -135,7 +138,7 @@ export function LoginClient({ locale }: { locale: Locale }) {
     try {
       await publicAuthAction(mode === "invite" ? "invites/accept" : "reset/complete", { token: token.current, password });
       token.current = null; setTokenReady(false); setPasswordVisible(false); setMode("login"); setStatus(t.completed);
-      window.history.replaceState(null, "", `/${locale}/login`);
+      window.history.replaceState(null, "", `/${locale}/login${fishingEntry?'?next='+encodeURIComponent(requestedReturn!):''}`);
     } catch { setStatus(t.token); }
     finally { setBusy(false); }
   }
@@ -156,7 +159,7 @@ export function LoginClient({ locale }: { locale: Locale }) {
         <button className={styles.passwordToggle} type="button" aria-controls="new-password confirm-password" aria-pressed={passwordVisible} disabled={!hydrated} onClick={() => setPasswordVisible(value => !value)}>{passwordVisible ? t.hidePassword : t.showPassword}</button>
         <button disabled={busy || !hydrated || !tokenReady} type="submit">{busy ? t.working : t.save}</button>
       </form> : mode === "forgot" ? <form action={(form) => void requestReset(form)}>
-        <h1 id="login-title">{t.forgotTitle}</h1><p>{t.forgotHelp}</p>
+        <h1 id="login-title">{t.forgotTitle}</h1><p>{fishingEntry?(locale==='he'?'הזינו את כתובת הדוא״ל של חשבון האקדמיה לדיג שלכם.':'Enter the email address for your Fishing Academy account.'):t.forgotHelp}</p>
         <label>{t.email}<input name="email" type="email" required autoComplete="username" /></label>
         <button disabled={busy || !hydrated || resetAccepted} type="submit">{busy ? t.working : t.request}</button>
         <button className={styles.secondary} disabled={busy || !hydrated} type="button" onClick={() => { setPasswordVisible(false); setMode("login"); setStatus(""); }}>{t.back}</button>
@@ -169,7 +172,7 @@ export function LoginClient({ locale }: { locale: Locale }) {
         <button className={styles.secondary} disabled={busy || !hydrated} type="button" onClick={() => { setPasswordVisible(false); setMode("forgot"); setStatus(""); }}>{t.forgot}</button>
       </form>}
       <p className={styles.status} role="status" aria-live="polite">{status}</p>
-      {mode !== "invite" && mode !== "reset" && <Link className={styles.language} href={`/${language}/login`}>{language === "he" ? "עברית" : "English"}</Link>}
+      {mode !== "invite" && mode !== "reset" && <Link className={styles.language} href={`/${language}/login${fishingEntry?'?next='+encodeURIComponent(`/${language}/trips${requestedReturn!.endsWith('/owner')?'/owner':''}`):''}`}>{language === "he" ? "עברית" : "English"}</Link>}
     </section>
   </main>;
 }

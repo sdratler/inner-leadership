@@ -13,6 +13,7 @@ import { trip390SkillFiles } from "./features/group-application/academy-trip390-
 import { publicGroupApplicationEnvironmentEnabled } from "./features/group-application/candidate.ts";
 import { canonicalForwardedRequest } from "./features/integration/canonical-forwarded-request.ts";
 import { seminarPublicPath } from "./features/seminar/config.ts";
+import { individualTripReleasePath,individualTripPublicAsset } from './features/individual-trips/route-admission.ts';
 
 const intakeIdentityRoutes = new Set([
   "/api/identity/csrf", "/api/identity/login", "/api/identity/session",
@@ -93,6 +94,8 @@ export function proxy(request: NextRequest) {
   }
   const headers = securityHeaders(nonce, env.NODE_ENV === "development", env.LS_APP_ORIGIN.startsWith("https:"));
   const pathname = request.nextUrl.pathname;
+  const tripsPath=individualTripReleasePath(pathname,process.env);
+  if((/^\/(en|he)\/trips(?:\/|$)/.test(pathname)||/^\/api\/individual-trips(?:\/|$)/.test(pathname)||/^\/(en|he)\/florida\/trips\/?$/.test(pathname))&&!tripsPath)return decorate(new NextResponse(null,{status:404}),headers);
   if (pathname === "/fish" || pathname === "/fish/") {
     if (!["GET", "HEAD"].includes(request.method)) return decorate(new NextResponse(null, { status:405 }),headers);
     return decorate(NextResponse.redirect(new URL("/en/florida/seminar",env.LS_APP_ORIGIN)),headers);
@@ -108,7 +111,7 @@ export function proxy(request: NextRequest) {
   // public intake/login and foundation preview outside this data-page selector.
   // The explicitly synthetic sample retains its separate preview perimeter and
   // ordinary role gate; it cannot load operational aggregates or real records.
-  const privateDataPage = /^\/(he|en)\/(?:app|family|workspace|parent|client|practitioner|attendance|calendar|checkins|commitments|forms|goals|home-practice|payments|progress|resources|updates)(?:\/|$)/.test(pathname);
+  const privateDataPage = /^\/(he|en)\/(?:trips|app|family|workspace|parent|client|practitioner|attendance|calendar|checkins|commitments|forms|goals|home-practice|payments|progress|resources|updates)(?:\/|$)/.test(pathname)||/^\/api\/individual-trips(?:\/|$)/.test(pathname);
   // These data pages/APIs depend on strict canonical HTTPS forwarding. Validate the original
   // transport before the request-header rewrite below can hide an invalid chain.
   // Forwarding never grants a session, role, case or audience permission.
@@ -134,7 +137,7 @@ export function proxy(request: NextRequest) {
     return decorate(NextResponse.next(), headers);
   }
   const intakePath = intakeReleasePath(pathname, process.env);
-  const groupApplicationPath=groupApplicationReleasePath(pathname,process.env) || seminarPublicPath(pathname,request.method);
+  const groupApplicationPath=groupApplicationReleasePath(pathname,process.env) || seminarPublicPath(pathname,request.method)||tripsPath||individualTripPublicAsset(pathname,request.method,process.env);
   const ownerPreviewPath = /^\/(he|en)\/preview\/intake\/?$/.test(pathname) || pathname === "/api/intake-preview";
   if (ownerPreviewPath && !ownerPreviewConfig(process.env)) return decorate(new NextResponse(null,{status:404}),headers);
   if (intakePath && ["/auth/invite", "/auth/reset"].includes(pathname)) {

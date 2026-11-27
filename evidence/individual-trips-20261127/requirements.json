@@ -1,0 +1,244 @@
+{
+  "task": "JLFA-TRIP-CALENDAR-CREDITS-BRAINSTORM-20261127-01",
+  "handover": "HANDOVER-01",
+  "controllingCorrection": "DECISIONS-04 plus scoped DECISIONS-05",
+  "date": "2026-11-27",
+  "sourcePackageSha256": "fb5053cd610c248f2b948674fafa3d601ebd0831fa5ad7ad1d4264d314d493f4",
+  "baseline": "351752fd3797ff101aff3405612c6f210c1b6767",
+  "requirements": [
+    {
+      "id": "A",
+      "requirement": "Versioned trip domain and native migration preserving historical records",
+      "owner": "root",
+      "status": "native_schema_prepared_postgres_ci_pending",
+      "next": "Run tests/database/individual-trips.native.test.ts in the existing guarded disposable PostgreSQL CI; retain result separately from PGlite serial tests.",
+      "blocker": "No local native PostgreSQL installation; real independent-connection test prepared for existing secret-free PostgreSQL17 CI.",
+      "evidence": [
+        "local-checks.md"
+      ]
+    },
+    {
+      "id": "B",
+      "requirement": "Verified adult household/profile, free requests and seasonal interests with reload/readback",
+      "owner": "root",
+      "status": "implemented_tested_local_release_open",
+      "next": "Existing integrator adopts additive schema, exact head checks and separate scoped runtime admissions; no deployed completion claimed.",
+      "blocker": null,
+      "evidence": [
+        "local-checks.md"
+      ]
+    },
+    {
+      "id": "C",
+      "requirement": "Owner concrete departures, voluntary hub/date acceptance, child/transport/resources",
+      "owner": "root",
+      "status": "implemented_tested_local_release_open",
+      "next": "Existing integrator adopts additive schema, exact head checks and separate scoped runtime admissions; no deployed completion claimed.",
+      "blocker": null,
+      "evidence": [
+        "local-checks.md"
+      ]
+    },
+    {
+      "id": "D",
+      "requirement": "Verified invoice/cash allocation, deadlines, cancellation and dollar ledger",
+      "owner": "root",
+      "status": "implemented_tested_local_release_open",
+      "next": "Existing integrator adopts additive schema, exact head checks and separate scoped runtime admissions; no deployed completion claimed.",
+      "blocker": "Read-only invoice port passes synthetic native tests; dedicated account/mode runtime binding remains held.",
+      "evidence": [
+        "local-checks.md"
+      ]
+    },
+    {
+      "id": "E",
+      "requirement": "Operational outbox and signed owner-chat through same application service",
+      "owner": "root",
+      "status": "synthetic_effect_tests_passed_live_admission_open",
+      "next": "Existing integrator adopts additive schema, exact head checks and separate scoped runtime admissions; no deployed completion claimed.",
+      "blocker": "Registration/operational mail runtime admissions remain null; no actual delivery claimed.",
+      "evidence": [
+        "local-checks.md"
+      ]
+    },
+    {
+      "id": "F",
+      "requirement": "Independent security/editorial/rendered review, required CI and exact release proof",
+      "owner": "root",
+      "status": "candidate_render_review_passed_release_open",
+      "next": "Existing integrator adopts additive schema, exact head checks and separate scoped runtime admissions; no deployed completion claimed.",
+      "blocker": "Selected genuine photo missing; deployed public route/provider/native-phone acceptance not established.",
+      "evidence": [
+        "local-checks.md"
+      ]
+    },
+    {
+      "id": "AC-01",
+      "requirement": "Household isolation, revoked/wrong-scope denial",
+      "owner": "root",
+      "status": "passed_local",
+      "next": "Preserve this result during shared integration and ordinary-owner live acceptance.",
+      "blocker": null,
+      "evidence": [
+        "local-checks.md"
+      ]
+    },
+    {
+      "id": "AC-02",
+      "requirement": "All/any request semantics and unique demand",
+      "owner": "root",
+      "status": "passed_local",
+      "next": "Preserve this result during shared integration and ordinary-owner live acceptance.",
+      "blocker": null,
+      "evidence": [
+        "local-checks.md"
+      ]
+    },
+    {
+      "id": "AC-03",
+      "requirement": "Nonpaying son, pier limit and feasible minimum",
+      "owner": "root",
+      "status": "passed_local",
+      "next": "Preserve this result during shared integration and ordinary-owner live acceptance.",
+      "blocker": null,
+      "evidence": [
+        "local-checks.md"
+      ]
+    },
+    {
+      "id": "AC-04",
+      "requirement": "Verified transport versus desired Keys target",
+      "owner": "root",
+      "status": "passed_local",
+      "next": "Preserve this result during shared integration and ordinary-owner live acceptance.",
+      "blocker": null,
+      "evidence": [
+        "local-checks.md"
+      ]
+    },
+    {
+      "id": "AC-05",
+      "requirement": "Concurrent last-seat and resource intervals",
+      "owner": "root",
+      "status": "native_schema_prepared_postgres_ci_pending",
+      "next": "Run tests/database/individual-trips.native.test.ts in the existing guarded disposable PostgreSQL CI; retain result separately from PGlite serial tests.",
+      "blocker": "No local native PostgreSQL installation; real independent-connection test prepared for existing secret-free PostgreSQL17 CI.",
+      "evidence": [
+        "local-checks.md"
+      ]
+    },
+    {
+      "id": "AC-06",
+      "requirement": "Parent hub/date consent and private media grouping",
+      "owner": "root",
+      "status": "passed_local",
+      "next": "Preserve this result during shared integration and ordinary-owner live acceptance.",
+      "blocker": null,
+      "evidence": [
+        "local-checks.md"
+      ]
+    },
+    {
+      "id": "AC-07",
+      "requirement": "Invoice/cash truth and payment replay",
+      "owner": "root",
+      "status": "passed_local",
+      "next": "Preserve this result during shared integration and ordinary-owner live acceptance.",
+      "blocker": "Read-only invoice port passes synthetic native tests; dedicated account/mode runtime binding remains held.",
+      "evidence": [
+        "local-checks.md"
+      ]
+    },
+    {
+      "id": "AC-08",
+      "requirement": "Deadline expiry, uncertain/late money reconciliation",
+      "owner": "root",
+      "status": "passed_local",
+      "next": "Preserve this result during shared integration and ordinary-owner live acceptance.",
+      "blocker": null,
+      "evidence": [
+        "local-checks.md"
+      ]
+    },
+    {
+      "id": "AC-09",
+      "requirement": "Exact24h cancellation and actual-value credit once",
+      "owner": "root",
+      "status": "passed_local",
+      "next": "Preserve this result during shared integration and ordinary-owner live acceptance.",
+      "blocker": null,
+      "evidence": [
+        "local-checks.md"
+      ]
+    },
+    {
+      "id": "AC-10",
+      "requirement": "Partial-household allocations and credit restoration lineage",
+      "owner": "root",
+      "status": "passed_local",
+      "next": "Preserve this result during shared integration and ordinary-owner live acceptance.",
+      "blocker": null,
+      "evidence": [
+        "local-checks.md"
+      ]
+    },
+    {
+      "id": "AC-11",
+      "requirement": "Independent Summer/Pesach interest including during Pesach",
+      "owner": "root",
+      "status": "passed_local",
+      "next": "Preserve this result during shared integration and ordinary-owner live acceptance.",
+      "blocker": null,
+      "evidence": [
+        "local-checks.md"
+      ]
+    },
+    {
+      "id": "AC-12",
+      "requirement": "Truthful deduplicated email states; no Whapi",
+      "owner": "root",
+      "status": "synthetic_effect_tests_passed_live_admission_open",
+      "next": "Preserve this result during shared integration and ordinary-owner live acceptance.",
+      "blocker": "Registration/operational mail runtime admissions remain null; no actual delivery claimed.",
+      "evidence": [
+        "local-checks.md"
+      ]
+    },
+    {
+      "id": "AC-13",
+      "requirement": "UI/chat same record and signed/revision checks",
+      "owner": "root",
+      "status": "native_signed_adapter_passed_regular_chat_binding_open",
+      "next": "Preserve this result during shared integration and ordinary-owner live acceptance.",
+      "blocker": "Existing stateless chat Site has no verified caller binding to these native services.",
+      "evidence": [
+        "local-checks.md"
+      ]
+    },
+    {
+      "id": "AC-14",
+      "requirement": "Actual mobile/desktop/RTL and recovery inspection",
+      "owner": "root",
+      "status": "candidate_render_review_passed_release_open",
+      "next": "Preserve this result during shared integration and ordinary-owner live acceptance.",
+      "blocker": "Selected genuine photo missing; deployed public route/provider/native-phone acceptance not established.",
+      "evidence": [
+        "local-checks.md"
+      ]
+    },
+    {
+      "id": "AC-15",
+      "requirement": "DECISIONS-05 photo-led current public share metadata and WhatsApp chat/Status tap-through",
+      "owner": "root",
+      "status": "metadata_tests_passed_public_asset_and_phone_open",
+      "next": "Materialize source-selected1000281043.jpg, bind exact hash/dimensions, then inspect anonymous public HTML/image and actual physical WhatsApp chat/Status.",
+      "blocker": "Exact genuine original missing from searched Downloads/Drive; no substituted flyer/collage admitted.",
+      "evidence": [
+        "local-checks.md",
+        "apps/life-skills/tests/unit/individual-trips-metadata.test.ts"
+      ]
+    }
+  ],
+  "localImplementation": "implemented and tested; shared integration/release remains OPEN",
+  "authoritativeEvidence": "local-checks.md; exact candidate commit/CI is recorded in the existing Delivery and associated PR"
+}

@@ -20,6 +20,10 @@ export async function scheduleResetDelivery(request: Request, response: Response
   const requestId: string = body.requestId;
   // A bounded presentation preference, never used for identity, recipient or authorization.
   const locale = request.headers.get("x-ls-locale") === "he" ? "he" : "en";
+  // A fixed presentation/return preference only. Eligibility, recipient and
+  // reset-token authority stay with the existing native reset dispatcher.
+  const entry=request.headers.get('x-ls-auth-context');
+  const fishing=env.LS_INDIVIDUAL_TRIPS_ENABLED==='true'&&typeof runtime.config.workspaceId==='string'&&env.LS_INDIVIDUAL_TRIPS_WORKSPACE_ID===runtime.config.workspaceId&&(entry==='fishing-trips'||entry==='fishing-trips-owner');
   schedule(async () => {
     try {
       const config = parseGmailAuthConfig(env), provider = new GmailAuthTransport(config);
@@ -34,11 +38,12 @@ export async function scheduleResetDelivery(request: Request, response: Response
           if (link.origin !== runtime.config.origin || link.pathname !== "/auth/reset" || link.search ||
               !/^#token=[A-Za-z0-9_-]+$/.test(link.hash)) throw new Error("AUTH_RESET_LINK_INVALID");
           // The shared account entry supports practitioner, parent and adult-client accounts.
-          link.pathname = `/${locale}/login`; link.search = "?mode=reset";
-          const subject = locale === "he" ? "כישורי חיים — איפוס סיסמה" : "Life Skills — reset your password";
-          const text = locale === "he"
+          link.pathname = `/${locale}/login`; link.search = fishing?new URLSearchParams({mode:'reset',next:`/${locale}/trips${entry==='fishing-trips-owner'?'/owner':''}`}).toString():"?mode=reset";
+          const subject = fishing?(locale==='he'?'האקדמיה לדיג — איפוס סיסמה':'Fishing Academy — reset your password'):locale === "he" ? "כישורי חיים — איפוס סיסמה" : "Life Skills — reset your password";
+          let text = locale === "he"
             ? `התקבלה בקשה לאיפוס הסיסמה לחשבון כישורי חיים.\n\n${link.href}\n\nהקישור תקף ל־15 דקות. בחרו סיסמה חדשה בת 6 תווים לפחות. אין להעביר הודעה זו. אם לא ביקשתם איפוס, התעלמו ממנה.`
             : `You requested a password reset for your Life Skills account.\n\n${link.href}\n\nThis link expires in 15 minutes. Choose a new password of at least 6 characters, then sign in. Do not forward this email. If you did not request a reset, ignore it.`;
+          if(fishing)text=text.replaceAll('כישורי חיים','האקדמיה לדיג').replaceAll('Life Skills','Fishing Academy');
           return provider.send({ ...message, subject, text });
         }
       };

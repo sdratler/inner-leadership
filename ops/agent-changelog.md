@@ -1,5 +1,29 @@
 # Verified engineering changes
 
+## 27 November 2026 — Individual-trip package implemented locally
+
+Received and hash-verified HANDOVER-01 for
+JLFA-TRIP-CALENDAR-CREDITS-BRAINSTORM-20261127-01. DECISIONS-04 and scoped
+DECISIONS-05 adopted; original intake/package retained privately.
+
+- [x] Native verified household/account, all/any dates, Summer/Pesach, owner
+  planning/waitlist, immutable offers, actual money/credit and guarded APIs.
+- [x] Transactional email adapters and same-service signed owner-chat adapter;
+  synthetic provider, native session/privacy, replay and money tests passed.
+- [x] EN/HE screens and populated mobile/RTL/recovery states inspected. Full
+  regression:335 files/4,682 tests passed with two workers; lint/typecheck passed.
+- [x] New-parent activation, private household entry, password reset and safe
+  expired-invitation recovery; actual browser account journeys passed.
+- [x] Separate local project/setup notes and exact source/evidence fingerprint.
+- [ ] Shared migration/integration and exact-head CI; native PostgreSQL race test
+  prepared for the existing guarded disposable CI target, unavailable locally.
+- [ ] Original1000281043.jpg/public share-card admission, runtime mail/invoice
+  purpose binding, actual chat Site binding, deployment/live and handset checks.
+
+This checks off the local implementation only. Whole release remains OPEN;
+existing Academy/inquiry and historical seminar were preserved.
+See [engineering evidence](../evidence/individual-trips-20261127/README.md).
+
 ## 22 November 2026 — Sierra Lake and centered sharing refinement
 
 Same seminar task CORRECTION-02/REFINEMENT-03 deployed exact07e2e4e5. Removed

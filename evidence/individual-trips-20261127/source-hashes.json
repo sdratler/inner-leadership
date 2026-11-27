@@ -1,0 +1,171 @@
+{
+  "task": "JLFA-TRIP-CALENDAR-CREDITS-BRAINSTORM-20261127-01",
+  "scope": "Code-consumed candidate source fingerprint, not a business/asset master or a provider admission",
+  "files": [
+    {
+      "path": "apps/life-skills/src/app/[locale]/dev/ui/trips/page.tsx",
+      "sha256": "4b8c019ce1797d11d03285be9329d27c92a2e7905e4ab73bea5f85f22119bca7",
+      "bytes": 561
+    },
+    {
+      "path": "apps/life-skills/src/app/[locale]/florida/trips/page.tsx",
+      "sha256": "43aae4b5024d19a31b2a6cde47094ee1c555d26ecc22ef545617036e8ff1cd1d",
+      "bytes": 970
+    },
+    {
+      "path": "apps/life-skills/src/app/[locale]/trips/owner/page.tsx",
+      "sha256": "65ef535d6bd76bfff6fc4b605e1e1e4f442810ce310da9a20078cd0ed0d3cd11",
+      "bytes": 1327
+    },
+    {
+      "path": "apps/life-skills/src/app/[locale]/trips/page.tsx",
+      "sha256": "9d364741c76509e78a304cca255910f390490ad85cc5d275777bfc44a2a9ab19",
+      "bytes": 693
+    },
+    {
+      "path": "apps/life-skills/src/app/api/individual-trips/[[...path]]/route.ts",
+      "sha256": "2544a84e3fd31598fd1aa90d4c0370263f350bc5de365249bae289a3d38ebe1f",
+      "bytes": 2115
+    },
+    {
+      "path": "apps/life-skills/src/features/identity/client.ts",
+      "sha256": "00a72043579c15bec886e26d3729a0c988b99e6b9be9cae2356b44f6371852fa",
+      "bytes": 3634
+    },
+    {
+      "path": "apps/life-skills/src/features/identity/login-client.tsx",
+      "sha256": "38abc11026a4a8907dd6d98ade137b66771f6af2c9035e8e2fd41184909060a4",
+      "bytes": 11217
+    },
+    {
+      "path": "apps/life-skills/src/features/identity/login-return.ts",
+      "sha256": "1ada3361c5ed1b9fe5ab45fb5d7a42192f5bcdd1a63eaaf8cd18d68fba43c4b0",
+      "bytes": 13249
+    },
+    {
+      "path": "apps/life-skills/src/features/individual-trips/config.ts",
+      "sha256": "5c98990dbfdc9eb9f03fdf58d5aa1257c898daf7e224aec2463bda0ba0f4836e",
+      "bytes": 2115
+    },
+    {
+      "path": "apps/life-skills/src/features/individual-trips/contract.ts",
+      "sha256": "19788de11ed60ff1bad5400f74bbd3d89663c4121d772ba1c97b748a9650b0ec",
+      "bytes": 12960
+    },
+    {
+      "path": "apps/life-skills/src/features/individual-trips/engine.ts",
+      "sha256": "44d2a5f56190095c3ce5d8acb389c25e1ac68ef07a9792d5adf95d68b80bb8c0",
+      "bytes": 39316
+    },
+    {
+      "path": "apps/life-skills/src/features/individual-trips/env.example",
+      "sha256": "1599d99f7b8778b66e346ba62b8d3b1eb9de5e3effb7e9893f99d83e701a8566",
+      "bytes": 676
+    },
+    {
+      "path": "apps/life-skills/src/features/individual-trips/http.ts",
+      "sha256": "1e876adc726b6a3eca7912206666987db16c4ab8f510626d40efc0e4c51db5bc",
+      "bytes": 6804
+    },
+    {
+      "path": "apps/life-skills/src/features/individual-trips/invoice-provider.ts",
+      "sha256": "00c6f66a939634c204ebc77cbeba39c1f9ff62defc1129d1505953a4cf87ac4d",
+      "bytes": 4595
+    },
+    {
+      "path": "apps/life-skills/src/features/individual-trips/landing.module.css",
+      "sha256": "6741c13e0a3a9e6f4c6a4475fff2eb32df4daae20301f0a3439b1b4e2496be60",
+      "bytes": 7114
+    },
+    {
+      "path": "apps/life-skills/src/features/individual-trips/landing.tsx",
+      "sha256": "bfe48847391be4f229c26ca4fb80d8472a1a53132417b7399f5f43e98624369e",
+      "bytes": 11277
+    },
+    {
+      "path": "apps/life-skills/src/features/individual-trips/mail-schema.sql",
+      "sha256": "24cb632fcb00ccbe4c3abdfddc57bc0e631e66aa06e0145b983e8693f19fb2f0",
+      "bytes": 2181
+    },
+    {
+      "path": "apps/life-skills/src/features/individual-trips/metadata.ts",
+      "sha256": "d30b82b498b37b699dd6f8b69e845002a3d97236b854204ce43a15794b911975",
+      "bytes": 4587
+    },
+    {
+      "path": "apps/life-skills/src/features/individual-trips/operational-mail.ts",
+      "sha256": "eba9cb8cea6b163acf0795c2ab2dfd4767b0105c73249bbb41db198073dbada1",
+      "bytes": 28685
+    },
+    {
+      "path": "apps/life-skills/src/features/individual-trips/owner-actions.ts",
+      "sha256": "720f0b5e06dadf25b69a39cb20e9de23b85e27faae1d5c1871e598c65d081ce3",
+      "bytes": 6184
+    },
+    {
+      "path": "apps/life-skills/src/features/individual-trips/owner-chat.ts",
+      "sha256": "cda1ccb71096df01ad53b40ef807eec1651b78c989e5c185ab0f924f1572028c",
+      "bytes": 7752
+    },
+    {
+      "path": "apps/life-skills/src/features/individual-trips/public-photo.ts",
+      "sha256": "1573d979505e4e3759e5dbb3fc4f4d2fc19a0baf9a54fbec576a4d8bdf8ba3e6",
+      "bytes": 1463
+    },
+    {
+      "path": "apps/life-skills/src/features/individual-trips/registration-mail.ts",
+      "sha256": "d42c7c53537e1238b42dbdf53bfb01c6825738b07643e4b00a764057816269e8",
+      "bytes": 9358
+    },
+    {
+      "path": "apps/life-skills/src/features/individual-trips/registration-schema.sql",
+      "sha256": "583a2b22bb8948ac5a2e3c0551dd360bb5fe6091f710b70f5641ca586faaef9c",
+      "bytes": 1459
+    },
+    {
+      "path": "apps/life-skills/src/features/individual-trips/registration-service.ts",
+      "sha256": "9511706fb46fb6929bfef8b044a126f2c5b12e7f94e165a6af80a813f94d222b",
+      "bytes": 8950
+    },
+    {
+      "path": "apps/life-skills/src/features/individual-trips/route-admission.ts",
+      "sha256": "f86abe3952ea584a7e5e35ece033cf00aad57fcafcc48393c7db188a644071f8",
+      "bytes": 1201
+    },
+    {
+      "path": "apps/life-skills/src/features/individual-trips/runtime.ts",
+      "sha256": "937a4b3f6db803690ea0ecb4837fc7abf2a8b2a0838fdaa2f04b61afd28e4416",
+      "bytes": 1994
+    },
+    {
+      "path": "apps/life-skills/src/features/individual-trips/schema.sql",
+      "sha256": "47d9d30db8993793bb7c5101b3ca558c6458fd70075837647d097b194a99d441",
+      "bytes": 3296
+    },
+    {
+      "path": "apps/life-skills/src/features/individual-trips/store.ts",
+      "sha256": "29146ba0ec15478e09f52c01915d8b2494b265db5d9ee39260a228582ffa1f5e",
+      "bytes": 10659
+    },
+    {
+      "path": "apps/life-skills/src/features/individual-trips/workspace.module.css",
+      "sha256": "f3f0cabfe08fbe7bc368021d87dfedd6c4010f714ef5d2282b956253051f3028",
+      "bytes": 11175
+    },
+    {
+      "path": "apps/life-skills/src/features/individual-trips/workspace.tsx",
+      "sha256": "e551b6f147abd3613e32bb21ae562f681c3f447cacef331bca9bb333ffc0e907",
+      "bytes": 79167
+    },
+    {
+      "path": "apps/life-skills/src/providers/email/reset-delivery.ts",
+      "sha256": "84877b905c145b32c979d02758108326d5c79da13e655f2dc82e1e17898a5482",
+      "bytes": 4666
+    },
+    {
+      "path": "apps/life-skills/src/proxy.ts",
+      "sha256": "da1d8989c534ee71d07986269985e691fb839d6beb1119ea789f969e81b5b28c",
+      "bytes": 21796
+    }
+  ]
+}

@@ -18,6 +18,8 @@ export function loginReturnDestination(locale: Locale, role: Role, requested: st
   if (!requested || requested.length > 2048 || !requested.startsWith("/") || /[\\\u0000-\u001f\u007f]/.test(requested)) return defaultPath;
   try {
     const url = new URL(requested, "https://life-skills.invalid");
+    if(url.origin==='https://life-skills.invalid'&&!url.search&&!url.hash&&
+      ((role==='parent'&&url.pathname===`/${locale}/trips`)||(role==='practitioner'&&url.pathname===`/${locale}/trips/owner`)))return url.pathname;
     if(role==="practitioner"&&url.origin==="https://life-skills.invalid"&&!url.hash&&url.pathname===`/${locale}/sample`){
       const page=url.searchParams.get("page"),program=url.searchParams.get("program");
       if((page==="florida-journeys"||page==="florida-landing")&&["sunday_fishing_academy","morning_torah_learning","private_fishing_life_skills"].includes(program??""))return `${url.pathname}?page=${page}&program=${program}`;

@@ -21,9 +21,9 @@ async function request<T>(path:string,init:RequestInit):Promise<T>{
  const value=body as {error?:{code?:unknown}};const codes=['INVALID_REQUEST','UNAUTHENTICATED','FORBIDDEN','NOT_FOUND','CONFLICT','RATE_LIMITED','UNAVAILABLE','INTERNAL'];
  throw new IdentityClientError(codes.includes(String(value.error?.code)) ? value.error!.code as IdentityClientErrorCode:'INTERNAL');
 }
-export async function publicAuthAction<T>(action:'login'|'reset/request'|'reset/complete'|'invites/accept'|'email/confirm',body:unknown,locale?:'he'|'en'):Promise<T>{
+export async function publicAuthAction<T>(action:'login'|'reset/request'|'reset/complete'|'invites/accept'|'email/confirm',body:unknown,locale?:'he'|'en',context?:'fishing-trips'|'fishing-trips-owner'):Promise<T>{
  const csrf=await request<{csrfToken:string}>('/api/identity/csrf',{method:'GET'});
- return request<T>('/api/identity/'+action,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf.csrfToken,...(locale?{'X-LS-Locale':locale}:{})},body:JSON.stringify(body)});
+ return request<T>('/api/identity/'+action,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf.csrfToken,...(locale?{'X-LS-Locale':locale}:{}),...(action==='reset/request'&&(context==='fishing-trips'||context==='fishing-trips-owner')?{'X-LS-Auth-Context':context}:{})},body:JSON.stringify(body)});
 }
 export async function sessionInfo(){return request<{accountId:string;role:'practitioner'|'parent'|'adult_client'|'child';locale:'en'|'he';expiresAt:string;csrfToken:string}>('/api/identity/session',{method:'GET'});}
 export async function accountAction<T>(action:'logout'|'logout-all'|'preferences'|'contacts/email'|'contacts/phone'|'cases'|'cases/state'|'invites/parent'|'invites/adult'|'invites/child'|'guardians/revoke'|'accounts/revoke'|'engagements'|'audiences',method:'POST'|'PUT'|'PATCH',body:unknown):Promise<T>{

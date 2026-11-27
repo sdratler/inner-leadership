@@ -1,0 +1,42 @@
+import { randomUUID } from 'node:crypto';
+import { afterAll,beforeAll,expect,it,vi } from 'vitest';
+vi.mock('server-only',()=>({}));
+import { tripDatabase } from '../fixtures/individual-trips-database.ts';
+import { IndividualTripOwnerChat,tripChatSignature,type SignedTripChatInput } from '../../src/features/individual-trips/owner-chat.ts';
+let fixture:Awaited<ReturnType<typeof tripDatabase>>,chat:IndividualTripOwnerChat;
+beforeAll(async()=>{fixture=await tripDatabase();chat=new IndividualTripOwnerChat(fixture.trips);},25000);
+afterAll(async()=>{await fixture?.db.close();});
+it('reads and changes the same native record as the UI service, with conflict, caller, nonce and expired-grant denials',async()=>{
+ const {owner,trips,parent}=fixture,grant=await chat.grant(owner.actor,{callerId:'synthetic:owner-chat',minutes:10,write:true});
+ const request=(action:'read'|'command',command?:SignedTripChatInput['command']):SignedTripChatInput=>({grantId:grant.id,callerId:grant.callerId,nonce:randomUUID(),timestamp:fixture.clock.now().getTime(),action,...(command?{command}:{})});
+ const invoke=(input:SignedTripChatInput)=>chat.execute(input,tripChatSignature(grant.secret,input));
+ let initial=request('read');expect(await invoke(initial)).toMatchObject({revision:0});
+ await expect(invoke(initial)).rejects.toMatchObject({code:'CONFLICT'});
+ const changed=request('command',{type:'prices.update',operationId:randomUUID(),expectedRevision:0,local:{firstMinor:15100,siblingMinor:10100},keys:{firstMinor:30100,siblingMinor:25100}});
+ expect(await invoke(changed)).toMatchObject({revision:1});
+ expect((await trips.read(owner.actor)).prices.local.firstMinor).toBe(15100);
+ expect(await invoke(request('read'))).toMatchObject({revision:1,prices:{local:{firstMinor:15100}}});
+ expect(await invoke({...changed,nonce:randomUUID()})).toMatchObject({replayed:true,revision:1});
+ await expect(invoke(request('command',{...changed.command!,operationId:randomUUID()}))).rejects.toMatchObject({code:'CONFLICT'});
+ initial={...request('read'),callerId:'different:caller'};await expect(invoke(initial)).rejects.toMatchObject({code:'UNAUTHENTICATED'});
+ await expect(chat.grant(parent.actor,{callerId:'synthetic:parent',minutes:10,write:true})).rejects.toMatchObject({code:'NOT_FOUND'});
+ const readOnly=await chat.grant(owner.actor,{callerId:'synthetic:read-only',minutes:10,write:false});
+ initial={...request('command',changed.command),grantId:readOnly.id,callerId:readOnly.callerId};await expect(chat.execute(initial,tripChatSignature(readOnly.secret,initial))).rejects.toMatchObject({code:'UNAUTHENTICATED'});
+ fixture.time.now=new Date(fixture.clock.now().getTime()+11*60000);await expect(invoke(request('read'))).rejects.toMatchObject({code:'UNAUTHENTICATED'});
+});
+it('fences a grant revoked after signature validation but before the native write begins',async()=>{
+ const grant=await chat.grant(fixture.owner.actor,{callerId:'synthetic:in-flight',minutes:5,write:true}),original=fixture.trips.executeGuarded.bind(fixture.trips);
+ const before=await fixture.trips.read(fixture.owner.actor);
+ const spy=vi.spyOn(fixture.trips,'executeGuarded').mockImplementationOnce(async(actor,command,guard)=>{await chat.revoke(actor,grant.id);return original(actor,command,guard);});
+ const input:SignedTripChatInput={grantId:grant.id,callerId:grant.callerId,nonce:randomUUID(),timestamp:fixture.clock.now().getTime(),action:'command',command:{type:'prices.update',operationId:randomUUID(),expectedRevision:before.revision,local:{firstMinor:99900,siblingMinor:99900},keys:{firstMinor:99900,siblingMinor:99900}}};
+ await expect(chat.execute(input,tripChatSignature(grant.secret,input))).rejects.toMatchObject({code:'UNAUTHENTICATED'});
+ expect((await fixture.trips.read(fixture.owner.actor)).revision).toBe(before.revision);spy.mockRestore();
+});
+it('rejects a revoked native session after grant creation and exposes no grant secret in SQL plaintext',async()=>{
+ const grant=await chat.grant(fixture.owner.actor,{callerId:'synthetic:revoked-session',minutes:5,write:true});
+ const row=(await fixture.db.query<{secret_ciphertext:string}>('SELECT secret_ciphertext FROM ls_individual_trips.chat_grants WHERE id=$1',[grant.id])).rows[0]!;
+ expect(row.secret_ciphertext).not.toContain(grant.secret);
+ await fixture.db.query('UPDATE ls_identity.sessions SET revoked_at=$2 WHERE token_digest=$1',[fixture.owner.actor.sessionDigest,fixture.clock.now()]);
+ const input:SignedTripChatInput={grantId:grant.id,callerId:grant.callerId,nonce:randomUUID(),timestamp:fixture.clock.now().getTime(),action:'read'};
+ await expect(chat.execute(input,tripChatSignature(grant.secret,input))).rejects.toMatchObject({code:'UNAUTHENTICATED'});
+});

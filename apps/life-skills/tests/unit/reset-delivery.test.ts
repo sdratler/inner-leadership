@@ -10,6 +10,18 @@ const response=()=>Response.json({ok:true,data:{accepted:true},requestId:id},{st
 const req=(path="reset/request",method="POST",locale="en")=>new Request(origin+"/api/identity/"+path,{method,headers:{"x-ls-locale":locale}});
 beforeEach(()=>{vi.clearAllMocks();mocks.process.mockResolvedValue("outbox-id");mocks.dispatch.mockResolvedValue("sent");mocks.send.mockResolvedValue({providerId:"gmail-id"});});
 describe("accepted-request-only Gmail reset delivery",()=>{
+ test.each(['en','he'])('%s fixed Fishing return context changes presentation only',async locale=>{
+  const workspace='11111111-1111-4111-8111-111111111111',current={...rt,config:{...rt.config,workspaceId:workspace}} as typeof rt;
+  for(const entry of ['fishing-trips','fishing-trips-owner','https://untrusted.invalid']){
+   mocks.dispatch.mockClear();mocks.send.mockClear();const request=req('reset/request','POST',locale);request.headers.set('x-ls-auth-context',entry);let job:(()=>Promise<void>)|undefined;
+   await scheduleResetDelivery(request,response(),current,{...env,LS_INDIVIDUAL_TRIPS_ENABLED:'true',LS_INDIVIDUAL_TRIPS_WORKSPACE_ID:workspace},cb=>{job=cb;});await job!();
+   await mocks.dispatch.mock.calls[0]![3].send({from:'office@bneineviimacademy.org',to:'owner@example.org',subject:'old',text:origin+'/auth/reset#token='+'a'.repeat(43),idempotencyKey:'ls-auth-'+id});
+   const sent=mocks.send.mock.calls[0]![0],line=sent.text.split('\n').find((line:string)=>line.startsWith(origin+'/')),url=new URL(line);
+   expect(sent.to).toBe('owner@example.org');expect(url.hash).toBe('#token='+'a'.repeat(43));expect(url.searchParams.get('token')).toBeNull();
+   if(entry.startsWith('fishing-trips')){expect(url.searchParams.get('next')).toBe(`/${locale}/trips${entry.endsWith('owner')?'/owner':''}`);expect(sent.subject).toContain(locale==='he'?'האקדמיה לדיג':'Fishing Academy');}
+   else expect(url.searchParams.get('next')).toBeNull();
+  }
+ });
  test("does no provider or eligibility work before response and scopes exact request/outbox",async()=>{
   let callback:(()=>Promise<void>)|undefined;
   await scheduleResetDelivery(req(),response(),rt,env,cb=>{callback=cb;});
